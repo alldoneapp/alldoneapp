@@ -26,6 +26,7 @@ import useWindowSize from '../../../utils/useWindowSize'
 import { getSafeAreaViewportHeightCap } from '../../../utils/modalSafeArea'
 import { pinPopoverInsideWindow } from '../../../utils/popoverPositioning'
 import { HEADER_POPOVER_HEIGHT_FRACTION, HEADER_POPOVER_OFFSET } from '../../styles/modals'
+import HeaderPickerArrow from './HeaderPickerArrow'
 
 function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isOpen, textColor }) {
     const [, windowHeight] = useWindowSize()
@@ -91,6 +92,9 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
         }
     }
 
+    // A press opens the project picker only on the selected project; elsewhere it switches to it.
+    const opensPicker = !loggedUser.isAnonymous && selectedProjectIndex === project.index
+
     const openProjectDetailView = () => {
         NavigationService.navigate('ProjectDetailedView', {
             projectIndex: project.index,
@@ -113,11 +117,17 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
                     projectId={project.id}
                 />
                 <Text
-                    style={[styles.subtitle1, localStyles.projectName, textColor && { color: textColor }]}
+                    style={[
+                        styles.subtitle1,
+                        localStyles.projectName,
+                        textColor && { color: textColor },
+                        opensPicker && localStyles.shrinkingName,
+                    ]}
                     numberOfLines={1}
                 >
                     {project.name}
                 </Text>
+                {opensPicker && <HeaderPickerArrow color={textColor} />}
                 {badge}
             </View>
         </TouchableOpacity>
@@ -190,6 +200,9 @@ const localStyles = StyleSheet.create({
     projectName: {
         paddingLeft: 4,
         color: colors.Text01,
+    },
+    shrinkingName: {
+        flexShrink: 1,
     },
 })
 

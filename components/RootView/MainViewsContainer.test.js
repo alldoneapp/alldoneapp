@@ -22,7 +22,7 @@ jest.mock('../TopBar/ConnectionStatusChip', () => 'ConnectionStatusChip')
 jest.mock('../TaskListView/FloatingAddTaskButton', () => 'FloatingAddTaskButton')
 jest.mock('../SidebarMenu/Collapsible/UseCollapsibleSidebar', () => () => ({ overlay: false }))
 jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
-    checkIfSelectedAllProjects: () => false,
+    checkIfSelectedAllProjects: index => index === -1,
 }))
 
 const renderWithState = responsiveState => {
@@ -100,5 +100,34 @@ describe('MainViewsContainer popup scroll lock', () => {
         })
 
         expect(scrollView.findAllByType('ConnectionStatusChip')).toHaveLength(0)
+    })
+})
+
+// AT-3121: in the "Anna on top" sidebar the All projects line carries the section card below itself
+// (AllProjectsLine), as a project's line does, so it is not drawn above the view; Artifacts has no
+// such line and keeps it.
+describe('the section card in All projects', () => {
+    const hasCardOnTop = state =>
+        renderWithState({ selectedProjectIndex: -1, showFloatPopup: 0, ...state }).findAllByType(
+            'RootSectionNavigation'
+        ).length > 0
+
+    it.each([
+        [DV_TAB_ROOT_TASKS, undefined, true],
+        [DV_TAB_ROOT_TASKS, 'sectionsTop', false],
+        [DV_TAB_ROOT_CONTACTS, 'sectionsTop', false],
+        ['ROOT_ARTIFACTS', 'sectionsTop', true],
+    ])('on %s with the %s sidebar is above the view: %s', (tab, mode, onTop) => {
+        expect(hasCardOnTop({ selectedSidebarTab: tab, loggedUser: { sidebarNavigationMode: mode } })).toBe(onTop)
+    })
+
+    it('keeps the 24px the card left above the line, as above a project line', () => {
+        const scrollView = renderWithState({
+            selectedProjectIndex: -1,
+            showFloatPopup: 0,
+            loggedUser: { sidebarNavigationMode: 'sectionsTop' },
+        })
+        const gaps = scrollView.findAll(node => node.props?.style?.height === 24)
+        expect(gaps.length).toBeGreaterThan(0)
     })
 })

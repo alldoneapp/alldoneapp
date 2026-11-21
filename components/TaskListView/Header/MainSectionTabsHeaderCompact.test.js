@@ -25,6 +25,8 @@ jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     checkIfSelectedProject: index => index >= 0,
 }))
 jest.mock('../../AllSections/allSectionHelper', () => ({ allGoals: {} }))
+// The section picker's popover measures the DOM; here it only has to show what it would open.
+jest.mock('../../UIComponents/ModalShell/AppPopover', () => ({ __esModule: true, default: ({ children }) => children }))
 
 import MainSectionTabsHeader, { COMPACT_TABS_BREAKPOINT, TIGHT_TABS_BREAKPOINT } from './MainSectionTabsHeader'
 import { setLanguage } from '../../../i18n/TranslationService'
@@ -155,11 +157,14 @@ describe('MainSectionTabsHeader compact mobile tabs', () => {
 })
 
 /**
- * AT-3121: with the sidebar's "Sections on top" mode the sections are in the sidebar, so the card
- * above the lists keeps only the section's name and its toggle (Open / Workflow / Done and so on).
+ * AT-3121: with the "Anna on top" sidebar (stored as 'sectionsTop') the sections are in the sidebar, so
+ * the card above the lists keeps only the section's name and its toggle (Open / Workflow / Done and
+ * so on). The name, with a small arrow, opens the section picker the Updates header uses.
  */
-describe('MainSectionTabsHeader with the sections on top of the sidebar', () => {
+describe('MainSectionTabsHeader with Anna on top of the sidebar', () => {
+    const AppPopover = require('../../UIComponents/ModalShell/AppPopover').default
     const originalInnerWidth = window.innerWidth
+    const title = tree => tree.root.findByProps({ testID: 'section-title' })
 
     beforeEach(() => {
         mockState = {
@@ -174,14 +179,17 @@ describe('MainSectionTabsHeader with the sections on top of the sidebar', () => 
         setLanguage('en')
     })
 
-    it.each([1440, 600, 390])('shows the section name and no tabs at %ipx', width => {
+    it.each([1440, 600, 390])('shows the section name with an arrow and no tabs at %ipx', width => {
         setViewportWidth(width)
         setLanguage('de')
         const tree = renderHeader()
 
-        expect(tree.root.findAllByType(TouchableOpacity)).toHaveLength(0)
         expect(tree.root.findAllByType(ScrollView)).toHaveLength(0)
-        expect(tabLabels(tree)).toEqual(['Notizen'])
+        const buttons = tree.root.findAllByType(TouchableOpacity)
+        expect(buttons).toHaveLength(1)
+        expect(buttons[0].props.testID).toBe('section-title')
+        expect(title(tree).findAllByType(Text)[0].props.children).toBe('Notizen')
+        expect(title(tree).props.accessibilityLabel).toBe('Notizen – Wähle die Sektion aus')
     })
 
     it('keeps the section toggle next to the name', () => {
@@ -193,6 +201,18 @@ describe('MainSectionTabsHeader with the sections on top of the sidebar', () => 
             )
         })
 
-        expect(tabLabels(tree)).toEqual(['Notes', 'toggle'])
+        expect(tabLabels(tree)).toEqual(expect.arrayContaining(['Notes', 'toggle']))
+    })
+
+    it('opens the section picker from the name', () => {
+        setViewportWidth(1440)
+        const tree = renderHeader()
+        const picker = () => tree.root.findByType(AppPopover)
+        expect(picker().props.isOpen).toBe(false)
+
+        act(() => title(tree).props.onPress())
+        expect(picker().props.isOpen).toBe(true)
+        // Artifacts always, the wiki only inside a project.
+        expect(picker().props.content.props).toMatchObject({ withArtifacts: true, withWiki: false })
     })
 })

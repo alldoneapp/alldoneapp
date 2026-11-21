@@ -21,6 +21,16 @@ const workspaceGutter = windowWidth =>
 
 export const minWorkspaceWidth = windowWidth => MIN_ALLDONE_WIDTH + 10 + 12 + 2 * workspaceGutter(windowWidth)
 
+// AT-3121: Anna alone beside the shell's sidebar keeps Alldone's side margins (anna.css,
+// --anna-shell-content-margin) where the one card otherwise keeps 10px. That room is not missing for
+// the chat beside Alldone, so it counts as available, or Both would wait for a far wider window.
+const chatAloneInset = node => {
+    const shell = node.closest?.('.anna-shell-owns-sidebar.anna-chat-only')
+    if (!shell) return 0
+    const margin = parseFloat(shell.style.getPropertyValue('--anna-shell-content-margin'))
+    return Number.isFinite(margin) ? 2 * Math.max(0, margin - 10) : 0
+}
+
 // Save the preferred width, not the temporary clamp applied in a narrow window. `splitFits`: the
 // window has room for the chat beside Alldone at all; AnnaShell shows one or the other otherwise.
 export default function useAnnaChatWidth(userId, layout) {
@@ -41,8 +51,9 @@ export default function useAnnaChatWidth(userId, layout) {
     useLayoutEffect(() => {
         const measure = () =>
             setWidths(current => {
+                const measured = layout.current?.getBoundingClientRect().width
                 const next = {
-                    availableWidth: layout.current?.getBoundingClientRect().width || window.innerWidth,
+                    availableWidth: measured ? measured + chatAloneInset(layout.current) : window.innerWidth,
                     windowWidth: window.innerWidth,
                 }
                 return next.availableWidth === current.availableWidth && next.windowWidth === current.windowWidth
@@ -69,5 +80,5 @@ export default function useAnnaChatWidth(userId, layout) {
     const maximum = Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, room))
     const width = Math.min(preferredWidth, maximum)
     const resize = value => setPreferredWidth(Math.max(MIN_CHAT_WIDTH, Math.min(maximum, value)))
-    return { width, maximum, resize, splitFits: room >= MIN_CHAT_WIDTH }
+    return { width, maximum, resize, splitFits: room >= MIN_CHAT_WIDTH, windowWidth }
 }

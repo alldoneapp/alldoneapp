@@ -6,7 +6,11 @@ import AnnaTopStrip from './AnnaTopStrip'
 jest.mock('react-redux', () => ({ useDispatch: () => jest.fn() }))
 jest.mock('../TopBar/ConnectionStatusChip', () => () => null)
 jest.mock('../TopBar/NotificationArea', () => () => null)
-jest.mock('./AnnaViewSwitch', () => () => null)
+jest.mock('./AnnaViewSwitch', () => () => <div data-testid="view-switch" />)
+const mockHomePresses = []
+jest.mock('../TopBar/HomeButton', () => () => (
+    <button type="button" data-testid="home-button" onClick={() => mockHomePresses.push('home')} />
+))
 jest.mock('../Icon', () => () => null)
 const mockNavigateToHome = jest.fn()
 jest.mock(
@@ -135,5 +139,49 @@ describe('the strip’s logo', () => {
         // Anything else on the left still leaves it.
         act(() => logo().parentElement.click())
         expect(onLeaveChat).toHaveBeenCalledTimes(1)
+    })
+})
+
+// AT-3121: with the "Anna on top" sidebar, Anna's button at its top switches, so the strip has no
+// switch; Alldone's home button with the open-task count takes its place, as on a phone.
+describe('the view switch', () => {
+    it.each([
+        [undefined, true],
+        [true, true],
+        [false, false],
+    ])('with showSwitch %s shows it: %s', (showSwitch, shown) => {
+        act(() =>
+            root.render(
+                <AnnaTopStrip
+                    layout="alldone"
+                    canSplit
+                    assistantName="Anna"
+                    onSelect={() => {}}
+                    showSwitch={showSwitch}
+                />
+            )
+        )
+        expect(!!container.querySelector('[data-testid="view-switch"]')).toBe(shown)
+        expect(!!container.querySelector('.anna-strip-home [data-testid="home-button"]')).toBe(!shown)
+        expect(container.querySelector('.anna-strip').children).toHaveLength(3)
+    })
+
+    it('leaves the chat before the home button goes home', () => {
+        mockHomePresses.length = 0
+        const onLeaveChat = jest.fn(() => mockHomePresses.push('leave'))
+        act(() =>
+            root.render(
+                <AnnaTopStrip
+                    layout="chat"
+                    canSplit
+                    assistantName="Anna"
+                    onSelect={() => {}}
+                    onLeaveChat={onLeaveChat}
+                    showSwitch={false}
+                />
+            )
+        )
+        act(() => container.querySelector('[data-testid="home-button"]').click())
+        expect(mockHomePresses).toEqual(['leave', 'home'])
     })
 })

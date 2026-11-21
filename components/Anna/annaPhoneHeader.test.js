@@ -106,7 +106,7 @@ describe('the phone chat header (AT-3056)', () => {
             /outline-offset:\s*3px;/
         )
         expect(css).toMatch(
-            /\.anna-shell button:not\(\.anna-workspace-content \*\):focus-visible,[^{]*\{[^}]*outline-offset:\s*3px;/
+            /\.anna-shell button:not\(\.anna-workspace-content \*, \.anna-shell-sidebar \*\):focus-visible,[^{]*\{[^}]*outline-offset:\s*3px;/
         )
         // The round 44px avatar button stays for "Latest messages" (nothing else to pick).
         expect(

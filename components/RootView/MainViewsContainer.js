@@ -28,6 +28,17 @@ import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/Pro
 import ConnectionStatusChip from '../TopBar/ConnectionStatusChip'
 import { showConnectionChipBelowHeader } from '../TopBar/connectionChipPlacement'
 import FloatingAddTaskButton from '../TaskListView/FloatingAddTaskButton'
+import { isSectionsTopSidebarNavigation } from '../../utils/SidebarNavigationModes'
+
+// AT-3121: the All projects screens that start with AllProjectsLine. In the "Anna on top" sidebar that
+// line carries the section card below itself, as a project's line does, so it is not drawn above.
+const TABS_WITH_ALL_PROJECTS_LINE = [
+    DV_TAB_ROOT_TASKS,
+    DV_TAB_ROOT_GOALS,
+    DV_TAB_ROOT_NOTES,
+    DV_TAB_ROOT_CONTACTS,
+    DV_TAB_ROOT_CHATS,
+]
 
 export const isMainViewScrollEnabled = state => !(state.smallScreen && state.showFloatPopup > 0)
 
@@ -42,7 +53,10 @@ export default function MainViewsContainer() {
     const chipBelowHeader = useSelector(showConnectionChipBelowHeader)
 
     const { overlay } = useCollapsibleSidebar()
-    const showGlobalRootSectionNavigation = checkIfSelectedAllProjects(selectedProjectIndex)
+    const annaOnTop = useSelector(state => isSectionsTopSidebarNavigation(state.loggedUser?.sidebarNavigationMode))
+    const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+    const lineCarriesNavigation = annaOnTop && TABS_WITH_ALL_PROJECTS_LINE.includes(selectedTab)
+    const showGlobalRootSectionNavigation = inAllProjects && !lineCarriesNavigation
 
     return (
         <CustomScrollView
@@ -54,6 +68,9 @@ export default function MainViewsContainer() {
             <View>
                 {chipBelowHeader && <ConnectionStatusChip belowHeader />}
                 {showGlobalRootSectionNavigation && <RootSectionNavigation />}
+                {/* The gap the card's own top padding left above the All projects line, as above a
+                    project's line. */}
+                {inAllProjects && lineCarriesNavigation && <View style={localStyles.allProjectsTopGap} />}
                 {(() => {
                     switch (selectedTab) {
                         case DV_TAB_ROOT_TASKS:
@@ -80,6 +97,9 @@ export default function MainViewsContainer() {
 }
 
 const localStyles = StyleSheet.create({
+    allProjectsTopGap: {
+        height: 24,
+    },
     subContainer: {
         flex: 1,
     },

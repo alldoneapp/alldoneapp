@@ -3,6 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
+import HeaderPickerArrow from '../HeaderPickerArrow'
 
 export default function AllProjectsButton({ onPress }) {
     return (
@@ -10,6 +11,7 @@ export default function AllProjectsButton({ onPress }) {
             <Text style={localStyles.text} numberOfLines={1}>
                 {translate('All projects')}
             </Text>
+            <HeaderPickerArrow />
         </TouchableOpacity>
     )
 }

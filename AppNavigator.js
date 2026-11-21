@@ -48,6 +48,7 @@ import { installAppResumeListener } from './utils/appResume'
 import { installPassiveVirtualizedListWheel } from './utils/passiveVirtualizedListWheel'
 import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
 import AnnaShell from './components/Anna/AnnaShell'
+import CustomSideMenu from './components/SidebarMenu/CustomSideMenu'
 import AnnaTopStripContext, { isAnnaPhoneWindow } from './components/Anna/AnnaTopStripContext'
 import { getResponsiveLayoutState } from './utils/responsiveLayout'
 import { isAnnaMode } from './utils/annaMode'
@@ -372,7 +373,7 @@ export class AppContainer extends React.Component {
             ].includes(routeName)
         ) {
             return (
-                <AnnaShell key={user.uid} routeId={id}>
+                <AnnaShell key={user.uid} routeId={id} sidebar={<CustomSideMenu navigation={navigation} />}>
                     <React.Fragment key={id}>
                         {route.wrapped ? <ScreenWrapper>{content}</ScreenWrapper> : content}
                         <ShellInsetPainter routeName={routeName} />

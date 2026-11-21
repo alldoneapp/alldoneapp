@@ -1,6 +1,6 @@
 /**
  * AT-3032 — the project chip's name in the Anna composer renders at 13px. The size must sit on
- * `.anna-project-chip-name`: `.anna-shell button:not(.anna-workspace-content *) { font: inherit }`
+ * `.anna-project-chip-name`: `.anna-shell button:not(.anna-workspace-content *, .anna-shell-sidebar *) { font: inherit }`
  * outranks `.anna-project-chip`, so a font-size on the button is silently ignored (it rendered at
  * the composer's 16px and cut "Automatisch" to "Automa…").
  */
@@ -30,7 +30,9 @@ describe('Anna project chip text', () => {
     })
 
     it('still has the shell-wide button reset this works around', () => {
-        expect(css).toMatch(/\.anna-shell button:not\(\.anna-workspace-content \*\),[^{]*\{\s*font: inherit;/)
+        expect(css).toMatch(
+            /\.anna-shell button:not\(\.anna-workspace-content \*, \.anna-shell-sidebar \*\),[^{]*\{\s*font: inherit;/
+        )
     })
 })
 

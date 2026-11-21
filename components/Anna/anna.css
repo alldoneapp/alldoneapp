@@ -8,24 +8,24 @@
     min-height: 0;
     overflow: hidden;
 }
-.anna-shell *:not(.anna-workspace-content, .anna-workspace-content *) {
+.anna-shell *:not(.anna-workspace-content, .anna-workspace-content *, .anna-shell-sidebar *) {
     box-sizing: border-box;
 }
-.anna-shell button:not(.anna-workspace-content *),
-.anna-shell textarea:not(.anna-workspace-content *),
-.anna-shell a:not(.anna-workspace-content *) {
+.anna-shell button:not(.anna-workspace-content *, .anna-shell-sidebar *),
+.anna-shell textarea:not(.anna-workspace-content *, .anna-shell-sidebar *),
+.anna-shell a:not(.anna-workspace-content *, .anna-shell-sidebar *) {
     font: inherit;
 }
-.anna-shell button:not(.anna-workspace-content *) {
+.anna-shell button:not(.anna-workspace-content *, .anna-shell-sidebar *) {
     cursor: pointer;
 }
-.anna-shell button:not(.anna-workspace-content *):disabled {
+.anna-shell button:not(.anna-workspace-content *, .anna-shell-sidebar *):disabled {
     opacity: 0.45;
     cursor: default;
 }
-.anna-shell button:not(.anna-workspace-content *):focus-visible,
-.anna-shell a:not(.anna-workspace-content *):focus-visible,
-.anna-shell textarea:not(.anna-workspace-content *):focus-visible {
+.anna-shell button:not(.anna-workspace-content *, .anna-shell-sidebar *):focus-visible,
+.anna-shell a:not(.anna-workspace-content *, .anna-shell-sidebar *):focus-visible,
+.anna-shell textarea:not(.anna-workspace-content *, .anna-shell-sidebar *):focus-visible {
     outline: 2px solid var(--anna-accent);
     outline-offset: 3px;
 }
@@ -647,7 +647,7 @@
     white-space: nowrap;
     text-overflow: ellipsis;
 }
-.anna-shell i:not(.anna-workspace-content *) {
+.anna-shell i:not(.anna-workspace-content *, .anna-shell-sidebar *) {
     display: inline-block;
     width: 6px;
     height: 6px;
@@ -1908,7 +1908,7 @@
 }
 
 /* The workspace subtree stays in the same position in both layouts. */
-.anna-zoom-shell [hidden]:not(.anna-workspace-content *) {
+.anna-zoom-shell [hidden]:not(.anna-workspace-content *, .anna-shell-sidebar *) {
     display: none !important;
 }
 .anna-zoom-shell .anna-layout {
@@ -3049,6 +3049,12 @@
         justify-content: flex-end;
         gap: 4px;
     }
+    /* AT-3121: in place of the view switch, Alldone's home button with the open-task count. */
+    .anna-strip-home {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
     /* Two cards on the shell's background. The margins sit inside the grid cells, so the divider's
        drag maths (pointer x minus the layout's left edge) still lands on the chat column's edge. */
     .anna-zoom-active:not(.anna-chat-only) .anna-layout {
@@ -3223,4 +3229,45 @@
 }
 :root[data-theme='dark'] .anna-project-option-selected .anna-screen-option-icon {
     color: inherit;
+}
+
+/* AT-3121, the "Sections on top" sidebar with the chat open on a wide desktop window: the shell draws
+   Alldone's sidebar left of everything (sidebar | chat | Alldone), so it stays with the chat alone
+   too. Collapsed, it opens over the chat on hover as it opens over Alldone, so the columns keep only
+   the collapsed width's room; kept open, they move by its full width (--anna-shell-sidebar-width).
+   The shell-wide resets above leave the sidebar alone, like the workspace. */
+.anna-shell.anna-shell-owns-sidebar {
+    position: relative;
+}
+.anna-shell-sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    display: flex;
+}
+.anna-shell.anna-shell-owns-sidebar > .anna-layout,
+.anna-shell.anna-shell-owns-sidebar > .anna-strip {
+    margin-left: var(--anna-shell-sidebar-width, 56px);
+}
+/* The chat alone is one card with its own 10px gutter (see .anna-one-card above). */
+.anna-shell.anna-shell-owns-sidebar.anna-one-card > .anna-layout {
+    margin-left: calc(var(--anna-shell-sidebar-width, 56px) + 10px);
+}
+/* Anna alone keeps Alldone's side margins right of the sidebar (--anna-shell-content-margin, from
+   getDesktopTopBarMargins): the strip is the card it is in Alldone's top bar slot, and the chat card
+   lines up below it with the 24px gap Alldone leaves under its top bar. */
+@media (min-width: 761px) {
+    .anna-shell.anna-shell-owns-sidebar.anna-chat-only > .anna-strip {
+        margin-left: calc(var(--anna-shell-sidebar-width, 56px) + var(--anna-shell-content-margin, 104px));
+        margin-right: var(--anna-shell-content-margin, 104px);
+        border-bottom: 0;
+        border-radius: 0 0 24px 24px;
+        box-shadow: 0 0 6px rgba(4, 20, 47, 0.24);
+    }
+    .anna-shell.anna-shell-owns-sidebar.anna-one-card.anna-chat-only > .anna-layout {
+        margin: 24px var(--anna-shell-content-margin, 104px) 10px
+            calc(var(--anna-shell-sidebar-width, 56px) + var(--anna-shell-content-margin, 104px));
+    }
 }

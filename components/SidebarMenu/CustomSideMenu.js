@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useContext, useEffect, useRef } from 'react'
 import { Animated, Dimensions, StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -11,7 +11,16 @@ import useCollapsibleSidebar from './Collapsible/UseCollapsibleSidebar'
 import LoggedUserSidebar from './LoggedUserSidebar/LoggedUserSidebar'
 import AnonymousUserSidebar from './AnonymousUserSidebar/AnonymousUserSidebar'
 import Backdrop from './Backdrop'
-export default function CustomSideMenu({ navigation }) {
+import { AnnaShellSidebarContext } from '../Anna/AnnaShellSidebarContext'
+
+// AT-3121: while AnnaShell draws the sidebar left of the chat, the screens in its workspace leave
+// theirs out, so there is only one.
+export default function CustomSideMenu(props) {
+    const shellDrawsSidebar = useContext(AnnaShellSidebarContext)
+    return shellDrawsSidebar ? null : <SideMenu {...props} />
+}
+
+function SideMenu({ navigation }) {
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)

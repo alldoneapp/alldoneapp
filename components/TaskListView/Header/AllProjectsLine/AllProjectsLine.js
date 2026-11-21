@@ -9,48 +9,64 @@ import Avatar from '../../../Avatar'
 import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import ToggleByTime from '../../ToggleByTime'
 import { alphaColor, themed } from '../../../../Themes/colorMode'
+import { isSectionsTopSidebarNavigation } from '../../../../utils/SidebarNavigationModes'
+
+// Required on use: RootSectionNavigation reaches the settings tree (and its drag and drop) through the
+// tab header, which this line, imported by many views, does not need otherwise.
+const SectionNavigation = () => {
+    const RootSectionNavigation = require('../../../RootView/RootSectionNavigation').default
+    return <RootSectionNavigation useOuterMargins={false} />
+}
 
 export default function AllProjectsLine({ showActions = true, customRight, bottomSpacing = 16 }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
     const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
+    // AT-3121: in the "Anna on top" sidebar the section card sits below this line, as below a
+    // project's line (ProjectHeader), not above it (MainViewsContainer leaves it out there).
+    const annaOnTop = useSelector(state => isSectionsTopSidebarNavigation(state.loggedUser.sidebarNavigationMode))
 
     const inOpenSection = taskViewToggleSection === 'Open'
 
     return (
-        <HeaderActionsContext.Provider value={true}>
-            <View style={[localStyles.container, localStyles.hierarchyHeader, { marginBottom: bottomSpacing }]}>
-                <View style={localStyles.rightContainer}>
-                    <Avatar
-                        borderSize={0}
-                        avatarId={loggedUserId}
-                        reviewerPhotoURL={photoURL}
-                        size={22}
-                        externalStyle={localStyles.avatar}
-                    />
-                    <View style={[localStyles.titleAndGrouping, mobile && localStyles.mobileTitleAndGrouping]}>
-                        <AllProjectData />
-                        <ToggleByTime
-                            containerStyle={[localStyles.toggleByTimeInline, mobile && localStyles.mobileGrouping]}
+        <>
+            <HeaderActionsContext.Provider value={true}>
+                <View style={[localStyles.container, localStyles.hierarchyHeader, { marginBottom: bottomSpacing }]}>
+                    <View style={localStyles.rightContainer}>
+                        <Avatar
+                            borderSize={0}
+                            avatarId={loggedUserId}
+                            reviewerPhotoURL={photoURL}
+                            size={22}
+                            externalStyle={localStyles.avatar}
                         />
+                        <View style={[localStyles.titleAndGrouping, mobile && localStyles.mobileTitleAndGrouping]}>
+                            <AllProjectData />
+                            <ToggleByTime
+                                containerStyle={[localStyles.toggleByTimeInline, mobile && localStyles.mobileGrouping]}
+                            />
+                        </View>
+                    </View>
+                    <View
+                        style={[localStyles.leftContainer, { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}
+                    >
+                        {customRight}
+                        {showActions && inOpenSection && (
+                            <TaskHeaderMoreButton
+                                projectIdOverride={null}
+                                userId={loggedUserId}
+                                wrapperStyle={localStyles.taskMoreWrapper}
+                                buttonStyle={[localStyles.taskMoreButton, mobile && { width: 36, height: 36 }]}
+                                iconSize={16}
+                                iconColor={colors.Text02}
+                            />
+                        )}
                     </View>
                 </View>
-                <View style={[localStyles.leftContainer, { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}>
-                    {customRight}
-                    {showActions && inOpenSection && (
-                        <TaskHeaderMoreButton
-                            projectIdOverride={null}
-                            userId={loggedUserId}
-                            wrapperStyle={localStyles.taskMoreWrapper}
-                            buttonStyle={[localStyles.taskMoreButton, mobile && { width: 36, height: 36 }]}
-                            iconSize={16}
-                            iconColor={colors.Text02}
-                        />
-                    )}
-                </View>
-            </View>
-        </HeaderActionsContext.Provider>
+            </HeaderActionsContext.Provider>
+            {annaOnTop && <SectionNavigation />}
+        </>
     )
 }
 

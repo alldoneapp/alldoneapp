@@ -31,6 +31,7 @@ import { isSectionsTopSidebarNavigation, isSimpleSidebarNavigation } from '../..
 import AmountBadge from '../ProjectFolding/Common/AmountBadge'
 import getAllProjectsOpenTasksAmount from '../../../utils/Tasks/getAllProjectsOpenTasksAmount'
 import AnnaWorkspaceNavigationContext from '../../Anna/AnnaWorkspaceNavigationContext'
+import useAnnaAloneSidebar from '../SectionsTop/useAnnaAloneSidebar'
 
 export default function AllProjectsButton() {
     const dispatch = useDispatch()
@@ -52,10 +53,13 @@ export default function AllProjectsButton() {
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const simpleNavigation = isSimpleSidebarNavigation(sidebarNavigationMode)
     const sectionsTop = isSectionsTopSidebarNavigation(sidebarNavigationMode)
+    // AT-3121, "Anna on top": not marked while Anna is alone on screen; a press then leaves the chat.
+    const { annaAlone, leaveChat } = useAnnaAloneSidebar()
 
     const { expanded } = useCollapsibleSidebar()
 
     const highlight =
+        !annaAlone &&
         checkIfSelectedAllProjects(selectedProjectIndex) &&
         (selectedTypeOfProject === PROJECT_TYPE_ACTIVE || selectedTypeOfProject === PROJECT_TYPE_GUIDE)
 
@@ -77,7 +81,8 @@ export default function AllProjectsButton() {
 
     const onPress = e => {
         e?.preventDefault()
-        showAlldone()
+        if (annaAlone) leaveChat()
+        else showAlldone()
 
         if (!ROOT_ROUTES.includes(route)) NavigationService.navigate('Root')
 

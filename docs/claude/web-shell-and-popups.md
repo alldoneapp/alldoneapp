@@ -225,16 +225,75 @@ for a guest of a shared project. Chats opens the same tab as the advanced sideba
 (`SidebarMenu/openSidebarChats.js`): Followed, unless only unfollowed chats have unread comments.
 Pinned by `ChatsItem.test.js`, `openSidebarChats.test.js` and `TasksBoards.test.js`.
 
-**"Sections on top" sidebar (AT-3121, opt-in).** A third value of `loggedUser.sidebarNavigationMode`
-(`'sectionsTop'`, Settings → Sidebar navigation) next to simple (the default) and advanced. Tasks,
-Goals, Notes, Contacts, Chats, Artifacts and Wiki sit fixed above All projects
-(`SidebarMenu/SectionsTop/`); the projects below act as a filter, so a project or All projects press
-keeps the section on screen (`getSectionAfterProjectSwitch`; Goals swap `currentUser` to `allGoals`
-like the Goals row). Under the selected project it is the simple people list without its Wiki and
-Chats rows (`TasksBoards showSectionLinks`), and `isSimpleSidebarNavigation` stays true for it. The
-tab card above the lists (`MainSectionTabsHeader`) shows only the section's name and its toggle. The
-other two modes are unchanged. Pinned by `sectionsTopNavigation.test.js`,
-`MainSectionTabsHeaderCompact.test.js` and `TasksBoards.test.js`.
+**"Anna on top" sidebar (AT-3121, opt-in).** A third value of `loggedUser.sidebarNavigationMode`,
+labelled "Anna on top" (Settings → Sidebar navigation) next to simple (the default) and advanced; it
+is stored as `'sectionsTop'` and read through `isSectionsTopSidebarNavigation`, names from its first
+version, which had the sections fixed at the top. The other two modes are unchanged.
+
+- **Anna button** (`SectionsTop/SidebarAnnaButton.js`, through `AnnaSidebarModeContext`): one big
+  button at the very top. It opens the chat as it was last shown (alone the first time,
+  `lastAnnaLayout`), and with the chat open it goes back to it (composer focused, latest messages).
+  There is no Anna | Alldone switch (tried and dropped) and no ✕ in the chat header: Anna is a mode,
+  not an overlay. The chat header has ⤢/⤡ (Anna alone / Alldone beside), on desktop and not when
+  `narrow`.
+- **Projects**: the sidebar below is the advanced one (`isSimpleSidebarNavigation` is false): the
+  selected project or All projects unfolds Tasks, Goals, Notes, Contacts, Chats, Artifacts and Wiki.
+  A project or All projects press keeps the section on screen (`getSectionAfterProjectSwitch`; Goals
+  swap `currentUser` to `allGoals`). The sidebar stops at the sections: no people under Tasks or
+  Goals (`showBoards`), no media bar under Chats; a person's board is picked on the right, in the
+  project line above the list (UserLine's "Switch user" picker). The Tasks row then counts the
+  project's open tasks itself. The last row of a project (own projects only) is its settings
+  (`SectionItems/ProjectSettings.js`, the screen InvitePeopleWrapper opened); on that screen it is
+  the only marked row. TasksBoards' Wiki and Chats rows (AT-3020) show only in the
+  simple sidebar, since the other two list them as sections.
+- **With Anna alone on screen** (`useAnnaAloneSidebar`: the chat open and `AnnaAppShownContext`
+  false) only the Anna button is marked, no project is marked or unfolded (`ProjectSectionList`
+  renders nothing), and a project or All projects press leaves the chat for Alldone (`onLeaveChat`,
+  AnnaShell's `closeChat`) instead of `showAlldone`. Beside Alldone the chat stays, the section is
+  marked and the Anna button only gets a ring around the photo. Anna's own project is not touched
+  (AT-3080).
+- **No Anna | App | Both switch** anywhere in this mode: the desktop strip has none (`AnnaTopStrip
+showSwitch`) and carries Alldone's `HomeButton` with the open-task count in its place (`.anna-strip-home`;
+  with Anna alone it leaves the chat first, beside Alldone the chat stays). On a phone
+  `phoneViewSwitch` is null, so the phone bars show TopBarMobile's home button again (it leaves the
+  chat for the open tasks); Anna opens from her button in the phone menu.
+- **The tab card** above the lists (`MainSectionTabsHeader`) shows only the section's name and its
+  toggle. In All projects it sits below the All projects line, as below a project's line:
+  `AllProjectsLine` draws it (required on use, so the line's many importers do not load the tab
+  header), and MainViewsContainer leaves its own out for those tabs and keeps the 24px gap above the
+  line. Artifacts has no such line and keeps the card on top.
+- **Picker arrows**: the section's name in that card opens the section picker (`ChangeObjectListModal`
+  with `withArtifacts`, and `withWiki` only inside a project; a bottom sheet on a phone). The names in
+  the lines above that open a picker carry the same small arrow (`HeaderPickerArrow`, drawn only in
+  this mode): the open project (ProjectLine; in All projects a project's name switches to it, so no
+  arrow), the person (UserLine, not in Notes, Contacts, Chats and Updates, which have no person
+  picker) and All projects. The project picker opens centred on desktop (`popoverToSafePosition`),
+  the person picker below the name, as before.
+- **Shell-drawn sidebar**: with the chat open on a wide desktop window AnnaShell draws the one sidebar
+  itself, left of the chat (sidebar | chat | Alldone). AppNavigator passes `<CustomSideMenu>` as
+  AnnaShell's `sidebar`, it sits absolute in `.anna-shell-sidebar`, the layout and strip move by
+  `--anna-shell-sidebar-width` (collapsed 56px, kept open 263px), and `AnnaShellSidebarContext` makes
+  every `CustomSideMenu` inside the workspace render nothing. The workspace keeps its own 56px
+  collapsed-sidebar margin, so Alldone beside the chat starts with that gap. The strip sits in the
+  screens' slot over Alldone while Alldone is on screen (`stripOverAlldone`) and then does not leave
+  the chat. With Anna alone (or another screen in front) that slot is hidden, so the strip stays above
+  the chat, right of the sidebar, without its own logo, and leaves the chat like everywhere else. The
+  shell-wide `.anna-shell` resets in `anna.css` exclude `.anna-shell-sidebar *` like the workspace.
+- **Anna alone keeps Alldone's side margins**: the strip is the card it is in Alldone's slot and the
+  chat card lines up below it with the 24px gap, both inset by `--anna-shell-content-margin`
+  (`getDesktopTopBarMargins`: 104px, 56px on a middle screen). Middle screen is computed from the window
+  width as plain Alldone measures it (`getResponsiveLayoutState`, `underStrip`), not from the store's
+  `isMiddleScreen`, which follows Alldone's own pane and so the narrowed card. `useAnnaChatWidth` adds
+  those margins back (beyond the one card's 10px) to the room it measures, or Both would wait for a far
+  wider window; it also returns the window width the shell uses.
+- Keep `SectionsTop/sectionsTopNavigation.js` free of heavy imports: ProjectItem uses it, and
+  `AnnaShell.test.js` (which mocks react-redux) imports ProjectItem.
+
+Pinned by `AnnaShell.test.js` ("Anna on top"), `SidebarAnnaButton.test.js`,
+`sidebarProjectNavigation.test.js`, `ProjectSectionList.test.js`, `sectionsTopNavigation.test.js`, `TasksBoards.test.js`,
+`MainSectionTabsHeaderCompact.test.js`, `HeaderPickerArrow.test.js`, `useAnnaChatWidth.test.js`,
+`CustomSideMenu.test.js` and
+`AnnaTopStrip.test.js`.
 
 **The whole two-line field takes a click (AT-3028).** Auto-expand sets Quill's container and
 editor to `height: auto`, so the contenteditable was one line tall inside the 56px field and the

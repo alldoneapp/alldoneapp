@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { flushSync } from 'react-dom'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import Icon from '../Icon'
-import { colors } from '../styles/global'
+import { colors, SIDEBAR_MENU_COLLAPSED_WIDTH, SIDEBAR_MENU_WIDTH } from '../styles/global'
+import { isSectionsTopSidebarNavigation } from '../../utils/SidebarNavigationModes'
+import { selectSidebarExpanded } from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
+import { AnnaShellSidebarContext, AnnaSidebarModeContext } from './AnnaShellSidebarContext'
 import useAnnaConversation from './useAnnaConversation'
 import useAnnaProjectSelection from './useAnnaProjectSelection'
 import { ANNA_AUTOMATIC_PROJECT, getAnnaProjectChoices, isAnnaProjectSelectable } from './annaProjectSelection'
@@ -29,6 +32,8 @@ import AnnaScreenPicker from './AnnaScreenPicker'
 import AnnaFocusTask from './AnnaFocusTask'
 import { scrollToTaskWhenShown } from './annaFocusTaskScroll'
 import TopBarMobile from '../TopBar/TopBarMobile/TopBarMobile'
+import { getDesktopTopBarMargins } from '../TopBar/topBarLayout'
+import { getResponsiveLayoutState } from '../../utils/responsiveLayout'
 import { AnnaViewSwitchContext } from './AnnaViewSwitch'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import AnnaChatNavigationContext, {
@@ -136,7 +141,9 @@ const isFocusHeldElsewhere = chatPane => {
 
 // Always mounted around the same route subtree, including in fullscreen Alldone. A layout switch
 // must never destroy a note editor, an unsent message, a selection, or the workspace scroll state.
-export default function AnnaShell({ children, routeId }) {
+// `sidebar`: Alldone's sidebar (CustomSideMenu), drawn here left of the chat in the "Sections on top"
+// sidebar mode (AT-3121); the screens draw it themselves everywhere else.
+export default function AnnaShell({ children, routeId, sidebar = null }) {
     useTranslator()
     const layoutMode = useAnnaLayout()
     const active = layoutMode !== 'alldone'
@@ -351,6 +358,7 @@ export default function AnnaShell({ children, routeId }) {
         maximum: maxChatWidth,
         resize: setChatWidth,
         splitFits,
+        windowWidth,
     } = useAnnaChatWidth(user.uid, layout)
     const presentationSeen = useRef(new Set())
     const browserSeen = useRef(null)
@@ -380,11 +388,32 @@ export default function AnnaShell({ children, routeId }) {
     // Alldone, a screen with a top bar slot (AnnaStripSlot: RootView and the detail views) shows the
     // strip there, right of the sidebar, which then runs up to the top; others keep it above everything.
     const showTopStrip = !mobile
+    // AT-3121, the "Sections on top" sidebar: on a wide desktop window Anna's card at its top opens
+    // and closes the chat, in place of the strip's view switch. With the chat open the shell draws
+    // the one sidebar left of the chat (sidebar | chat | Alldone) and the screens leave theirs out;
+    // the strip then stays over Alldone instead of spanning the window. Every other mode, a phone and
+    // a narrow window (Alldone's own phone layout) keep the layout as it was.
+    const sectionsTop = useSelector(state => isSectionsTopSidebarNavigation(state.loggedUser.sidebarNavigationMode))
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const sidebarShownExpanded = useSelector(selectSidebarExpanded)
+    // Alldone's side margins right of its sidebar (TopBar, the content cards), which Anna alone keeps
+    // beside the shell's sidebar (anna.css): those of plain Alldone in this window. The store's
+    // `isMiddleScreen` follows Alldone's own pane, which Anna alone narrows to her card.
+    const contentMargin = getDesktopTopBarMargins({
+        isMiddleScreen: getResponsiveLayoutState({ width: windowWidth, underStrip: true }).isMiddleScreen,
+        sidebarExpanded: true,
+    }).marginRight
+    const sidebarCardSwitches = sectionsTop && !mobile && !smallScreenNavigation && !user.isAnonymous
+    const shellSidebar = sidebarCardSwitches && active && !!sidebar
     // A click on the strip that leaves the chat (leaveChatFromStrip) keeps the strip where it is until
     // the click is over: moving it into the slot remounts it, and the browser re-renders between the
     // click's capture and bubble phases, so search, chats or updates would never get their click.
     const [stripHeld, setStripHeld] = useState(false)
-    const stripInApp = !active && showTopStrip && !stripHeld
+    // With the shell's sidebar the strip belongs to Alldone while Alldone is on screen; with Anna alone
+    // (or another screen in front) Alldone's slot is hidden, so the strip stays above the chat, right
+    // of the sidebar, and leaves the chat like everywhere else.
+    const stripOverAlldone = !active || (shellSidebar && visibleWorkspace && surface === 'alldone')
+    const stripInApp = stripOverAlldone && showTopStrip && !stripHeld
     const [stripSlotClaims, setStripSlotClaims] = useState(0)
     const claimStripSlot = useCallback(() => {
         setStripSlotClaims(claims => claims + 1)
@@ -1252,6 +1281,9 @@ export default function AnnaShell({ children, routeId }) {
         <span className="anna-small-avatar">{photo ? <img src={photo} alt="" /> : headerAssistantName.charAt(0)}</span>
     )
     const avatarPicks = mobile && assistantNamePicks
+    const chatAloneToggleLabel = chatOnly
+        ? translate('Alldone beside')
+        : translate('Only %{assistantName}', { assistantName: headerAssistantName })
     const pickerShown =
         pickerOptions.find(option => option.value === pickerValue) ||
         screenOptions.find(option => option.value === pickerValue)
@@ -1319,6 +1351,21 @@ export default function AnnaShell({ children, routeId }) {
                         <Icon name="new-window" size={18} color="currentColor" />
                     </button>
                 )}
+                {/* AT-3121: with the Anna | Alldone switch in the sidebar there is no view switch in the
+                    strip, so the chat itself goes alone or back beside Alldone (not where the window is
+                    too narrow for both). No close button: Anna is a mode, left through the switch. */}
+                {sidebarCardSwitches && active && !narrow && (
+                    <button
+                        type="button"
+                        className="anna-pane-toggle"
+                        aria-label={chatAloneToggleLabel}
+                        title={chatAloneToggleLabel}
+                        data-testid="anna-chat-alone-toggle"
+                        onClick={() => selectLayout(chatOnly ? 'split' : 'chat')}
+                    >
+                        <Icon name={chatOnly ? 'minimize-2' : 'maximize-2'} size={18} color="currentColor" />
+                    </button>
+                )}
                 {mobile && (
                     // The phone's screen picker, at the far right (AT-3045): the assistant and its
                     // screens; Alldone is App in the switch, and leaving the chat is App too.
@@ -1362,37 +1409,77 @@ export default function AnnaShell({ children, routeId }) {
     // Phones lay out their single pane through `anna-mobile-*`.
     const chatAlone = active && (oneCard ? mobilePane === 'chat' : chatOnly)
     const screenAlone = active && oneCard && mobilePane !== 'chat'
-    // Alldone's own phone bar carries the same switch as the chat header (TopBarMobile).
-    const phoneViewSwitch = mobile
-        ? {
-              layout: shownLayout,
-              assistantName: headerAssistantName,
-              photo,
-              openTasksAmount,
-              onSelect: selectLayout,
-          }
-        : null
+    // Alldone's own phone bar carries the same switch as the chat header (TopBarMobile). AT-3121: not
+    // with the "Sections on top" sidebar, whose Anna card (in the phone menu) switches instead; the
+    // bar then has its home button in the middle again, which leaves the chat for the open tasks.
+    const phoneViewSwitch =
+        mobile && !sectionsTop
+            ? {
+                  layout: shownLayout,
+                  assistantName: headerAssistantName,
+                  photo,
+                  openTasksAmount,
+                  onSelect: selectLayout,
+              }
+            : null
+    // AT-3121: the Anna button at the top of the "Anna on top" sidebar. It opens the chat as it was
+    // last shown, alone or with Alldone beside it (alone the first time; the chat header's ⤢/⤡ switch
+    // between the two), and with the chat already open it goes back to it: the composer, the latest
+    // messages. A project, All projects or a section picked in the sidebar while Anna is alone leaves
+    // the chat for Alldone (`onLeaveChat`, which keeps the page); beside Alldone the chat stays.
+    // Through refs, so the context value only changes with what the sidebar shows.
+    const lastAnnaLayout = useRef('chat')
+    if (layoutMode === 'chat' || layoutMode === 'split') lastAnnaLayout.current = layoutMode
+    const sidebarAnnaActions = useRef(null)
+    sidebarAnnaActions.current = {
+        open: () => {
+            if (!active) return selectLayout(mobile ? 'chat' : lastAnnaLayout.current)
+            if (frontPane === 'workspace') backToChat()
+            focusChatInput()
+            chatConversation.current?.scrollToLatest()
+        },
+        leave: () => {
+            if (active) closeChat()
+        },
+    }
+    const openChatFromSidebar = useCallback(() => sidebarAnnaActions.current.open(), [])
+    const leaveChatFromSidebar = useCallback(() => sidebarAnnaActions.current.leave(), [])
+    const sidebarMode = useMemo(
+        () => ({
+            name: headerAssistantName,
+            photo,
+            chatShown: active,
+            onOpenChat: openChatFromSidebar,
+            onLeaveChat: leaveChatFromSidebar,
+        }),
+        [headerAssistantName, photo, active, openChatFromSidebar, leaveChatFromSidebar]
+    )
     // Above everything the strip spans the window; in Alldone's top bar slot it sits right of the
     // sidebar, whose logo is beside it.
     const stripAboveEverything = showTopStrip && !(stripInApp && stripSlotClaims > 0)
     const topStrip = (
         <AnnaTopStrip
-            showLogo={stripAboveEverything}
+            // The shell's sidebar, left of the strip, already starts with the logo.
+            showLogo={stripAboveEverything && !shellSidebar}
             layout={shownLayout}
             canSplit={splitFits}
             assistantName={headerAssistantName}
             photo={photo}
             openTasksAmount={openTasksAmount}
             onSelect={selectLayout}
-            onLeaveChat={active ? leaveChatFromStrip : undefined}
+            // AT-3121: over Alldone beside the chat the strip belongs to Alldone, and the chat stays.
+            onLeaveChat={active && !stripOverAlldone ? leaveChatFromStrip : undefined}
+            showSwitch={!sidebarCardSwitches}
         />
     )
 
     const content = (
         <div
-            className={`anna-shell anna-zoom-shell ${!active ? 'anna-fullscreen' : chatAlone ? 'anna-zoom-active anna-chat-only' : screenAlone ? 'anna-zoom-active anna-screen-only' : 'anna-zoom-active'} anna-mobile-${chatOnly ? 'chat' : mobilePane}${assistantWorking ? ' anna-workspace-busy' : ''}${showTopStrip ? ' anna-has-strip' : ''}${oneCard ? ' anna-one-card' : ''}`}
+            className={`anna-shell anna-zoom-shell ${!active ? 'anna-fullscreen' : chatAlone ? 'anna-zoom-active anna-chat-only' : screenAlone ? 'anna-zoom-active anna-screen-only' : 'anna-zoom-active'} anna-mobile-${chatOnly ? 'chat' : mobilePane}${assistantWorking ? ' anna-workspace-busy' : ''}${showTopStrip ? ' anna-has-strip' : ''}${oneCard ? ' anna-one-card' : ''}${shellSidebar ? ' anna-shell-owns-sidebar' : ''}`}
             style={{
                 '--anna-chat-width': `${chatWidth}px`,
+                '--anna-shell-sidebar-width': `${sidebarShownExpanded ? SIDEBAR_MENU_WIDTH : SIDEBAR_MENU_COLLAPSED_WIDTH}px`,
+                '--anna-shell-content-margin': `${contentMargin}px`,
                 ...ANNA_THEME_VARIABLES,
             }}
             onClickCapture={interceptLink}
@@ -1408,6 +1495,11 @@ export default function AnnaShell({ children, routeId }) {
                 </>
             )}
             {stripAboveEverything && topStrip}
+            {shellSidebar && (
+                <div className="anna-shell-sidebar" data-testid="anna-shell-sidebar">
+                    {sidebar}
+                </div>
+            )}
             <main className="anna-layout" ref={layout}>
                 {oneCard && active && header}
                 <section
@@ -1547,7 +1639,10 @@ export default function AnnaShell({ children, routeId }) {
                         inert={active && surface !== 'alldone' ? '' : undefined}
                     >
                         <div className="anna-workspace-content" ref={workspaceContent}>
-                            {children}
+                            {/* Always this provider, so the route subtree keeps its place. */}
+                            <AnnaShellSidebarContext.Provider value={shellSidebar}>
+                                {children}
+                            </AnnaShellSidebarContext.Provider>
                             {visited && (
                                 <AnnaWorkspaceReveal
                                     rootRef={workspaceContent}
@@ -1724,7 +1819,9 @@ export default function AnnaShell({ children, routeId }) {
                                         <AnnaAppShownContext.Provider
                                             value={!active || (visibleWorkspace && surface === 'alldone')}
                                         >
-                                            {content}
+                                            <AnnaSidebarModeContext.Provider value={sidebarMode}>
+                                                {content}
+                                            </AnnaSidebarModeContext.Provider>
                                         </AnnaAppShownContext.Provider>
                                     </AnnaViewSwitchContext.Provider>
                                 </AnnaStripSlotContext.Provider>

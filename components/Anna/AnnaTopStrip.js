@@ -8,6 +8,8 @@ import Icon from '../Icon'
 import { colors } from '../styles/global'
 import navigateToHome from '../../utils/navigateToHome'
 import AnnaViewSwitch from './AnnaViewSwitch'
+import HomeButton from '../TopBar/HomeButton'
+import ThemedColors from '../../Themes/ThemedColors'
 
 /**
  * Desktop: one row above Alldone and, in assistant mode, above the chat. It replaces Alldone's own
@@ -21,7 +23,9 @@ import AnnaViewSwitch from './AnnaViewSwitch'
  * (`onLeaveChat`), and then does what it always does there. Where the strip spans the window
  * (`showLogo`: assistant mode, and screens without a top bar slot) it starts with Alldone's logo, at
  * the spot where the sidebar shows it in the App view; like the sidebar's, it opens All projects,
- * but keeps the view: in Anna or Both it does not leave the chat.
+ * but keeps the view: in Anna or Both it does not leave the chat. Without the switch (AT-3121, the
+ * "Anna on top" sidebar, whose Anna button switches) the middle holds Alldone's home button with the
+ * open-task count, as on a phone; like the sides, it leaves the chat first.
  */
 // How many things the statistics can give up when short of room (see `squeeze`).
 const STATISTICS_STEPS = 2
@@ -35,6 +39,7 @@ export default function AnnaTopStrip({
     openTasksAmount,
     onSelect,
     onLeaveChat,
+    showSwitch = true,
 }) {
     const dispatch = useDispatch()
     const strip = useRef(null)
@@ -107,14 +112,20 @@ export default function AnnaTopStrip({
                 )}
                 <TopBarStatisticArea compact={squeeze >= 1} showTasksStatistics={canSplit && squeeze < 2} />
             </div>
-            <AnnaViewSwitch
-                layout={layout}
-                canSplit={canSplit}
-                assistantName={assistantName}
-                photo={photo}
-                openTasksAmount={openTasksAmount}
-                onSelect={onSelect}
-            />
+            {showSwitch ? (
+                <AnnaViewSwitch
+                    layout={layout}
+                    canSplit={canSplit}
+                    assistantName={assistantName}
+                    photo={photo}
+                    openTasksAmount={openTasksAmount}
+                    onSelect={onSelect}
+                />
+            ) : (
+                <div className="anna-strip-home" onClickCapture={onLeaveChat}>
+                    <HomeButton color={ThemedColors.Primary300} />
+                </div>
+            )}
             <div className="anna-strip-right" onClickCapture={onLeaveChat}>
                 <ConnectionStatusChip />
                 <NotificationArea />

@@ -160,3 +160,52 @@ it('retains the stored-layout fallback when no measurable sidebar is mounted', (
     pointerDown(300, 200)
     expect(store.getState().showWebSideBar.visible).toBe(false)
 })
+
+// AT-3121, "Anna on top": with Anna alone on screen no project is marked or unfolded, and a project
+// picked then leaves the chat for Alldone and switches to it; beside Alldone the chat stays.
+describe("the sidebar with Anna on top ('sectionsTop')", () => {
+    const { AnnaSidebarModeContext } = require('../Anna/AnnaShellSidebarContext')
+    const { AnnaAppShownContext } = require('../Anna/AnnaTopStripContext')
+    const AnnaWorkspaceNavigationContext = require('../Anna/AnnaWorkspaceNavigationContext').default
+    const renderWithAnna = ({ appShown, onLeaveChat, showAlldone }) => {
+        const state = store.getState()
+        store.dispatch({
+            type: 'Override store',
+            store: { ...state, loggedUser: { ...state.loggedUser, sidebarNavigationMode: 'sectionsTop' } },
+        })
+        act(() =>
+            root.render(
+                <Provider store={store}>
+                    <AnnaWorkspaceNavigationContext.Provider value={showAlldone}>
+                        <AnnaSidebarModeContext.Provider value={{ chatShown: true, onLeaveChat }}>
+                            <AnnaAppShownContext.Provider value={appShown}>
+                                <SidebarFixture />
+                            </AnnaAppShownContext.Provider>
+                        </AnnaSidebarModeContext.Provider>
+                    </AnnaWorkspaceNavigationContext.Provider>
+                </Provider>
+            )
+        )
+    }
+    const project = index => [...mount.querySelectorAll('span')].find(node => node.textContent === `Project ${index}`)
+
+    it('leaves the chat for Alldone when Anna is alone, and switches the project', () => {
+        const onLeaveChat = jest.fn()
+        const showAlldone = jest.fn()
+        renderWithAnna({ appShown: false, onLeaveChat, showAlldone })
+        act(() => project(1).click())
+        expect(onLeaveChat).toHaveBeenCalledTimes(1)
+        expect(showAlldone).not.toHaveBeenCalled()
+        expect(store.getState().selectedProjectIndex).toBe(1)
+    })
+
+    it('keeps the chat beside Alldone', () => {
+        const onLeaveChat = jest.fn()
+        const showAlldone = jest.fn()
+        renderWithAnna({ appShown: true, onLeaveChat, showAlldone })
+        act(() => project(1).click())
+        expect(onLeaveChat).not.toHaveBeenCalled()
+        expect(showAlldone).toHaveBeenCalledTimes(1)
+        expect(store.getState().selectedProjectIndex).toBe(1)
+    })
+})

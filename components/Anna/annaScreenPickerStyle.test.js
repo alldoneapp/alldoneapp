@@ -48,7 +48,7 @@ describe('the desktop screen picker (AT-3060)', () => {
     it("keeps the keyboard focus ring from the shell's focus-visible rule", () => {
         expect(
             rule(
-                '.anna-shell button:not(.anna-workspace-content *):focus-visible,\n.anna-shell a:not(.anna-workspace-content *):focus-visible,\n.anna-shell textarea:not(.anna-workspace-content *):focus-visible'
+                '.anna-shell button:not(.anna-workspace-content *, .anna-shell-sidebar *):focus-visible,\n.anna-shell a:not(.anna-workspace-content *, .anna-shell-sidebar *):focus-visible,\n.anna-shell textarea:not(.anna-workspace-content *, .anna-shell-sidebar *):focus-visible'
             )
         ).toMatch(/outline:\s*2px solid var\(--anna-accent\);/)
     })

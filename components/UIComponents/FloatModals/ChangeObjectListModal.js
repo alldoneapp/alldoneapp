@@ -9,17 +9,21 @@ import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
 import {
+    DV_TAB_ROOT_ARTIFACTS,
     DV_TAB_ROOT_CHATS,
     DV_TAB_ROOT_CONTACTS,
     DV_TAB_ROOT_GOALS,
     DV_TAB_ROOT_NOTES,
     DV_TAB_ROOT_TASKS,
+    DV_TAB_ROOT_WIKI,
 } from '../../../utils/TabNavigationConstants'
 import ChangeObjectListModalItem from './ChangeObjectListModalItem'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 import { themed } from '../../../Themes/colorMode'
 
-export default function ChangeObjectListModal({ closePopover }) {
+// `withArtifacts`, `withWiki`: the two sections the Updates header does not offer, for the section
+// picker in the "Anna on top" card (MainSectionTabsHeader, AT-3121); Wiki only inside a project.
+export default function ChangeObjectListModal({ closePopover, withArtifacts = false, withWiki = false }) {
     const [width, height] = useWindowSize()
 
     const section = [
@@ -28,6 +32,8 @@ export default function ChangeObjectListModal({ closePopover }) {
         { text: 'Notes', icon: 'file-text', value: DV_TAB_ROOT_NOTES, shortcut: '3' },
         { text: 'Contacts', icon: 'users', value: DV_TAB_ROOT_CONTACTS, shortcut: '4' },
         { text: 'Chats', icon: 'comments-thread', value: DV_TAB_ROOT_CHATS, shortcut: '5' },
+        ...(withArtifacts ? [{ text: 'Artifacts', icon: 'package', value: DV_TAB_ROOT_ARTIFACTS, shortcut: '6' }] : []),
+        ...(withWiki ? [{ text: 'Wiki', icon: 'book-open', value: DV_TAB_ROOT_WIKI, shortcut: '7' }] : []),
     ]
 
     return (

@@ -34,6 +34,7 @@ import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import useWindowSize from '../../../utils/useWindowSize'
 import { getSafeAreaViewportHeightCap } from '../../../utils/modalSafeArea'
 import { HEADER_POPOVER_HEIGHT_FRACTION } from '../../styles/modals'
+import HeaderPickerArrow from './HeaderPickerArrow'
 
 function UserLine({ projectIndex, projectId, user, openPopover, closePopover, isOpen, textColor }) {
     const [, windowHeight] = useWindowSize()
@@ -83,18 +84,19 @@ function UserLine({ projectIndex, projectId, user, openPopover, closePopover, is
 
     const photoURL = user.photoURL50 || user.photoURL || undefined
 
+    const pickerDisabled =
+        loggedUser.isAnonymous ||
+        selectedSidebarTab === DV_TAB_ROOT_NOTES ||
+        selectedSidebarTab === DV_TAB_ROOT_CONTACTS ||
+        selectedSidebarTab === DV_TAB_ROOT_CHATS ||
+        selectedSidebarTab === DV_TAB_ROOT_UPDATES
+
     const trigger = (
         <TouchableOpacity
             style={localStyles.titleContainer}
             onPress={openPopover}
             accessible={false}
-            disabled={
-                loggedUser.isAnonymous ||
-                selectedSidebarTab === DV_TAB_ROOT_NOTES ||
-                selectedSidebarTab === DV_TAB_ROOT_CONTACTS ||
-                selectedSidebarTab === DV_TAB_ROOT_CHATS ||
-                selectedSidebarTab === DV_TAB_ROOT_UPDATES
-            }
+            disabled={pickerDisabled}
         >
             <View style={localStyles.titleContainer}>
                 {user.uid === ALL_GOALS_ID ? (
@@ -115,6 +117,7 @@ function UserLine({ projectIndex, projectId, user, openPopover, closePopover, is
                             : HelperFunctions.getFirstName(user.displayName)}
                     </Text>
                 )}
+                {!pickerDisabled && <HeaderPickerArrow color={textColor} />}
             </View>
         </TouchableOpacity>
     )

@@ -164,6 +164,17 @@ jest.mock('../TopBar/NotificationArea', () => () => (
     />
 ))
 jest.mock('../TopBar/ConnectionStatusChip', () => () => null)
+// Alldone's home button, which the strip carries in place of the view switch in the "Anna on top" sidebar.
+let mockHomeLayout = null
+jest.mock('../TopBar/HomeButton', () => () => (
+    <button
+        type="button"
+        data-testid="strip-home"
+        onClick={() => {
+            mockHomeLayout = new URLSearchParams(global.location.search).get('assistant')
+        }}
+    />
+))
 jest.mock('../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel', () => props => {
     mockTakeoverProps = props
     const React = require('react')
@@ -3692,5 +3703,231 @@ describe('leaving assistant mode returns the app in the pane to its embed window
         act(() => openInAnnaAppPane(storyBuilder))
         act(() => setAnnaMode(false))
         expect(iframeFrame()).toBeTruthy()
+    })
+})
+
+// AT-3121, the "Anna on top" sidebar (stored as 'sectionsTop'): the Anna button at its top opens the
+// chat as it was last shown, a project picked while Anna is alone leaves the chat for Alldone, and with
+// the chat open on a wide desktop window the shell draws the one sidebar left of the chat, so it stays
+// with the chat alone too.
+describe('the "Anna on top" sidebar (AT-3121)', () => {
+    const { AnnaShellSidebarContext, AnnaSidebarModeContext } = require('./AnnaShellSidebarContext')
+    const SidebarProbe = () => {
+        const shellDraws = React.useContext(AnnaShellSidebarContext)
+        const anna = React.useContext(AnnaSidebarModeContext)
+        return (
+            <div
+                aria-label="Sidebar probe"
+                data-shell-draws={String(shellDraws)}
+                data-chat-shown={String(anna?.chatShown)}
+            >
+                <button type="button" aria-label="Anna button" onClick={() => anna.onOpenChat()} />
+                <button type="button" aria-label="Leave chat" onClick={() => anna.onLeaveChat()} />
+            </div>
+        )
+    }
+    const shellWithSidebar = () => (
+        <AnnaShell routeId={1} sidebar={<div data-testid="shell-sidebar-content" />}>
+            <SidebarProbe />
+            <input aria-label="Real workspace editor" defaultValue="Unsaved note" />
+        </AnnaShell>
+    )
+    const probe = () => screen.getByLabelText('Sidebar probe')
+    const shell = () => document.querySelector('.anna-shell').classList
+
+    beforeEach(() => {
+        mockUser.sidebarNavigationMode = 'sectionsTop'
+    })
+    afterEach(() => {
+        delete mockUser.sidebarNavigationMode
+    })
+
+    it.each(['split', 'chat'])('draws the sidebar left of the chat (%s), and the screens leave theirs out', layout => {
+        setAnnaLayout(layout)
+        render(shellWithSidebar())
+
+        expect(shell().contains('anna-shell-owns-sidebar')).toBe(true)
+        expect(
+            document.querySelector('[data-testid="anna-shell-sidebar"] [data-testid="shell-sidebar-content"]')
+        ).toBeTruthy()
+        expect(probe().dataset.shellDraws).toBe('true')
+        // Kept open (sidebarExpanded), the columns move by the sidebar's full width.
+        expect(document.querySelector('.anna-shell').style.getPropertyValue('--anna-shell-sidebar-width')).toBe('263px')
+        // The Anna button replaces the strip's switch.
+        expect(document.querySelector('.anna-strip-switch')).toBeNull()
+    })
+
+    it('leaves the sidebar to the screens in plain Alldone', () => {
+        setAnnaMode(false)
+        render(shellWithSidebar())
+
+        expect(document.querySelector('[data-testid="anna-shell-sidebar"]')).toBeNull()
+        expect(shell().contains('anna-shell-owns-sidebar')).toBe(false)
+        expect(probe().dataset.shellDraws).toBe('false')
+        expect(document.querySelector('.anna-strip-switch')).toBeNull()
+    })
+
+    it('opens Anna as she was last shown from the Anna button, and leaves her for Alldone, keeping the workspace', () => {
+        setAnnaMode(false)
+        render(shellWithSidebar())
+        const workspace = screen.getByLabelText('Real workspace editor')
+        workspace.value = 'Keep my note'
+        expect(probe().dataset.chatShown).toBe('false')
+
+        // The first time Anna is alone.
+        fireEvent.click(screen.getByLabelText('Anna button'))
+        expect(shell().contains('anna-chat-only')).toBe(true)
+        expect(probe().dataset.chatShown).toBe('true')
+        // ⤡ brings Alldone beside her.
+        fireEvent.click(document.querySelector('[data-testid="anna-chat-alone-toggle"]'))
+        expect(shell().contains('anna-chat-only')).toBe(false)
+
+        // A project picked in the sidebar while Anna is alone leaves the chat (the sidebar decides when).
+        fireEvent.click(screen.getByLabelText('Leave chat'))
+        expect(shell().contains('anna-fullscreen')).toBe(true)
+        // And Anna comes back as she was left, beside Alldone.
+        fireEvent.click(screen.getByLabelText('Anna button'))
+        expect(shell().contains('anna-zoom-active')).toBe(true)
+        expect(shell().contains('anna-chat-only')).toBe(false)
+
+        expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
+        expect(workspace.value).toBe('Keep my note')
+        expect(mockUnmounts).toBe(0)
+    })
+
+    it('goes back to the open chat from the Anna button: the composer, the latest messages', () => {
+        setAnnaLayout('split')
+        render(shellWithSidebar())
+        mockScrollToLatest.mockClear()
+        screen.getByLabelText('Real workspace editor').focus()
+
+        fireEvent.click(screen.getByLabelText('Anna button'))
+        expect(shell().contains('anna-zoom-active')).toBe(true)
+        expect(shell().contains('anna-chat-only')).toBe(false)
+        expect(document.activeElement).toBe(screen.getByLabelText('Persistent conversation'))
+        expect(mockScrollToLatest).toHaveBeenCalledTimes(1)
+    })
+
+    it('lets the chat go alone and come back beside Alldone from its header, with no close button', () => {
+        setAnnaLayout('split')
+        render(shellWithSidebar())
+        const alone = () => document.querySelector('[data-testid="anna-chat-alone-toggle"]')
+
+        fireEvent.click(alone())
+        expect(shell().contains('anna-chat-only')).toBe(true)
+
+        fireEvent.click(alone())
+        expect(shell().contains('anna-chat-only')).toBe(false)
+
+        // Anna is a mode, left through the sidebar's switch, not an overlay to close.
+        expect(document.querySelector('[data-testid="anna-chat-close"]')).toBeNull()
+        expect(document.querySelector('.anna-header [aria-label="Close chat"]')).toBeNull()
+    })
+
+    // Stands in for TopBarContainer on Alldone's root screen.
+    const TopBarSlot = () => {
+        const slot = React.useContext(AnnaStripSlotContext)
+        React.useLayoutEffect(() => slot?.claim(), [slot?.claim])
+        return slot ? <div data-testid="top-bar-slot">{slot.strip}</div> : null
+    }
+    const shellWithSlot = () => (
+        <AnnaShell routeId={1} sidebar={<div data-testid="shell-sidebar-content" />}>
+            <TopBarSlot />
+        </AnnaShell>
+    )
+    const strip = () => document.querySelector('[data-testid="anna-top-strip"]')
+
+    it('keeps the strip above Anna alone, right of the sidebar, where its actions leave the chat', () => {
+        setAnnaLayout('chat')
+        render(shellWithSlot())
+
+        expect(document.querySelectorAll('[data-testid="anna-top-strip"]')).toHaveLength(1)
+        expect(strip().parentElement.classList.contains('anna-shell')).toBe(true)
+        // The sidebar on its left starts with the logo.
+        expect(strip().querySelector('.anna-strip-logo')).toBeNull()
+
+        mockStripActionLayout = 'unset'
+        fireEvent.click(document.querySelector('.anna-strip-right [data-testid="strip-search"]'))
+        expect(mockStripActionLayout).toBeNull()
+        expect(shell().contains('anna-fullscreen')).toBe(true)
+    })
+
+    it('puts the strip over Alldone beside the chat, where its actions keep the chat', () => {
+        setAnnaLayout('split')
+        render(shellWithSlot())
+
+        expect(strip().closest('[data-testid="top-bar-slot"]')).toBeTruthy()
+        fireEvent.click(document.querySelector('[data-testid="strip-search"]'))
+        expect(shell().contains('anna-zoom-active')).toBe(true)
+    })
+
+    it.each([
+        ['chat', true],
+        ['split', false],
+    ])(
+        'carries the home button in place of the switch (%s); with Anna alone it leaves her first: %s',
+        (layout, leaves) => {
+            setAnnaLayout(layout)
+            render(shellWithSlot())
+            expect(document.querySelector('.anna-strip-switch')).toBeNull()
+
+            mockHomeLayout = 'unset'
+            fireEvent.click(document.querySelector('.anna-strip-home [data-testid="strip-home"]'))
+            // Home runs in plain Alldone after leaving Anna alone, beside the chat with the chat kept.
+            expect(mockHomeLayout === null).toBe(leaves)
+            expect(shell().contains('anna-fullscreen')).toBe(leaves)
+        }
+    )
+
+    it.each([
+        [1440, '104px'],
+        [1000, '56px'],
+    ])('gives Anna alone the side margins plain Alldone has in a %ipx window', (width, margin) => {
+        window.innerWidth = width
+        setAnnaLayout('chat')
+        render(shellWithSlot())
+        expect(document.querySelector('.anna-shell').style.getPropertyValue('--anna-shell-content-margin')).toBe(margin)
+    })
+
+    it("keeps the layout as it was on a narrow window with Alldone's phone navigation", () => {
+        mockMobileNavigation = true
+        setAnnaLayout('split')
+        render(shellWithSidebar())
+
+        expect(document.querySelector('[data-testid="anna-shell-sidebar"]')).toBeNull()
+        expect(probe().dataset.shellDraws).toBe('false')
+        expect(document.querySelector('[data-testid="anna-chat-close"]')).toBeNull()
+    })
+
+    it.each([
+        ['sectionsTop', false],
+        [undefined, true],
+    ])('on a phone (%s) shows the Anna | App switch in the bars: %s', (mode, shown) => {
+        if (mode) mockUser.sidebarNavigationMode = mode
+        else delete mockUser.sidebarNavigationMode
+        const originalMatchMedia = window.matchMedia
+        window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
+        try {
+            setAnnaLayout('split')
+            render(content(1))
+            // Alldone's phone bar (the fixture) and the phone bar above the chat (TopBarMobile).
+            expect(!!document.querySelector('[data-testid="phone-bar"] .anna-strip-switch')).toBe(shown)
+            expect(!!document.querySelector('[data-testid="shell-top-bar-mobile"] .anna-strip-switch')).toBe(shown)
+        } finally {
+            window.matchMedia = originalMatchMedia
+        }
+    })
+
+    it('changes nothing in the other sidebar modes', () => {
+        delete mockUser.sidebarNavigationMode
+        setAnnaLayout('split')
+        render(shellWithSidebar())
+
+        expect(document.querySelector('[data-testid="anna-shell-sidebar"]')).toBeNull()
+        expect(probe().dataset.shellDraws).toBe('false')
+        expect(document.querySelector('.anna-strip-switch')).toBeTruthy()
+        expect(document.querySelector('.anna-strip-home')).toBeNull()
+        expect(document.querySelector('[data-testid="anna-chat-alone-toggle"]')).toBeNull()
+        expect(document.querySelector('[data-testid="anna-chat-close"]')).toBeNull()
     })
 })

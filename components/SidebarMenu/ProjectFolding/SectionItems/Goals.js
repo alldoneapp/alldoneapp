@@ -22,7 +22,16 @@ import store from '../../../../redux/store'
 import { GOALS_OPEN_TAB_INDEX } from '../../../GoalsView/GoalsHelper'
 import { allGoals } from '../../../AllSections/allSectionHelper'
 
-export default function Goals({ navigateToRoot, projectData, projectColor, selected, projectType, isShared }) {
+// `showBoards`: the people of the selected project below the row (not in the "Anna on top" sidebar, AT-3121).
+export default function Goals({
+    navigateToRoot,
+    projectData,
+    projectColor,
+    selected,
+    projectType,
+    isShared,
+    showBoards = true,
+}) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
 
@@ -58,7 +67,7 @@ export default function Goals({ navigateToRoot, projectData, projectColor, selec
                 onPress={onPress}
                 projectColor={projectColor}
             />
-            {projectData && selected && (
+            {projectData && selected && showBoards && (
                 <GoalsBoards
                     projectId={projectData.id}
                     projectColor={projectData.color}

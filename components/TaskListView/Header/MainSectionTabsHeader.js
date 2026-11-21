@@ -22,6 +22,9 @@ import {
 } from '../../../utils/TabNavigationConstants'
 import { allGoals } from '../../AllSections/allSectionHelper'
 import { isSectionsTopSidebarNavigation } from '../../../utils/SidebarNavigationModes'
+import HeaderPickerArrow from './HeaderPickerArrow'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import ChangeObjectListModal from '../../UIComponents/FloatModals/ChangeObjectListModal'
 
 // AT-3121: with the sections on top of the sidebar the tabs give way to the section's name.
 const SECTION_TITLES = {
@@ -70,6 +73,8 @@ export default function MainSectionTabsHeader({
             ? window.innerWidth
             : Dimensions.get('window').width
     const [viewportWidth, setViewportWidth] = useState(getViewportWidth())
+    const [sectionPickerOpen, setSectionPickerOpen] = useState(false)
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const availableWidth = workspaceWidth > 0 ? workspaceWidth : viewportWidth
     const useMobileLayout = availableWidth < SCREEN_BREAKPOINT_NAV
@@ -158,12 +163,39 @@ export default function MainSectionTabsHeader({
             )
         })
 
+    // The name opens the section picker the Updates header uses (ChangeObjectListModal), centred on a
+    // phone like there; a small arrow shows it can be opened.
+    const sectionName = translate(SECTION_TITLES[selectedSidebarTab] || 'Tasks')
     const sectionTitle = (
-        <View style={localStyles.sectionTitle} testID="section-title">
-            <Text style={[localStyles.tabText, localStyles.tabTextSelected]} numberOfLines={1}>
-                {translate(SECTION_TITLES[selectedSidebarTab] || 'Tasks')}
-            </Text>
-        </View>
+        <AppPopover
+            content={
+                <ChangeObjectListModal
+                    closePopover={() => setSectionPickerOpen(false)}
+                    withArtifacts
+                    withWiki={!inAllProjects}
+                />
+            }
+            onClickOutside={() => setSectionPickerOpen(false)}
+            isOpen={sectionPickerOpen}
+            position={['bottom', 'left', 'right', 'top']}
+            padding={4}
+            align={'start'}
+            contentLocation={smallScreenNavigation ? null : undefined}
+        >
+            <TouchableOpacity
+                style={localStyles.sectionTitle}
+                onPress={() => setSectionPickerOpen(true)}
+                disabled={!accessGranted}
+                accessibilityRole="button"
+                accessibilityLabel={`${sectionName} – ${translate('Switch section')}`}
+                testID="section-title"
+            >
+                <Text style={[localStyles.tabText, localStyles.tabTextSelected]} numberOfLines={1}>
+                    {sectionName}
+                </Text>
+                <HeaderPickerArrow />
+            </TouchableOpacity>
+        </AppPopover>
     )
 
     if (sectionsTop) {
@@ -340,8 +372,11 @@ const localStyles = StyleSheet.create({
     },
     sectionTitle: {
         height: 36,
+        flexDirection: 'row',
+        alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 14,
+        alignSelf: 'flex-start',
     },
     controlsRowTight: {
         paddingHorizontal: 3,

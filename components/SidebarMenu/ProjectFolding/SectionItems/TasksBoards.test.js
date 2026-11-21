@@ -105,13 +105,21 @@ describe('TasksBoards', () => {
         expect(rows(mount())).toEqual(['user:me', 'user:derek', 'wiki:p1', 'chats:p1', 'show more'])
     })
 
+    it.each(['advanced', 'sectionsTop'])(
+        'leaves the wiki and the chats out in the %s sidebar, which lists them as sections',
+        mode => {
+            mockState.loggedUser.sidebarNavigationMode = mode
+            try {
+                expect(rows(mount())).toEqual(['user:me', 'user:derek', 'user:luis', 'settings'])
+            } finally {
+                delete mockState.loggedUser.sidebarNavigationMode
+            }
+        }
+    )
+
     it('has no wiki and no chats row for a guest of a shared project', () => {
         const guestRows = rows(mount({ isShared: true }))
         expect(guestRows).not.toContain('wiki:p1')
         expect(guestRows).not.toContain('chats:p1')
-    })
-
-    it('leaves the wiki and the chats out when the sidebar already has them on top (AT-3121)', () => {
-        expect(rows(mount({ showSectionLinks: false }))).toEqual(['user:me', 'user:derek', 'user:luis', 'settings'])
     })
 })

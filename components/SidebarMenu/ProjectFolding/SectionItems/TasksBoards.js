@@ -17,6 +17,7 @@ import AssistantItem from '../../Items/AssistantItem'
 import WikiItem from '../../Items/WikiItem'
 import ChatsItem from '../../Items/ChatsItem'
 import useProjectData from '../../../../hooks/useProjectData'
+import { isSimpleSidebarNavigation } from '../../../../utils/SidebarNavigationModes'
 
 // Shared identity so a missing slice does not hand `useSelector` a new array on every render.
 const EMPTY_LIST = []
@@ -28,12 +29,14 @@ export default function TasksBoards({
     projectType,
     isShared,
     globalAssistantIds,
-    showSectionLinks = true,
 }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const themeName = useSelector(state => state.loggedUser.themeName)
     const numberUsersSidebar = useSelector(state => state.loggedUser.numberUsersSidebar)
     const currentUserId = useSelector(state => state.currentUser.uid)
+    // The Wiki and Chats rows belong to the simple sidebar (AT-3020); the advanced and "Anna on top"
+    // sidebars list Chats and Wiki as sections of the project already.
+    const simpleNavigation = useSelector(state => isSimpleSidebarNavigation(state.loggedUser.sidebarNavigationMode))
     // AT-2386: this sidebar section lists the project's people, so it is one of the views that
     // genuinely needs all four slices - it asks for them rather than relying on login having
     // fetched them. It only ever renders for the SELECTED project (`ProjectItem` gates it on
@@ -151,8 +154,8 @@ export default function TasksBoards({
                 })}
 
             {/* Not behind "show more": a long member list must not hide the way into the wiki or the chats. */}
-            {!isShared && showSectionLinks && <WikiItem projectId={projectId} projectColor={projectColor} />}
-            {!isShared && showSectionLinks && <ChatsItem projectId={projectId} projectColor={projectColor} />}
+            {!isShared && simpleNavigation && <WikiItem projectId={projectId} projectColor={projectColor} />}
+            {!isShared && simpleNavigation && <ChatsItem projectId={projectId} projectColor={projectColor} />}
 
             {!isTemplate &&
                 !isGuideProject &&

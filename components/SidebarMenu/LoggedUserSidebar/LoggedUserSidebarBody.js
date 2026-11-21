@@ -14,7 +14,7 @@ import ArchivedProjects from '../ArchivedProjects'
 import TemplateProjects from '../TemplateProjects'
 import SettingsItem from '../SettingsItem'
 import AdminItem from '../AdminItem'
-import SidebarSectionsTop from '../SectionsTop/SidebarSectionsTop'
+import SidebarAnnaButton from '../SectionsTop/SidebarAnnaButton'
 import { isSectionsTopSidebarNavigation } from '../../../utils/SidebarNavigationModes'
 
 export default function LoggedUserSidebarBody({ navigation, expanded, scrollView }) {
@@ -39,7 +39,7 @@ export default function LoggedUserSidebarBody({ navigation, expanded, scrollView
             showsVerticalScrollIndicator={false}
             indicatorStyle={[theme.scroll, !expanded && { opacity: 0 }]}
         >
-            {sectionsTop && <SidebarSectionsTop />}
+            {sectionsTop && <SidebarAnnaButton />}
             <AllProjects navigation={navigation} />
             <ActiveProjectsList navigation={navigation} />
             <AddProject scrollToBottom={scrollToBottom} />

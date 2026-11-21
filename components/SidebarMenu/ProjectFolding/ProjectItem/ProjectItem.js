@@ -39,6 +39,7 @@ import { checkIfUserIsGuideAdmin } from '../../../Guides/guidesHelper'
 import { checkIfSelectedProject } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ItemShortcut from '../../Items/Common/ItemShortcut'
 import AnnaWorkspaceNavigationContext from '../../../Anna/AnnaWorkspaceNavigationContext'
+import useAnnaAloneSidebar from '../../SectionsTop/useAnnaAloneSidebar'
 
 export default function ProjectItem({ itemIndex, projectData, projectType, isShared, shortcutIndex, navigation }) {
     const dispatch = useDispatch()
@@ -49,6 +50,9 @@ export default function ProjectItem({ itemIndex, projectData, projectType, isSha
     const shortcutSelectedProjectIndex = useSelector(state => state.shortcutSelectedProjectIndex)
     const showShortcuts = useSelector(state => state.showShortcuts)
     const shownFloatPopup = useSelector(state => state.shownFloatPopup)
+    // AT-3121, "Anna on top": with Anna alone on screen no project is marked or unfolded, and a pick
+    // leaves the chat for Alldone.
+    const { annaAlone, leaveChat } = useAnnaAloneSidebar()
 
     const { expanded } = useCollapsibleSidebar()
     const [highlighted, setHighlighted] = useState(false)
@@ -64,7 +68,7 @@ export default function ProjectItem({ itemIndex, projectData, projectType, isSha
 
     const isGuide = !!parentTemplateId
 
-    const highlight = projectIndex === selectedProjectIndex
+    const highlight = !annaAlone && projectIndex === selectedProjectIndex
     const { hover, onHover, offHover } = useOnHover(highlight, highlight)
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.ProjectList.ProjectItem')
 
@@ -111,7 +115,8 @@ export default function ProjectItem({ itemIndex, projectData, projectType, isSha
             activeTemplate()
         } else {
             e?.preventDefault()
-            showAlldone()
+            if (annaAlone) leaveChat()
+            else showAlldone()
 
             dispatch(storeLoggedUser({ ...loggedUser, showAllProjectsByTime: false }))
             updateShowAllProjectsByTime(loggedUserId, false)

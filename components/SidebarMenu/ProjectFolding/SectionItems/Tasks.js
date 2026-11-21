@@ -15,7 +15,17 @@ import TasksBoards from './TasksBoards'
 import store from '../../../../redux/store'
 import SectionItemLayoutHeader from '../SectionItemLayoutHeader'
 
-export default function Tasks({ navigateToRoot, projectData, projectColor, selected, projectType, isShared }) {
+// `showBoards`: the people of the selected project below the row (not in the "Anna on top" sidebar,
+// AT-3121, where the row then counts the project's open tasks itself).
+export default function Tasks({
+    navigateToRoot,
+    projectData,
+    projectColor,
+    selected,
+    projectType,
+    isShared,
+    showBoards = true,
+}) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
 
@@ -42,7 +52,7 @@ export default function Tasks({ navigateToRoot, projectData, projectColor, selec
             <SectionItemLayoutHeader
                 icon={'check-square'}
                 text={translate('Tasks')}
-                projectSelected={selected}
+                projectSelected={selected && showBoards}
                 selected={selected && checkIfSelectedAllProjects(selectedProjectIndex)}
                 lowSelected={selected && checkIfSelectedProject(selectedProjectIndex)}
                 onPress={onPress}
@@ -50,7 +60,7 @@ export default function Tasks({ navigateToRoot, projectData, projectColor, selec
                 inTasks={true}
                 projectId={projectData?.id}
             />
-            {projectData && selected && (
+            {projectData && selected && showBoards && (
                 <TasksBoards
                     projectId={projectData.id}
                     projectColor={projectData.color}

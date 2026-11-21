@@ -22,15 +22,25 @@ import { PROJECT_COLOR_DEFAULT } from '../../../Themes/Modern/ProjectColors'
 import Goals from './SectionItems/Goals'
 import Wiki from './SectionItems/Wiki'
 import Artifacts from './SectionItems/Artifacts'
+import ProjectSettings from './SectionItems/ProjectSettings'
 import NavigationService from '../../../utils/NavigationService'
 import TasksBoards from './SectionItems/TasksBoards'
 import { isSectionsTopSidebarNavigation, isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
+import useAnnaAloneSidebar from '../SectionsTop/useAnnaAloneSidebar'
 
 export default function ProjectSectionList({ projectData, projectType, isShared, inAllProjects }) {
     const selectedNavItem = useSelector(state => state.selectedNavItem)
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
     const route = useSelector(state => state.route)
     const sidebarNavigationMode = useSelector(state => state.loggedUser.sidebarNavigationMode)
+
+    // AT-3121, "Anna on top": nothing unfolds under a project while Anna is alone on screen, and the
+    // sidebar stops at the sections: the people (and the chats' media) are picked on the right, in
+    // the project line above the list.
+    const { annaAlone } = useAnnaAloneSidebar()
+    const sectionsOnly = isSectionsTopSidebarNavigation(sidebarNavigationMode)
+    // There the project's settings are the last row; on that screen it is the only one marked.
+    const onSettings = sectionsOnly && route === 'ProjectDetailedView'
 
     const projectColor = projectData?.color || PROJECT_COLOR_DEFAULT
     const simpleNavigation = isSimpleSidebarNavigation(sidebarNavigationMode)
@@ -42,6 +52,8 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
         }
     }
 
+    if (annaAlone) return null
+
     return simpleNavigation ? (
         <View>
             {projectData && (
@@ -52,8 +64,6 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
                     projectType={projectType}
                     isShared={isShared}
                     globalAssistantIds={projectData.globalAssistantIds}
-                    // AT-3121: with the sections on top, Wiki and Chats are already up there.
-                    showSectionLinks={!isSectionsTopSidebarNavigation(sidebarNavigationMode)}
                 />
             )}
         </View>
@@ -63,40 +73,44 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
                 navigateToRoot={navigateToRoot}
                 projectData={projectData}
                 projectColor={projectColor}
-                selected={selectedSidebarTab === DV_TAB_ROOT_TASKS || route === 'TaskDetailedView'}
+                selected={!onSettings && (selectedSidebarTab === DV_TAB_ROOT_TASKS || route === 'TaskDetailedView')}
                 projectType={projectType}
                 isShared={isShared}
+                showBoards={!sectionsOnly}
             />
 
             <Goals
                 navigateToRoot={navigateToRoot}
                 projectData={projectData}
                 projectColor={projectColor}
-                selected={selectedSidebarTab === DV_TAB_ROOT_GOALS || route === 'GoalDetailedView'}
+                selected={!onSettings && (selectedSidebarTab === DV_TAB_ROOT_GOALS || route === 'GoalDetailedView')}
                 projectType={projectType}
                 isShared={isShared}
+                showBoards={!sectionsOnly}
             />
             <Notes
                 navigateToRoot={navigateToRoot}
                 projectColor={projectColor}
-                selected={selectedSidebarTab === DV_TAB_ROOT_NOTES || route === 'NotesDetailedView'}
+                selected={!onSettings && (selectedSidebarTab === DV_TAB_ROOT_NOTES || route === 'NotesDetailedView')}
             />
             <Contacts
                 navigateToRoot={navigateToRoot}
                 projectColor={projectColor}
                 selected={
-                    selectedSidebarTab === DV_TAB_ROOT_CONTACTS ||
-                    route === 'UserDetailedView' ||
-                    route === 'ContactDetailedView'
+                    !onSettings &&
+                    (selectedSidebarTab === DV_TAB_ROOT_CONTACTS ||
+                        route === 'UserDetailedView' ||
+                        route === 'ContactDetailedView')
                 }
             />
             <Chats
                 navigateToRoot={navigateToRoot}
                 projectColor={projectColor}
                 selected={
-                    selectedSidebarTab === DV_TAB_ROOT_CHATS ||
-                    selectedNavItem === DV_TAB_CHAT_PROPERTIES ||
-                    route === 'ChatDetailedView'
+                    !onSettings &&
+                    (selectedSidebarTab === DV_TAB_ROOT_CHATS ||
+                        selectedNavItem === DV_TAB_CHAT_PROPERTIES ||
+                        route === 'ChatDetailedView')
                 }
                 projectId={projectData?.id}
                 inAllProjects={inAllProjects}
@@ -115,9 +129,13 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
                     selected={selectedSidebarTab === DV_TAB_ROOT_WIKI && route !== 'ProjectDetailedView'}
                 />
             )}
-            {(selectedSidebarTab === DV_TAB_ROOT_CHATS || route === 'ChatDetailedView') && !isShared && projectData && (
-                <MediaBar projectColor={projectColor} projectId={projectData.id} />
+            {sectionsOnly && projectData && !isShared && (
+                <ProjectSettings projectIndex={projectData.index} projectColor={projectColor} selected={onSettings} />
             )}
+            {(selectedSidebarTab === DV_TAB_ROOT_CHATS || route === 'ChatDetailedView') &&
+                !isShared &&
+                projectData &&
+                !sectionsOnly && <MediaBar projectColor={projectColor} projectId={projectData.id} />}
         </View>
     )
 }
