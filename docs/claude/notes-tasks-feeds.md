@@ -298,3 +298,26 @@ Entries are now wrapped in `components/Feeds/Commons/FeedRow.js`, which drops th
 `ProjectSectionContext` (Updates cards: dot 12px desktop / 14px middle screen from the card edge)
 and keeps it outside (detailed-view Updates tabs). Keep `NewFeedDot`'s margins summing to the slot
 width; `Commons/FeedRow.test.js` pins both the position and the slot width.
+
+## The focus task follows the task's holder, not just its workflow step (AT-2193, AT-3124)
+
+A task may be a user's focus task exactly while it is on their plate (`isTaskOnUserPlate` in
+`functions/shared/focusTaskEligibility.js`: they are the `currentReviewerId`, or the owner on legacy
+data without one). The pickers (`FocusTaskService.findAndSetNewFocusTask`, the app's
+`findAndSetNewFocusedTask`) only choose such tasks. The onUpdateTask trigger
+(`functions/Tasks/workflowFocusHandoff.js`) releases a focus task from every user it left and picks
+them a replacement with that same picker, or clears the focus when none is eligible (or when the pick
+fails). The client also hands off the logged-in user's focus on its own workflow moves, so the swap
+shows up straight away.
+
+The trigger fires on a change of the workflow step, **the current reviewer or the owner**
+(`hasFocusHolderChanged`). Before AT-3124 it fired on step changes only, which missed the VM
+question hold (`vmWorkflowHold.js`). On 2026-11-21 an agent's question made Karsten the reviewer of an
+AI-step task, the picker rightly chose it, and when he answered the hold gave it back to the assistant
+on the same step: his focus stayed on a task his list no longer showed. Now the asked user keeps the
+task while the hold starts, and loses it (with a replacement) when the hold ends. Tasks held for an
+open agent question stay eligible as focus tasks (decided with Karsten). A top-level owner change also
+goes through the handoff, so the old owner gets a new focus task instead of an empty one. Do not add a
+parallel `clearUserTaskInFocusIfMatch` for that case: the clear wins the race and the handoff then
+skips the replacement. Subtasks (skipped by the handoff) still use the plain clear. Pinned by the
+AT-3124 blocks in `workflowFocusHandoff.test.js` and `onUpdateTaskFunctions.test.js`.
