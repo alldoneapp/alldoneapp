@@ -26,10 +26,12 @@ jest.mock('../Assistant/assistantModelRuntime', () => jest.requireMock('../Assis
 
 const {
     GMAIL_CLASSIFIER_SYSTEM_PROMPT,
+    GMAIL_CONSISTENCY_SYSTEM_PROMPT,
     buildClassifierLabelDefinitions,
     buildClassifierMessage,
     classifyGmailMessage,
 } = require('./gmailPromptClassifier')
+const { GMAIL_NEEDS_REPLY_GUIDANCE } = require('./gmailClassifierPrompt')
 
 describe('gmailPromptClassifier', () => {
     const getMessageText = content =>
@@ -609,6 +611,64 @@ describe('needsReply verdict', () => {
 
     test('asks the model for needsReply', () => {
         expect(GMAIL_CLASSIFIER_SYSTEM_PROMPT).toContain('needsReply')
+    })
+
+    // AT-3131: Kleinanzeigen buyer questions come from a no-reply address. The old guidance put
+    // every notification and automated mail in "false", so a buyer waiting for an answer was
+    // classified as no reply needed and the task never reached Messages.
+    describe('relayed person-to-person messages (AT-3131)', () => {
+        const prompts = [
+            ['first pass', GMAIL_CLASSIFIER_SYSTEM_PROMPT],
+            ['consistency audit', GMAIL_CONSISTENCY_SYSTEM_PROMPT],
+        ]
+
+        test.each(prompts)('the %s counts a person relayed by a platform as needing a reply', (_, prompt) => {
+            expect(prompt).toContain(GMAIL_NEEDS_REPLY_GUIDANCE)
+            expect(GMAIL_NEEDS_REPLY_GUIDANCE).toMatch(/a platform relays, often from a no-reply address/)
+            for (const platform of ['Kleinanzeigen', 'LinkedIn', 'Airbnb']) {
+                expect(GMAIL_NEEDS_REPLY_GUIDANCE).toContain(platform)
+            }
+            expect(GMAIL_NEEDS_REPLY_GUIDANCE).toContain('Judge the person’s message, not the sender address')
+        })
+
+        test('no longer puts every notification or automated mail in "false"', () => {
+            expect(GMAIL_NEEDS_REPLY_GUIDANCE).not.toMatch(/false for [^.]*\bnotifications, automated or bulk mail\b/)
+        })
+
+        test('keeps automated notifications without a personal message at false', () => {
+            expect(GMAIL_NEEDS_REPLY_GUIDANCE).toMatch(
+                /false for [^.]*automated or bulk notifications that carry no personal message expecting the user’s answer/
+            )
+            for (const example of ['receipts', 'connection requests', 'profile views']) {
+                expect(GMAIL_NEEDS_REPLY_GUIDANCE).toContain(example)
+            }
+            expect(GMAIL_NEEDS_REPLY_GUIDANCE).toContain('When uncertain, choose false.')
+        })
+
+        test('a relayed buyer question classified as needing a reply stays true', async () => {
+            mockCreateCompletion.mockResolvedValueOnce(
+                completion({
+                    matched: true,
+                    labelKey: 'project_juno',
+                    followUpType: 'actionable',
+                    needsReply: true,
+                    emailKind: 'notification',
+                    confidence: 0.9,
+                    reasoning: 'Lesya asks via Kleinanzeigen for the dimensions of the changing table.',
+                })
+            )
+            const result = await classifyGmailMessage({
+                config,
+                message: {
+                    direction: 'incoming',
+                    from: 'Lesya über Kleinanzeigen <noreply@mail.kleinanzeigen.de>',
+                    subject: 'Nutzer-Anfrage zu deiner Anzeige "Wickelkommode"',
+                    bodyText: 'Hallo, welche Maße hat die Wickelkommode? Wann kann ich sie abholen?',
+                },
+            })
+            expect(result.needsReply).toBe(true)
+            expect(result.emailKind).toBe('notification')
+        })
     })
 
     test('passes an explicit true through', async () => {

@@ -9,8 +9,14 @@ const GMAIL_ACTIONABILITY_GUIDANCE =
 // Whether the user owes the sender an answer. Independent of followUpType: a question can need
 // a one-line reply without creating any other work, and a task can need no reply at all. It is
 // what puts an email into the "Messages" section of the task list (UNIFIED_INBOX_PLAN.md).
+// AT-3131: a buyer's question relayed by Kleinanzeigen from a no-reply address was read as an
+// "automated notification" and got false, so the person waiting for an answer never reached
+// Messages. Relayed person-to-person messages count by the person's message, not by the sender
+// address; automated notifications without such a message stay false.
 const GMAIL_NEEDS_REPLY_GUIDANCE =
-    ' Also decide needsReply (true or false): true only when an incoming email from a real person directly asks the user something or clearly expects a written answer from the user personally (a question, a request for a decision, confirmation or information). It is false for outgoing mail, newsletters, notifications, automated or bulk mail, mail where the user is only in Cc, and mail that merely informs. When uncertain, choose false.'
+    ' Also decide needsReply (true or false): true only when an incoming email from a real person directly asks the user something or clearly expects a written answer from the user personally (a question, a request for a decision, confirmation or information).' +
+    ' This includes a message that a real person wrote to the user and a platform relays, often from a no-reply address: for example a buyer or seller on a marketplace such as Kleinanzeigen or eBay, a direct message on LinkedIn or Xing, a guest or host on Airbnb or Booking.com, or a contact form submission. Judge the person’s message, not the sender address or emailKind; answering through the platform counts as a written answer.' +
+    ' It is false for outgoing mail, newsletters, mail where the user is only in Cc, mail that merely informs, and automated or bulk notifications that carry no personal message expecting the user’s answer, such as alerts, receipts, order or shipping updates, reminders, connection requests, likes or profile views. When uncertain, choose false.'
 
 // What kind of sender and mail this is, independent of the label (which in the default mode is a
 // project) and of followUpType. It is what the unread list's tags and the user's "show or

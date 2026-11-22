@@ -6013,6 +6013,84 @@ describe('assistant create_task project routing comments', () => {
         })
         expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
     })
+
+    // UNIFIED_INBOX_PLAN.md / AT-3131: an email that needs a reply creates a private reply task
+    // with messageData (the Messages section); any other follow-up creates an ordinary task with
+    // the project's visibility.
+    describe('reply task creation from a Gmail follow-up', () => {
+        const createFromEmail = needsReply => {
+            ProjectService.mockImplementation(() => ({
+                initialize: jest.fn().mockResolvedValue(undefined),
+                getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-family', name: 'Familie' }]),
+            }))
+            mockDocGet.mockResolvedValueOnce({ exists: true, data: () => ({ name: 'Familie' }) }).mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultProjectId: 'project-family', projectIds: ['project-family'] }),
+            })
+            mockCreateAndPersistTask.mockResolvedValueOnce({
+                success: true,
+                taskId: 'task-reply',
+                projectId: 'project-family',
+                message: 'Task created',
+                task: { id: 'task-reply', name: 'Reply to Lesya', userId: 'user-1', commentsData: { amount: 0 } },
+            })
+            return executeToolNatively(
+                'create_task',
+                { name: 'Reply to Lesya: dimensions', taskOrigin: 'user_request' },
+                'project-family',
+                'assistant-1',
+                'user-1',
+                null,
+                {
+                    projectId: 'project-family',
+                    assistantId: 'assistant-1',
+                    requestUserId: 'user-1',
+                    gmailContext: {
+                        origin: 'gmail_label_follow_up',
+                        gmailEmail: 'karsten@example.com',
+                        projectId: 'gmail-connection-project',
+                        connectionProjectId: 'gmail-connection-project',
+                        selectedProjectId: 'project-family',
+                        messageId: 'message-1',
+                        threadId: 'thread-1',
+                        webUrl: 'https://mail.google.com/mail/u/0/#all/message-1',
+                        targetContactEmail: 'NoReply@mail.kleinanzeigen.de',
+                        needsReply,
+                        emailContext: {
+                            from: '"Lesya über Kleinanzeigen" <noreply@mail.kleinanzeigen.de>',
+                            internalDate: '1795376400000',
+                        },
+                    },
+                }
+            )
+        }
+
+        test('needsReply creates a private reply task with messageData', async () => {
+            await createFromEmail(true)
+            const params = mockCreateAndPersistTask.mock.calls[0][0]
+            expect(params.isPrivate).toBe(true)
+            expect(params.messageData).toEqual({
+                provider: 'gmail',
+                kind: 'email',
+                connectionKey: 'karsten@example.com',
+                conversationKey: 'thread-1',
+                senderName: 'Lesya über Kleinanzeigen',
+                senderEmail: 'noreply@mail.kleinanzeigen.de',
+                lastMessageAt: 1795376400000,
+                needsReply: true,
+                webUrl: 'https://mail.google.com/mail/u/0/#all/message-1',
+            })
+            expect(params.gmailData).toMatchObject({ origin: 'gmail_label_follow_up', threadId: 'thread-1' })
+        })
+
+        test('an email that needs no reply creates an ordinary, non-private email task', async () => {
+            await createFromEmail(false)
+            const params = mockCreateAndPersistTask.mock.calls[0][0]
+            expect(params.isPrivate).toBe(false)
+            expect(params.messageData).toBeNull()
+            expect(params.gmailData).toMatchObject({ origin: 'gmail_label_follow_up', threadId: 'thread-1' })
+        })
+    })
 })
 
 describe('assistant task assignment and attribution', () => {

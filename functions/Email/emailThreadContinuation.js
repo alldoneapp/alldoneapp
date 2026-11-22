@@ -82,6 +82,16 @@ async function appendOriginEmailToTask({
     return { commentId: comment.commentId, existing: !!comment.existing }
 }
 
+// The From header's display name (or its address when it has none) and address. The name is the
+// header's, as for a task created as a reply task in assistantHelper.js.
+function getReplySender(from = '') {
+    const { parseEmailHeaderAddresses } = require('./emailChannelHelpers')
+    const raw = String(from || '').trim()
+    const entry = parseEmailHeaderAddresses(raw)[0]
+    const email = entry && /^[^\s@]+@[^\s@]+$/.test(entry.email) ? entry.email : ''
+    return { name: entry?.displayName || email || raw, email }
+}
+
 // `reopenOnNewEmail`: whether this email may reopen a done task. Callers that know the email's
 // classification pass it (the labeling sync: actionable or needs a reply); the explicit
 // "Create task" action leaves the default, since the user asked for the task themselves.
@@ -161,6 +171,8 @@ async function continueEmailThread({
                 ...summary.plan,
                 reopen: reopenOnNewEmail !== false,
                 needsReply: needsReply === true,
+                // Who asks for the answer, for a task that becomes a reply task now (AT-3131).
+                ...(needsReply === true ? { replySender: getReplySender(context.from) } : {}),
                 expected: {
                     name: selected.task.name,
                     dueDate: selected.task.dueDate,

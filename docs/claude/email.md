@@ -393,6 +393,32 @@ follow-up suppression, archive and unread settings, the retry/exhaustion cycle a
 `syncGmailLabeling` runs on an in-memory Firestore) and the updated no-match cases in
 `serverSideGmailLabelingSync.test.js`.
 
+## Relayed person-to-person mail can need a reply; a later reply email upgrades a task (AT-3131, 2026-11-22)
+
+Kleinanzeigen buyer questions arrive from `noreply@mail.kleinanzeigen.de`. The `needsReply`
+guidance used to say "false for … notifications, automated or bulk mail", so most were classified
+"no reply needed": FE-2149 and FE-2150 landed in the regular list, and only FE-2148 got
+`needsReply: true` and went to Messages. Two changes, decided with Karsten:
+
+- **Classifier** (`GMAIL_NEEDS_REPLY_GUIDANCE`, used by both passes): a message a real person wrote
+  and a platform relays (marketplaces such as Kleinanzeigen/eBay, LinkedIn/Xing DMs, Airbnb/Booking
+  guests or hosts, contact forms) is judged by the person's message, not the sender address or
+  `emailKind`. Automated notifications without such a message (alerts, receipts, order/shipping
+  updates, reminders, connection requests, likes, profile views) stay false, as does "uncertain".
+- **Upgrade**: when a newer email in the thread needs a reply and the task has no `messageData`,
+  `buildEmailTaskUpdate` adds it (same shape as `buildReplyTaskMessageData`; sender from the
+  `From` header via `plan.replySender`), so the task moves into Messages. **Visibility is kept**:
+  the upgrade never writes `isPrivate`/`isPublicFor`, so a project-visible task does not vanish
+  for other members. Only a task that belongs to the mailbox owner is upgraded
+  (`gmailData.accountUserId`). New reply tasks are still created private.
+
+Not done: the sender name of a relayed email is still the `From` display name ("… über
+Kleinanzeigen"), not the person. If a send-reply action is built on `messageData` (UNIFIED_INBOX_PLAN
+§7), it must check that the caller owns the mailbox. It cannot rely on `isPrivate`, because an
+upgraded reply task can be visible to the project. Pinned by the AT-3131 blocks in
+`gmailPromptClassifier.test.js`, `emailTaskContentUpdate.test.js`,
+`emailThreadContinuation.test.js` and the "reply task creation" block in `assistantHelper.test.js`.
+
 ## The email a task was created from opens the task's chat (AT-3022)
 
 `continueEmailThread` only writes the **later** mail of a thread into its task's chat, and skips the
