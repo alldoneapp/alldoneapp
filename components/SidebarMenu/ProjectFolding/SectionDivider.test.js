@@ -30,7 +30,9 @@ describe('SectionDivider', () => {
         const neutral = render(COLORS_THEME_MODERN)
         expect(neutral.container.height).toBe(1)
         expect(neutral.container.backgroundColor).toBeTruthy()
-        expect(neutral.line.backgroundColor).toBe(ThemedColors.Grey400)
+        // One step lighter than the first version (Grey400), still a mode-aware token, not hex.
+        expect(neutral.line.backgroundColor).toBe(ThemedColors.Grey350)
+        expect(neutral.line.backgroundColor).toMatch(/^var\(--ad-/)
 
         const blue = render(COLORS_THEME_DEFAULT)
         expect(blue.container.height).toBe(1)
