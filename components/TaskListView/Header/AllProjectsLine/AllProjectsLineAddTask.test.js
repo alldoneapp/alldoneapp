@@ -15,7 +15,12 @@ jest.mock('../../EmailLine/useEmailLabelGroups', () => jest.fn())
 describe('AllProjectsLine task actions', () => {
     beforeEach(() => {
         const state = {
-            loggedUser: { uid: 'user-1', photoURL: '', defaultProjectId: 'project-default' },
+            loggedUser: {
+                uid: 'user-1',
+                photoURL: '',
+                defaultProjectId: 'project-default',
+                sidebarNavigationMode: 'simple',
+            },
             taskViewToggleSection: 'Open',
         }
         useSelector.mockImplementation(selector => selector(state))
@@ -31,7 +36,12 @@ describe('AllProjectsLine task actions', () => {
 
     it('keeps the existing more action limited to the Open tab', () => {
         const state = {
-            loggedUser: { uid: 'user-1', photoURL: '', defaultProjectId: 'project-default' },
+            loggedUser: {
+                uid: 'user-1',
+                photoURL: '',
+                defaultProjectId: 'project-default',
+                sidebarNavigationMode: 'simple',
+            },
             taskViewToggleSection: 'Done',
         }
         useSelector.mockImplementation(selector => selector(state))
