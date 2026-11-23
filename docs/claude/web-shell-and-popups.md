@@ -1091,3 +1091,19 @@ header rows and a one-row workflow bar.
   "Finding a focus task…" restarted its slide-in from above on every tick and so sat above the
   pill's middle most of the time. The rolling pill without a reroll button pads both sides by
   12px (`.anna-focus-pill > .anna-focus-task:last-child`).
+
+## Centred title on the top project line (AT-3132, 2026-11-23)
+
+- "All projects" (`AllProjectsLine`) and the **selected** project's line (`ProjectHeader` when
+  `selectedProjectIndex === projectIndex`) centre their title block on the **whole** line, like the
+  section card and the assistant header below. The per-project lines of the All projects lists stay
+  left aligned (user decision).
+- How: the actions stay in the row on the right (they never shrink, AT-2263); an invisible spacer
+  on the left mirrors their measured width (`centeredHeaderTitle.js`,
+  `useMirroredActionsWidth`). The title area between them is symmetric, so centring in it centres
+  on the line, and a long name truncates inside it instead of running under the menu.
+- Avatar, title and the "by project" toggle move as one block; inside it the toggle stays left
+  aligned under the title. The invisible legacy `compass` placeholder in `ProjectAndUserData` is
+  left out on the centred line, or the name sits ~10px left of centre.
+- Tests: `components/TaskListView/Header/centeredHeaderTitle.test.js`,
+  `ProjectAndUserData.test.js`.
