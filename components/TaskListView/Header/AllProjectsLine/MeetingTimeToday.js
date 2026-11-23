@@ -1,12 +1,12 @@
 import React, { useCallback } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
-import { navigateToSettings, setSelectedNavItem } from '../../../../redux/actions'
 import NavigationService from '../../../../utils/NavigationService'
-import { DV_TAB_PROJECT_PROPERTIES, DV_TAB_SETTINGS_CUSTOMIZATIONS } from '../../../../utils/TabNavigationConstants'
+import { DV_TAB_SETTINGS_CUSTOMIZATIONS, DV_TAB_SETTINGS_INTEGRATIONS } from '../../../../utils/TabNavigationConstants'
+import SettingsHelper from '../../../SettingsView/SettingsHelper'
 import {
     MEETING_TIME_CALENDAR_LOADING,
     MEETING_TIME_CALENDAR_UNAVAILABLE,
@@ -52,27 +52,23 @@ const buildTooltip = view => {
 const Separator = () => <Text style={localStyles.separator}> · </Text>
 
 export default function MeetingTimeToday({ view }) {
-    const dispatch = useDispatch()
     const mobile = useSelector(state => state.smallScreenNavigation)
-    const defaultProjectIndex = useSelector(state => {
-        const { defaultProjectId, projectIds } = state.loggedUser
-        const projectId = defaultProjectId || (projectIds || [])[0]
-        return state.loggedUserProjectsMap?.[projectId]?.index
-    })
 
     const tooltip = view && view.workingHours ? buildTooltip(view) : ''
     const setTooltip = useCallback(node => node?.setAttribute?.('title', tooltip), [tooltip])
 
     if (!view || !view.workingHours) return null
 
+    // Settings > Customizations holds the meeting link settings (PublicBookingSettings) whose
+    // working hours are used here.
     const openWorkingHoursSettings = () => {
-        dispatch(navigateToSettings({ selectedNavItem: DV_TAB_SETTINGS_CUSTOMIZATIONS }))
-        NavigationService.navigate('SettingsView')
+        SettingsHelper.processURLSettingsTab(NavigationService, DV_TAB_SETTINGS_CUSTOMIZATIONS)
     }
 
+    // Calendars are account-level connections in Settings > Integrations since the July 2026
+    // integrations overhaul; the project properties no longer have a calendar section.
     const openCalendarConnection = () => {
-        dispatch(setSelectedNavItem(DV_TAB_PROJECT_PROPERTIES))
-        NavigationService.navigate('ProjectDetailedView', { projectIndex: defaultProjectIndex })
+        SettingsHelper.processURLSettingsTab(NavigationService, DV_TAB_SETTINGS_INTEGRATIONS)
     }
 
     const { status, workingHours } = view

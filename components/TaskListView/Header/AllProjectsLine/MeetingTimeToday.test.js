@@ -1,20 +1,21 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { Text } from 'react-native'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 
 import MeetingTimeToday from './MeetingTimeToday'
 import NavigationService from '../../../../utils/NavigationService'
-import { DV_TAB_PROJECT_PROPERTIES, DV_TAB_SETTINGS_CUSTOMIZATIONS } from '../../../../utils/TabNavigationConstants'
+import SettingsHelper from '../../../SettingsView/SettingsHelper'
+import { DV_TAB_SETTINGS_CUSTOMIZATIONS, DV_TAB_SETTINGS_INTEGRATIONS } from '../../../../utils/TabNavigationConstants'
 
-jest.mock('react-redux', () => ({ useSelector: jest.fn(), useDispatch: jest.fn() }))
+jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: (key, params) => (params ? `${key} ${JSON.stringify(params)}` : key),
 }))
 jest.mock('../../../../utils/NavigationService', () => ({ navigate: jest.fn() }))
-jest.mock('../../../../redux/actions', () => ({
-    navigateToSettings: jest.fn(options => ({ type: 'navigateToSettings', options })),
-    setSelectedNavItem: jest.fn(item => ({ type: 'setSelectedNavItem', item })),
+jest.mock('../../../SettingsView/SettingsHelper', () => ({
+    __esModule: true,
+    default: { processURLSettingsTab: jest.fn() },
 }))
 
 const SAVED_HOURS = { start: '09:00', end: '18:00', isDefault: false }
@@ -35,21 +36,12 @@ const render = view => {
 }
 
 describe('MeetingTimeToday (AT-3136)', () => {
-    let dispatch
     let mobile
 
     beforeEach(() => {
-        dispatch = jest.fn()
         mobile = false
-        useDispatch.mockReturnValue(dispatch)
-        useSelector.mockImplementation(selector =>
-            selector({
-                smallScreenNavigation: mobile,
-                loggedUser: { defaultProjectId: 'p-default', projectIds: ['p-other', 'p-default'] },
-                loggedUserProjectsMap: { 'p-default': { index: 4 }, 'p-other': { index: 1 } },
-            })
-        )
-        NavigationService.navigate.mockClear()
+        useSelector.mockImplementation(selector => selector({ smallScreenNavigation: mobile }))
+        SettingsHelper.processURLSettingsTab.mockClear()
     })
 
     it('renders nothing while the working hours are still loading', () => {
@@ -87,12 +79,12 @@ describe('MeetingTimeToday (AT-3136)', () => {
         })
         expect(textOf(tree)).toContain('meetingTime default hours {"range":"9–17"}')
 
+        // Settings > Customizations, where the meeting link working hours are edited.
         act(() => tree.root.findByProps({ testID: 'meeting-time-hours' }).props.onPress())
-        expect(dispatch).toHaveBeenCalledWith({
-            type: 'navigateToSettings',
-            options: { selectedNavItem: DV_TAB_SETTINGS_CUSTOMIZATIONS },
-        })
-        expect(NavigationService.navigate).toHaveBeenCalledWith('SettingsView')
+        expect(SettingsHelper.processURLSettingsTab).toHaveBeenCalledWith(
+            NavigationService,
+            DV_TAB_SETTINGS_CUSTOMIZATIONS
+        )
     })
 
     it('without a calendar shows only the working time and a connect link, never 0h meetings', () => {
@@ -103,9 +95,13 @@ describe('MeetingTimeToday (AT-3136)', () => {
         expect(text).not.toContain('meetingTime meetings')
         expect(text).not.toContain('meetingTime calendar free')
 
+        // Calendars are connected in Settings > Integrations; the project properties have no
+        // calendar section any more.
         act(() => tree.root.findByProps({ testID: 'meeting-time-connect' }).props.onPress())
-        expect(dispatch).toHaveBeenCalledWith({ type: 'setSelectedNavItem', item: DV_TAB_PROJECT_PROPERTIES })
-        expect(NavigationService.navigate).toHaveBeenCalledWith('ProjectDetailedView', { projectIndex: 4 })
+        expect(SettingsHelper.processURLSettingsTab).toHaveBeenCalledWith(
+            NavigationService,
+            DV_TAB_SETTINGS_INTEGRATIONS
+        )
     })
 
     it('shows placeholders, not numbers, while the meetings load', () => {

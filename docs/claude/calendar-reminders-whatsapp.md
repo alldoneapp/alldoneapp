@@ -96,7 +96,10 @@ by `utils/meetingTimeToday.test.js`:
   collapse by task id and by name + timing. Microsoft `dateTime` has no offset and is read in its own
   `timeZone` (UTC), not in the reader's zone.
 - **Unknown is never zero.** No connected calendar → only "Working time 8h · Connect calendar"
-  (link to the default project's properties). Listeners not answered → "…". A listener error →
+  (link to Settings > Integrations: calendars are account-level connections there since the July
+  2026 integrations overhaul; the project properties have had no calendar section since, so do not
+  link there). The working-hours label links to Settings > Customizations (meeting link settings).
+  Listeners not answered → "…". A listener error →
   "Calendar data unavailable". `checkIfCalendarConnected` now reports `syncing/synced/failed` to
   `utils/calendarSyncStatus.js`; a failed pull flags the figures, a running one dims them.
 - Known gap: a Google event marked "free" (`transparency: transparent`) still counts, because the
