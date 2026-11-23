@@ -13,8 +13,8 @@ const { getCalendarEventBounds } = require('../shared/meetingReview/calendarEven
  * the app reads itself (users/{uid}/meetingReviews).
  *
  * Two queries per project:
- *   - the indexed one on `calendarData.startMs`, written by the sync since AT-3137
- *     (index: tasks userId ASC + calendarData.startMs ASC)
+ *   - the range query on `calendarData.startMs`, written by the sync since AT-3137. It uses the
+ *     automatic single-field index (no composite index); the owner filter runs in code
  *   - a bounded legacy one for tasks synced before that, which only carry ISO strings. It reuses
  *     the existing (isPublicFor, inDone, userId, dueDate) index: a calendar task's dueDate is set
  *     on the day it is synced and moved forward by postponing, so open tasks are read from
@@ -84,8 +84,10 @@ const overlapsRange = (calendarData, fromMs, toMs) => {
 
 async function loadProjectMeetingTasks(db, projectId, userId, fromMs, toMs, nowMs = Date.now()) {
     const tasks = db.collection(`items/${projectId}/tasks`)
+    // A range on ONE field only, so Firestore's automatic single-field index serves it and no
+    // composite index has to be deployed by hand (ci-cd.md: CI never creates indexes). Other members'
+    // calendar tasks of the period may be read here; they are dropped below and never returned.
     const indexed = tasks
-        .where('userId', '==', userId)
         .where('calendarData.startMs', '>=', fromMs - DAY_MS)
         .where('calendarData.startMs', '<', toMs)
         .limit(MAX_TASKS_PER_QUERY)

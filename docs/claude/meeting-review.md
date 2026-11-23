@@ -71,10 +71,16 @@ differently ("Meetings in working time" vs "Recorded calendar time").
   done task and the detail section ("Rating (only visible to you)") rate later.
 - Statistics: Settings → Meeting time (`/settings/meeting-time`). Data comes from the callable
   `getMeetingTimeStatsDataSecondGen` (`functions/MeetingReview/meetingStatsData.js`): caller only,
-  membership from `projects/{pid}.userIds`, own tasks only, ≤ 45 days, indexed on
-  `userId + calendarData.startMs` (new composite index) plus a bounded legacy query over the
+  membership from `projects/{pid}.userIds`, own tasks only, ≤ 45 days, a range on
+  `calendarData.startMs` alone (Firestore's automatic single-field index; the owner filter runs in
+  code) plus a bounded legacy query over the
   existing `(isPublicFor, inDone, userId, dueDate)` index for tasks synced before the new fields.
   Projects that fail are reported, never silently dropped.
+- **No composite index on purpose.** The first version filtered `userId ==` plus the range and
+  declared a composite index; CI never creates indexes (`ci-cd.md`), so the master pipeline's
+  `check:firestore:indexes:production` failed after the merge (pipeline 3104346584) and the query
+  would have failed in production. A single-field range needs nothing deployed by hand. Keep it
+  that way unless someone creates the index interactively first.
 
 Pinned by `functions/shared/meetingReview/*.test.js`, `functions/MeetingReview/meetingStatsData.test.js`,
 the AT-3137 cases in `calendarTasks.test.js`, `calendarProjectClassifier.test.js`,

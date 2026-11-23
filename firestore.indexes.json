@@ -4897,15 +4897,6 @@
                 { "fieldPath": "ownerId", "order": "ASCENDING" },
                 { "fieldPath": "completionMilestoneDate", "order": "ASCENDING" }
             ]
-        },
-        {
-            "__comment__": "AT-3137 meeting time statistics: the caller's calendar tasks in a period (functions/MeetingReview/meetingStatsData.js)",
-            "collectionGroup": "tasks",
-            "queryScope": "COLLECTION",
-            "fields": [
-                { "fieldPath": "userId", "order": "ASCENDING" },
-                { "fieldPath": "calendarData.startMs", "order": "ASCENDING" }
-            ]
         }
     ],
     "fieldOverrides": [
