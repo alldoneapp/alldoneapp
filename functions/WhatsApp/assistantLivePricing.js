@@ -1,6 +1,6 @@
 // Shared with the call UI. Voice is duration-priced; backend reasoning uses the
 // current assistant's normal model rate. Rates are frozen on each call/run.
-const LIVE_MODEL = 'gpt-live-1.1'
+const LIVE_MODEL = 'gpt-live-1'
 // 10,000 Gold costs EUR 49 (confirmed 2026-09-11). 40 Gold/min is EUR 0.196
 // retail against USD 0.05/min upstream, leaving room for tax, fees and hosting.
 const LIVE_GOLD_PER_MINUTE = 40

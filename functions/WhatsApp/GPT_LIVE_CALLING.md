@@ -1,12 +1,6 @@
 # GPT-Live calls (in-app, phone and WhatsApp)
 
-Every assistant call uses `gpt-live-1.1` (since AT-3144, 2026-11; before that `gpt-live-1`) with client delegation. In-app calls connect over WebRTC; phone and WhatsApp calls reach OpenAI over SIP (Twilio → `sip:<project>@sip.api.openai.com`) and are answered as Live sessions. All three share one controller (`assistantLiveController.js`), one prompt and one price.
-
-## Model version (AT-3144, 2026-11-23)
-
-`gpt-live-1.1` was released in the API on 2026-11-19 (OpenAI changelog; listed as a current model, not a preview, no dated snapshot). OpenAI describes the move from `gpt-live-1` as a model swap in an existing Live session configuration; 1.1 uses the same context events, endpoint (`/v1/live/sessions`) and price ($0.05/min active), so `LIVE_GOLD_PER_MINUTE` stays 40. It has its **own concurrent-session limit**, separate from `gpt-live-1`. The SIP guide's examples still name `gpt-live-1`; a real phone and WhatsApp call on 1.1 is part of the rollout check. The code default for `OPENAI_REALTIME_MODEL` moved from `gpt-realtime-2` to `gpt-realtime-2.1` (same token prices; an env value still wins).
-
-**Standby is deliberately not enabled.** OpenAI's standby ($0.02/min) only exists for WebRTC sessions created with `wake_policy: { type: 'speech' }` plus `idle_timeout_s`; both are fixed at creation, inference does not start until the caller speaks (which breaks our assistant-first greeting), and the docs do not say whether a delegated answer is spoken during a pause. Muting the microphone does **not** enter standby and is billed at the active rate, and there is no client event to pause. Provider usage reports only total `usage.seconds`, so standby billing would need our own `session.paused`/`session.resumed` timing. Decided with the product owner to treat standby (and a possible real pause button) as a follow-up.
+Every assistant call uses `gpt-live-1` with client delegation. In-app calls connect over WebRTC; phone and WhatsApp calls reach OpenAI over SIP (Twilio → `sip:<project>@sip.api.openai.com`) and are answered as Live sessions. All three share one controller (`assistantLiveController.js`), one prompt and one price.
 
 ## Phone and WhatsApp (SIP)
 
@@ -22,7 +16,7 @@ Differences from a browser call, all keyed on the session's `channel`:
 
 **Webhook subscription:** the OpenAI project webhook must be subscribed to `live.transport.incoming` with Live SIP access enabled, and Twilio must route TLS/SRTP to `OPENAI_PROJECT_ID`. Verify this before rolling out. `realtime.call.incoming` is acknowledged with an actionable error log but never accepts, rejects or consumes the shared SIP route; only Live owns that decision. This permits a Live event to arrive before or after the old event for the same call. Remove the Realtime subscription once Live routing is verified and old deliveries have drained. An old-only subscription fails the call rather than silently using Realtime. Failed Twilio Dial actions give callers a setup/support message.
 
-All new session records freeze `voiceProvider: gpt-live`, `voiceModel: gpt-live-1.1` (`LIVE_MODEL` in `assistantLivePricing.js`) and Live billing defaults. Records created before AT-3144 keep `voiceModel: gpt-live-1`; both are Live calls with the same protocol and price. `OPENAI_REALTIME_MODEL` and transcription overrides cannot change that routing; they remain for independent recaps and legacy-call draining. A worker with missing/unknown provider metadata fails with `gpt_live_required`. Only already accepted legacy sessions with `acceptCompletedAt` and no provider can drain on the old controller.
+All new session records freeze `voiceProvider: gpt-live`, `voiceModel: gpt-live-1` and Live billing defaults. `OPENAI_REALTIME_MODEL` and transcription overrides cannot change that routing; they remain for independent recaps and legacy-call draining. A worker with missing/unknown provider metadata fails with `gpt_live_required`. Only already accepted legacy sessions with `acceptCompletedAt` and no provider can drain on the old controller.
 
 **Configuration errors:** SIP requires `OPEN_AI_KEY` (or `OPENAI_API_KEY`), `OPENAI_PROJECT_ID`, `OPENAI_WEBHOOK_SECRET` and `WHATSAPP_CALL_ROUTING_SECRET`. App calls only require the key. Missing fields are named in operator diagnostics without printing values; app key/model-access failures return an actionable `unavailable` error. There is no Realtime fallback on Live accept, startup or controller failure. A webhook retry may enqueue only after confirmed Live acceptance.
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
@@ -21,9 +21,9 @@ const SectionNavigation = () => {
 
 // AT-3136: required on use for the same reason. The meeting figures read Firestore, and only the
 // task boards and My Day show them.
-const MeetingTime = ({ mobile, lineWidth }) => {
+const MeetingTime = () => {
     const AllProjectsMeetingTime = require('./AllProjectsMeetingTime').default
-    return <AllProjectsMeetingTime mobile={mobile} lineWidth={lineWidth} />
+    return <AllProjectsMeetingTime />
 }
 
 // AT-3136: `showMeetingTime` is passed by the task boards and My Day only (the line also heads
@@ -45,25 +45,23 @@ export default function AllProjectsLine({
     const inOpenSection = taskViewToggleSection === 'Open'
     // AT-3132: on mobile sizes (smallScreenNavigation) the avatar, title and grouping toggle sit
     // centred on the whole line as one block; on desktop they stay left aligned.
-    // AT-3136: where the line shows the time to work (task boards, My Day) it stays in this one row
-    // on mobile too: "All projects" left aligned, the figures right aligned beside the menu. So the
-    // title is not centred there (no mirroring spacer, which would leave the title no room); the
-    // other views keep the centred title (product decision on AT-3136, review of !938).
-    const centerTitle = mobile && !showMeetingTime
+    const centerTitle = mobile
     const [actionsWidth, onActionsLayout] = useMirroredActionsWidth()
-    // The width of the whole line decides how much of the time display fits (getMeetingTimeDensity).
-    const [lineWidth, setLineWidth] = useState(0)
-    const onLineLayout = useCallback(({ nativeEvent }) => {
-        const next = Math.floor(nativeEvent?.layout?.width || 0)
-        setLineWidth(previous => (previous === next ? previous : next))
-    }, [])
+    // AT-3136: on mobile sizes the meeting figures get their own right-aligned row under the line.
+    // In the actions cluster they would be mirrored by the centring spacer (AT-3132) and leave the
+    // title no room, so "All projects" and the figures were drawn over each other at 390px.
+    const meetingTimeBelow = showMeetingTime && mobile
+    const meetingTimeInLine = showMeetingTime && !mobile
 
     return (
         <>
             <HeaderActionsContext.Provider value={true}>
                 <View
-                    style={[localStyles.container, localStyles.hierarchyHeader, { marginBottom: bottomSpacing }]}
-                    onLayout={showMeetingTime && mobile ? onLineLayout : undefined}
+                    style={[
+                        localStyles.container,
+                        localStyles.hierarchyHeader,
+                        { marginBottom: meetingTimeBelow ? 4 : bottomSpacing },
+                    ]}
                 >
                     {centerTitle && <MirroredActionsSpacer width={actionsWidth} testID="all-projects-line-mirror" />}
                     <View
@@ -78,11 +76,7 @@ export default function AllProjectsLine({
                             externalStyle={localStyles.avatar}
                         />
                         <View style={[localStyles.titleAndGrouping, mobile && localStyles.mobileTitleAndGrouping]}>
-                            {/* Bounded, so a narrow line truncates "All projects" instead of drawing it under
-                                the time display (the mobile column aligns its children at their own width). */}
-                            <View style={localStyles.titleBound}>
-                                <AllProjectData />
-                            </View>
+                            <AllProjectData />
                             <ToggleByTime
                                 containerStyle={[localStyles.toggleByTimeInline, mobile && localStyles.mobileGrouping]}
                             />
@@ -91,13 +85,9 @@ export default function AllProjectsLine({
                     <View
                         testID="all-projects-line-actions"
                         onLayout={centerTitle ? onActionsLayout : undefined}
-                        style={[
-                            localStyles.leftContainer,
-                            { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 },
-                            showMeetingTime && localStyles.actionsWithMeetingTime,
-                        ]}
+                        style={[localStyles.leftContainer, { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}
                     >
-                        {showMeetingTime && <MeetingTime mobile={mobile} lineWidth={lineWidth} />}
+                        {meetingTimeInLine && <MeetingTime />}
                         {customRight}
                         {showActions && inOpenSection && (
                             <TaskHeaderMoreButton
@@ -112,6 +102,11 @@ export default function AllProjectsLine({
                     </View>
                 </View>
             </HeaderActionsContext.Provider>
+            {meetingTimeBelow && (
+                <View style={[localStyles.meetingTimeRow, { marginBottom: bottomSpacing }]} testID="meeting-time-row">
+                    <MeetingTime />
+                </View>
+            )}
             {annaOnTop && <SectionNavigation />}
         </>
     )
@@ -145,11 +140,6 @@ const localStyles = StyleSheet.create({
         flexShrink: 1,
         minWidth: 0,
     },
-    titleBound: {
-        flexShrink: 1,
-        minWidth: 0,
-        maxWidth: '100%',
-    },
     // The title and the grouping toggle stay left aligned to each other inside the centred block.
     mobileTitleAndGrouping: {
         flexDirection: 'column',
@@ -167,9 +157,6 @@ const localStyles = StyleSheet.create({
         // Never squeezed by the title block on its left: the title shrinks and truncates instead,
         // otherwise the actions' own labels overflow this container and draw over it (AT-2263).
         flexShrink: 0,
-    },
-    actionsWithMeetingTime: {
-        marginLeft: 8,
     },
     rightContainer: {
         flex: 1,
@@ -195,6 +182,11 @@ const localStyles = StyleSheet.create({
         minHeight: 32,
         borderRadius: 8,
         backgroundColor: alphaColor(themed.Surface, 0.85),
+    },
+    meetingTimeRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        paddingHorizontal: 12,
     },
     toggleByTimeInline: {
         marginTop: 0,

@@ -6832,6 +6832,24 @@ exports.postponeProjectTasksWithUndoSecondGen = onCall(
     }
 )
 
+// AT-3142: apply "Today's plan" — priorities of the planned tasks, postpones along the existing
+// ladder (Someday only when confirmed) and one undo record, in one transaction.
+exports.applyDailyPlanSecondGen = onCall(
+    { timeoutSeconds: 120, memory: '512MiB', region: 'europe-west1', cors: true },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'Authentication required')
+        try {
+            const { executeApplyDailyPlan } = require('./Tasks/dailyPlanService')
+            return await executeApplyDailyPlan({ actorUserId: request.auth.uid, data: request.data })
+        } catch (error) {
+            const supportedCodes = new Set(['invalid-argument', 'permission-denied', 'failed-precondition'])
+            const code = supportedCodes.has(error.code) ? error.code : 'internal'
+            console.error('[applyDailyPlanSecondGen] Failed', { userId: request.auth.uid, code, error: error.message })
+            throw new HttpsError(code, code === 'internal' ? 'Failed to apply the plan' : error.message)
+        }
+    }
+)
+
 exports.postponeGoalWithUndoSecondGen = onCall(
     {
         timeoutSeconds: 60,

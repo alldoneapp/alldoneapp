@@ -86,6 +86,7 @@ const {
     shouldAutoPostponeTask,
     mergeTaskCandidate,
     getDateToMoveTaskInAutoPostpone,
+    isHeldFromSomeday,
     autoPostponeTaskCloud,
     processUserAutoPostpone,
     checkAndAutoPostponeTasks,
@@ -371,6 +372,41 @@ describe('autoPostponeTasksCloud', () => {
             processedUsers: 0,
             skippedUsers: 0,
             postponedTasks: 0,
+        })
+    })
+
+    describe('AT-3142 Someday holds from the daily plan', () => {
+        const now = Date.UTC(2026, 10, 23, 9)
+        const timezoneContext = { zoneName: null, offsetMinutes: 60 }
+        const candidate = (timesPostponed, isObservedTask = false) => ({
+            task: { id: 'task-1', timesPostponed },
+            isObservedTask,
+        })
+
+        test('holds only the Someday step of a task the user kept in their latest plan', () => {
+            const holds = new Set(['project-1:task-1'])
+            const args = { projectId: 'project-1', somedayHoldTaskKeys: holds, timezoneContext, now }
+            expect(isHeldFromSomeday({ ...args, eligibleTask: candidate(6) })).toBe(true)
+            expect(isHeldFromSomeday({ ...args, eligibleTask: candidate(9) })).toBe(true)
+            // Earlier ladder steps still run as before.
+            expect(isHeldFromSomeday({ ...args, eligibleTask: candidate(5) })).toBe(false)
+            expect(isHeldFromSomeday({ ...args, eligibleTask: candidate(0) })).toBe(false)
+            // Another task is not held.
+            expect(isHeldFromSomeday({ ...args, projectId: 'project-2', eligibleTask: candidate(6) })).toBe(false)
+            expect(isHeldFromSomeday({ ...args, somedayHoldTaskKeys: new Set(), eligibleTask: candidate(6) })).toBe(
+                false
+            )
+        })
+
+        test('fails closed when the plan record could not be read', () => {
+            const args = { projectId: 'project-1', somedayHoldTaskKeys: null, timezoneContext, now }
+            expect(isHeldFromSomeday({ ...args, eligibleTask: candidate(6) })).toBe(true)
+            expect(isHeldFromSomeday({ ...args, eligibleTask: candidate(2) })).toBe(false)
+        })
+
+        test('never holds observed tasks (their ladder never reaches Someday)', () => {
+            const args = { projectId: 'project-1', somedayHoldTaskKeys: null, timezoneContext, now }
+            expect(isHeldFromSomeday({ ...args, eligibleTask: candidate(8, true) })).toBe(false)
         })
     })
 })
