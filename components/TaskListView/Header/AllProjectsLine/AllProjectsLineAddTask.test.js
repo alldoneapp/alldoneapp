@@ -11,6 +11,7 @@ jest.mock('../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHea
 jest.mock('../../ToggleByTime', () => 'ToggleByTime')
 jest.mock('../../EmailLine/EmailLabelChip', () => 'EmailLabelChip')
 jest.mock('../../EmailLine/useEmailLabelGroups', () => jest.fn())
+jest.mock('./AllProjectsMeetingTime', () => ({ __esModule: true, default: 'AllProjectsMeetingTime' }))
 
 describe('AllProjectsLine task actions', () => {
     beforeEach(() => {
@@ -57,5 +58,12 @@ describe('AllProjectsLine task actions', () => {
         expect(tree.root.findAllByType('Avatar')).toHaveLength(1)
         expect(tree.root.findAllByType('AllProjectData')).toHaveLength(1)
         expect(tree.root.findAllByType('More')).toHaveLength(1)
+    })
+
+    it('shows the meeting time only where a view asks for it (AT-3136)', () => {
+        expect(renderer.create(<AllProjectsLine />).root.findAllByType('AllProjectsMeetingTime')).toHaveLength(0)
+        expect(
+            renderer.create(<AllProjectsLine showMeetingTime />).root.findAllByType('AllProjectsMeetingTime')
+        ).toHaveLength(1)
     })
 })

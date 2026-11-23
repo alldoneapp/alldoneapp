@@ -52,16 +52,12 @@ jest.mock('../../../../UIComponents/FloatModals/RecurringTaskDateBasisModal/Recu
 }))
 jest.mock('./EmailTaskCompletionModal', () => 'EmailTaskCompletionModal')
 jest.mock('../../../../../i18n/TranslationService', () => ({ translate: text => text }))
-jest.mock('../../../../../utils/meetingReview/offerMeetingReview', () => ({
-    offerMeetingReviewAfterCompletion: jest.fn(),
-}))
 
 import { moveTasksFromOpen, setTaskStatus } from '../../../../../utils/backends/Tasks/tasksFirestore'
 import { COMPLETION_HOLD_MS, RETAINED_HOLD_MS } from '../taskCompletionMotion'
 import { performEmailLineAction } from '../../../../../utils/backends/EmailLine/emailLineBackend'
 import { getUserWorkflow } from '../../../../ContactsView/Utils/ContactsHelper'
 import CheckBoxWrapper from './CheckBoxWrapper'
-import { offerMeetingReviewAfterCompletion } from '../../../../../utils/meetingReview/offerMeetingReview'
 
 const baseTask = {
     id: 'task-1',
@@ -105,46 +101,6 @@ describe('CheckBoxWrapper task completion', () => {
     afterEach(() => {
         consoleErrorSpy.mockRestore()
         jest.useRealTimers()
-    })
-
-    test('AT-3137: completing a calendar task offers the meeting rating only after the completion is written', async () => {
-        offerMeetingReviewAfterCompletion.mockClear()
-        const calendarTask = { ...baseTask, genericData: false, calendarData: { startMs: 1, endMs: 2 } }
-        const tree = renderWrapper(calendarTask)
-
-        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
-        expect(offerMeetingReviewAfterCompletion).not.toHaveBeenCalled()
-
-        await act(async () => {
-            jest.runAllTimers()
-            await Promise.resolve()
-        })
-        expect(moveTasksFromOpen).toHaveBeenCalledWith(
-            'project-1',
-            calendarTask,
-            'done',
-            null,
-            null,
-            { open: 15 },
-            'checkbox-1',
-            undefined
-        )
-        expect(offerMeetingReviewAfterCompletion).toHaveBeenCalledWith(calendarTask, 'project-1')
-    })
-
-    test('AT-3137: a failed completion never offers the rating', async () => {
-        offerMeetingReviewAfterCompletion.mockClear()
-        moveTasksFromOpen.mockRejectedValueOnce(new Error('offline'))
-        const calendarTask = { ...baseTask, genericData: false, calendarData: { startMs: 1, endMs: 2 } }
-        const tree = renderWrapper(calendarTask)
-
-        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
-        await act(async () => {
-            jest.runAllTimers()
-            await Promise.resolve()
-            await Promise.resolve()
-        })
-        expect(offerMeetingReviewAfterCompletion).not.toHaveBeenCalled()
     })
 
     test('regular tasks keep their direct completion behavior', async () => {

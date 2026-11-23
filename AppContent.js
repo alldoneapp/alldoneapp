@@ -41,7 +41,6 @@ import URLTrigger from './URLSystem/URLTrigger'
 import { unwatch } from './utils/backends/firestore'
 import Shortcuts from './components/UIComponents/ShortcutCheatSheet/Shortcuts'
 import NewDayPopupHost from './components/UIComponents/FloatModals/NewDayPopupHost'
-import MeetingReviewHost from './components/MeetingReview/MeetingReviewHost'
 import MyDayTasksLoaders from './components/MyDayView/MyDayLoaders/MyDayTasksLoaders'
 import { getConnectingMessage } from './utils/FunnyLoadingMessages'
 import AnalyticsConsentManager from './components/Analytics/AnalyticsConsentManager'
@@ -476,8 +475,6 @@ export default function AppContent() {
                             {/* One New Day instance for every layout: the Alldone pane in App mode, the whole
                                 window in Assistant and Both (AT-3083). Never unmounted by a layout change. */}
                             <NewDayPopupHost />
-                            {/* AT-3137: rating sheet after completing a calendar task (the row unmounts). */}
-                            <MeetingReviewHost />
                             <Shortcuts />
                             <InitLoadView />
                             {heavyComponentsLoaded && (

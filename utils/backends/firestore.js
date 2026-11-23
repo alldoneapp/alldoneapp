@@ -7,6 +7,12 @@ import moment from 'moment'
 import v4 from 'uuid/v4'
 import * as Y from 'yjs'
 import { has as hasProperty, isEmpty, isEqual, set as setProperty, difference, uniq, chunk, get, forEach } from 'lodash'
+import {
+    setCalendarSyncStatus,
+    CALENDAR_SYNC_SYNCING,
+    CALENDAR_SYNC_SYNCED,
+    CALENDAR_SYNC_FAILED,
+} from '../calendarSyncStatus'
 
 import TasksHelper, {
     BACKLOG_DATE_NUMERIC,
@@ -8037,6 +8043,8 @@ export async function checkIfCalendarConnected(projectId) {
 
     // Mark this project as synced before starting the sync
     calendarSyncCache.set(projectId, Date.now())
+    // AT-3136: the meeting-time line must not present a pending or failed pull as verified.
+    setCalendarSyncStatus(projectId, CALENDAR_SYNC_SYNCING)
 
     try {
         if (__DEV__) {
@@ -8061,7 +8069,9 @@ export async function checkIfCalendarConnected(projectId) {
                 JSON.stringify(result, null, 2)
             )
         }
+        setCalendarSyncStatus(projectId, CALENDAR_SYNC_SYNCED)
     } catch (error) {
+        setCalendarSyncStatus(projectId, CALENDAR_SYNC_FAILED)
         console.error('[Calendar Sync] Error syncing calendar events:', error?.message || error)
     }
 }

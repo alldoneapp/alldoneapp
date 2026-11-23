@@ -53,7 +53,7 @@ export default function MyDayOpenTasks() {
 
     return (
         <>
-            <AllProjectsLine />
+            <AllProjectsLine showMeetingTime />
             <AllProjectsAssistantLine />
             {/* AT-2445: My Day is where the last task of the day is usually ticked off, and until
                 now clearing it here celebrated nothing — the congratulation appeared silently and

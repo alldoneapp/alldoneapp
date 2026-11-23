@@ -158,8 +158,6 @@ async function routeCalendarEventsToProjects({
                       : '',
                 goldSpent: goldToCharge,
                 tokenUsage,
-                // AT-3137: private meeting category suggestion from the same model call.
-                ...(classifierResult.meetingCategory ? { meetingCategory: classifierResult.meetingCategory } : {}),
             }
         } catch (error) {
             logRouting('Failed routing calendar event; falling back to connected project', {

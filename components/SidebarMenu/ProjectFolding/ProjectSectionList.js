@@ -24,7 +24,6 @@ import Wiki from './SectionItems/Wiki'
 import Artifacts from './SectionItems/Artifacts'
 import ProjectSettings from './SectionItems/ProjectSettings'
 import AllProjectsSettings from './SectionItems/AllProjectsSettings'
-import SectionDivider from './SectionDivider'
 import NavigationService from '../../../utils/NavigationService'
 import TasksBoards from './SectionItems/TasksBoards'
 import { isSectionsTopSidebarNavigation, isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
@@ -47,9 +46,6 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
     const allProjectsRows = sectionsOnly && inAllProjects
     const onSettings = sectionsOnly && route === (inAllProjects ? 'SettingsView' : 'ProjectDetailedView')
     const ownProject = !!projectData && !isShared
-    // Artifacts, Wiki and the settings row follow Chats only here; a quiet line (AT-3139) sets them
-    // apart from the main sections. Where nothing follows Chats there is nothing to separate.
-    const secondaryRows = ownProject || allProjectsRows
 
     const projectColor = projectData?.color || PROJECT_COLOR_DEFAULT
     const simpleNavigation = isSimpleSidebarNavigation(sidebarNavigationMode)
@@ -124,8 +120,7 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
                 projectId={projectData?.id}
                 inAllProjects={inAllProjects}
             />
-            {secondaryRows && <SectionDivider projectColor={projectColor} />}
-            {secondaryRows && (
+            {(ownProject || allProjectsRows) && (
                 <Artifacts
                     projectId={projectData?.id}
                     projectColor={projectColor}
@@ -135,7 +130,7 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
                     }
                 />
             )}
-            {secondaryRows && (
+            {(ownProject || allProjectsRows) && (
                 <Wiki
                     projectId={projectData?.id}
                     projectColor={projectColor}

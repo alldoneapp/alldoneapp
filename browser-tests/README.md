@@ -711,17 +711,3 @@ filtered row selects exactly that row.
 ```bash
 node browser-tests/at3100/run.js
 ```
-
-### `at3140/` — deleting the text line under an image keeps the image
-
-Mounts the real `CustomTextInput3` with the chat composer's formats and the REAL
-`customImageFormat` / `videoFormat` blots, drops a real image (or video) file on the editor and
-types below it. Shift+Home then Backspace / Delete / typing must remove only that text, and Home
-must put the caret after the image; extending past the line start (Shift+Left), Shift+Up, and
-Backspace at the start of the text line must still delete the image. It also checks that the media
-embed adds no empty line above or below the picture. `--unfixed` turns the AT-3140 CSS rule off
-in the page and expects the five defect cases to reproduce.
-
-```bash
-node browser-tests/at3140/run.js
-```

@@ -72,6 +72,36 @@ slow (32s for 7 events on the reporting account), so the meetings land a beat af
 paints. Deploying this adds a Cloud Scheduler job; per the runtime note above, confirm the
 function actually exists after the deploy rather than trusting the deploy summary.
 
+## Meeting time and calendar-free time in the All projects line (AT-3136)
+
+The task boards and My Day show "Meetings 2h 30m · Calendar-free 5h 30m" on the right of the All
+projects line (`AllProjectsLine showMeetingTime` → `AllProjectsMeetingTime`, required on use so
+Notes/Chats/Contacts/Goals never load it). Rules live in `utils/meetingTimeToday.js` and are pinned
+by `utils/meetingTimeToday.test.js`:
+
+- **Working hours are NOT a My Day setting.** There is none. The only stored working day is the
+  public meeting link's `workingHoursStart/End` (`users/{uid}/bookingSettings/default`), which
+  Anna's availability search also uses. A user who never saved it gets 09:00–17:00, labelled
+  "Default 9–17" and linked to the settings, never presented as their own choice. The clock is read
+  in the device's local zone for the local today; the doc's `timeZone` is ignored because the
+  settings screen never sends one and the server fills it from the integer `users/{uid}.timezone`,
+  i.e. often "UTC".
+- **Meetings are the synced meeting tasks** (`calendarData`), from every active project because
+  routing puts a meeting wherever it belongs. Two listeners per project, both clause-for-clause
+  identical to queries the board already runs (`getOpenTasksQuery` state 0 and
+  `getTasksCompletedTodayQuery`), so Firestore shares the server targets; the done-today stream keeps
+  a meeting that was ticked off this morning in the whole-day total. Cancelled/declined events never
+  become tasks (`filterEvents`). All-day and multi-day timed events are not busy time (same as
+  `normalizeGoogleBusyInterval`). Intervals are clipped to the window and unioned; duplicates
+  collapse by task id and by name + timing. Microsoft `dateTime` has no offset and is read in its own
+  `timeZone` (UTC), not in the reader's zone.
+- **Unknown is never zero.** No connected calendar → only "Working time 8h · Connect calendar"
+  (link to the default project's properties). Listeners not answered → "…". A listener error →
+  "Calendar data unavailable". `checkIfCalendarConnected` now reports `syncing/synced/failed` to
+  `utils/calendarSyncStatus.js`; a failed pull flags the figures, a running one dims them.
+- Known gap: a Google event marked "free" (`transparency: transparent`) still counts, because the
+  sync does not store `transparency` on `calendarData`.
+
 ## Task reminders and the channel they come back on (AT-2211)
 
 A "reminder" is not its own entity — it is `dueDate` + `alertEnabled` + the `alertTriggered`

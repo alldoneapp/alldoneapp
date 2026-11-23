@@ -14,10 +14,8 @@ jest.mock('../Assistant/assistantModelRuntime', () => jest.requireMock('../Assis
 
 const assistantHelper = require('../Assistant/assistantHelper')
 const {
-    CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT,
     classifyCalendarEventProject,
     coerceCalendarProjectResult,
-    coerceMeetingCategorySuggestion,
     normalizeCalendarEventForClassifier,
 } = require('./calendarProjectClassifier')
 
@@ -437,45 +435,5 @@ describe('calendarProjectClassifier', () => {
                 confidence: 0.95,
             })
         )
-    })
-})
-
-describe('meeting category in the routing run (AT-3137)', () => {
-    test('the prompt asks for a purpose category and forbids usefulness judgements and invented outcomes', () => {
-        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).toMatch(/meetingCategory/)
-        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).toMatch(/Never judge whether the meeting is useful/)
-        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).toMatch(/never invent outcomes/)
-    })
-
-    test('keeps a valid category also when no project matched, as medium/low only', () => {
-        const result = coerceCalendarProjectResult(
-            {
-                matched: false,
-                projectId: null,
-                confidence: 0.2,
-                reasoning: 'No project.',
-                meetingCategory: 'status',
-                meetingCategoryConfidence: 0.95,
-                meetingCategorySignals: ['Title contains "Weekly"', 'Recurring weekly'],
-            },
-            projectDefinitions,
-            0.7
-        )
-        expect(result.matched).toBe(false)
-        expect(result.meetingCategory).toEqual({
-            category: 'status',
-            confidence: 'medium',
-            signals: ['Title contains "Weekly"', 'Recurring weekly'],
-        })
-    })
-
-    test('drops unknown categories and any "why" line that judges the meeting', () => {
-        expect(coerceMeetingCategorySuggestion({ meetingCategory: 'pointless' })).toBeNull()
-        const result = coerceMeetingCategorySuggestion({
-            meetingCategory: 'status',
-            meetingCategoryConfidence: 0.3,
-            meetingCategorySignals: ['Wahrscheinlich überflüssig', 'Probably a waste of time', '9 Teilnehmer', 42],
-        })
-        expect(result).toEqual({ category: 'status', confidence: 'low', signals: ['9 Teilnehmer'] })
     })
 })

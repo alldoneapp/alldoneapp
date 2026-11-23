@@ -19,7 +19,21 @@ const SectionNavigation = () => {
     return <RootSectionNavigation useOuterMargins={false} />
 }
 
-export default function AllProjectsLine({ showActions = true, customRight, bottomSpacing = 16 }) {
+// AT-3136: required on use for the same reason. The meeting figures read Firestore, and only the
+// task boards and My Day show them.
+const MeetingTime = () => {
+    const AllProjectsMeetingTime = require('./AllProjectsMeetingTime').default
+    return <AllProjectsMeetingTime />
+}
+
+// AT-3136: `showMeetingTime` is passed by the task boards and My Day only (the line also heads
+// Notes, Chats, Contacts and Goals, where the meeting figures are not wanted).
+export default function AllProjectsLine({
+    showActions = true,
+    customRight,
+    bottomSpacing = 16,
+    showMeetingTime = false,
+}) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
@@ -62,6 +76,7 @@ export default function AllProjectsLine({ showActions = true, customRight, botto
                         onLayout={centerTitle ? onActionsLayout : undefined}
                         style={[localStyles.leftContainer, { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}
                     >
+                        {showMeetingTime && <MeetingTime />}
                         {customRight}
                         {showActions && inOpenSection && (
                             <TaskHeaderMoreButton

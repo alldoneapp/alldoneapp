@@ -19,7 +19,7 @@ export default function MyDayWorkflowTasks() {
 
     return (
         <>
-            <AllProjectsLine />
+            <AllProjectsLine showMeetingTime />
             <AllProjectsAssistantLine />
             {showEmptyInbox && <AllProjectsEmptyInbox />}
             {!showEmptyInbox && (
