@@ -21,6 +21,7 @@ import ProjectsInvitations from './Invitations/ProjectsInvitations'
 import ProjectInvitationPopup from '../UIComponents/ProjectInvitation/ProjectInvitationPopup'
 import UserStatistics from './Statistics/UserStatistics'
 import UserHappiness from './Happiness/UserHappiness'
+import MeetingTimeStatistics from '../MeetingReview/MeetingTimeStatistics'
 import UserOKRs from './OKRs/UserOKRs'
 import CustomScrollView from '../UIControls/CustomScrollView'
 import ShortcutsSection from './Shortcuts/ShortcutsSection'
@@ -35,6 +36,7 @@ import {
     DV_TAB_SETTINGS_PROFILE,
     DV_TAB_SETTINGS_EXPORT,
     DV_TAB_SETTINGS_HAPPINESS,
+    DV_TAB_SETTINGS_MEETING_TIME,
     DV_TAB_SETTINGS_OKRS,
     DV_TAB_SETTINGS_MCP,
     DV_TAB_SETTINGS_INTEGRATIONS,
@@ -103,6 +105,7 @@ const SettingsView = ({ navigation }) => {
         DV_TAB_SETTINGS_PROJECTS,
         DV_TAB_SETTINGS_INVITATIONS,
         DV_TAB_SETTINGS_STATISTICS,
+        DV_TAB_SETTINGS_MEETING_TIME,
         DV_TAB_SETTINGS_HAPPINESS,
         DV_TAB_SETTINGS_OKRS,
         DV_TAB_SETTINGS_SKILLS,
@@ -184,6 +187,8 @@ const SettingsView = ({ navigation }) => {
                                     return <ProjectsInvitations />
                                 case DV_TAB_SETTINGS_STATISTICS:
                                     return <UserStatistics />
+                                case DV_TAB_SETTINGS_MEETING_TIME:
+                                    return <MeetingTimeStatistics />
                                 case DV_TAB_SETTINGS_HAPPINESS:
                                     return <UserHappiness />
                                 case DV_TAB_SETTINGS_OKRS:

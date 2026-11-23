@@ -171,6 +171,37 @@ describe('calendarTasks routing', () => {
         )
     })
 
+    test('AT-3137: stores numeric bounds, participant counts and the own answer, but no addresses', async () => {
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            null,
+            {
+                ...event,
+                attendees: [
+                    { email: 'me@company.com', self: true, responseStatus: 'tentative' },
+                    { email: 'colleague@company.com' },
+                    { email: 'client@customer.com' },
+                    { email: 'room@resource.calendar.google.com', resource: true },
+                ],
+                organizer: { email: 'client@customer.com' },
+            },
+            'user-1',
+            'me@company.com',
+            0
+        )
+
+        const written = admin.__mock.refs.get('items/target-project/tasks/event-1').set.mock.calls[0][0]
+        expect(written.calendarData).toMatchObject({
+            startMs: Date.parse('2026-04-24T12:00:00Z'),
+            endMs: Date.parse('2026-04-24T13:00:00Z'),
+            attendeeCount: 2,
+            externalAttendeeCount: 1,
+            selfResponseStatus: 'tentative',
+        })
+        expect(JSON.stringify(written.calendarData)).not.toMatch(/colleague|client@|customer\.com/)
+    })
+
     test('moves unpinned existing tasks to the routed target project', async () => {
         const existingTask = {
             id: 'event-1',
@@ -705,6 +736,12 @@ describe('AT-2351 - the sync writes a plain arrival index and never re-sorts a m
             email: 'me@example.com',
             provider: 'google',
             originalProjectId: 'connected-project',
+            // AT-3137 fields, as a sync since that change wrote them (a task synced before it
+            // is updated once to gain them).
+            startMs: Date.parse(event.start.dateTime),
+            endMs: Date.parse(event.end.dateTime),
+            attendeeCount: 0,
+            externalAttendeeCount: 0,
         },
         name: event.summary,
         extendedName: event.summary,
@@ -795,6 +832,28 @@ describe('AT-2351 - the sync writes a plain arrival index and never re-sorts a m
         expect(admin.__mock.refs.get('items/target-project/tasks/event-1')).toBeUndefined()
     })
 
+    test('AT-3137: a task synced before the meeting fields existed is updated once to gain them', async () => {
+        const legacy = buildExistingTask({ sortIndex: Date.parse('2026-04-21T10:00:00Z') })
+        delete legacy.calendarData.startMs
+        delete legacy.calendarData.endMs
+        delete legacy.calendarData.attendeeCount
+        delete legacy.calendarData.externalAttendeeCount
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            legacy,
+            event,
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        const updateCall = admin.__mock.refs.get('items/target-project/tasks/event-1').update.mock.calls[0][0]
+        expect(updateCall.calendarData).toMatchObject({ startMs: Date.parse(event.start.dateTime), attendeeCount: 0 })
+        expect(updateCall).not.toHaveProperty('sortIndex')
+    })
+
     test('carries the existing ordering across a project move', async () => {
         const placed = Date.parse('2026-04-23T11:22:33.444Z')
         const existingTask = buildExistingTask({ projectId: 'old-project', sortIndex: placed })
@@ -857,5 +916,84 @@ describe('writeNewCalendarTask (security audit 2026-11)', () => {
         await expect(writeNewCalendarTask(db, own, { userId: 'user1' }, 'user1')).resolves.toBe(true)
         expect(fresh.set).toHaveBeenCalledWith({ userId: 'user1' })
         expect(own.set).toHaveBeenCalled()
+    })
+})
+
+describe('getCalendarMeetingFields (AT-3137)', () => {
+    const moment = require('moment')
+    const { getCalendarMeetingFields } = require('./calendarTasks')
+    const start = moment('2026-11-24T09:00:00Z')
+    const end = moment('2026-11-24T10:00:00Z')
+
+    test('a Google event without guests has 0 other participants', () => {
+        expect(getCalendarMeetingFields({}, 'me@company.com', start, end, false)).toMatchObject({
+            attendeeCount: 0,
+            externalAttendeeCount: 0,
+        })
+    })
+
+    test('counts a Microsoft organizer that is not in the attendee list and keeps the own answer', () => {
+        const fields = getCalendarMeetingFields(
+            {
+                attendees: [{ email: 'a@company.com' }],
+                organizer: { email: 'boss@company.com' },
+                selfResponseStatus: 'declined',
+                isAllDay: true,
+            },
+            'me@company.com',
+            start,
+            end,
+            false
+        )
+        expect(fields).toMatchObject({
+            attendeeCount: 2,
+            externalAttendeeCount: 0,
+            selfResponseStatus: 'declined',
+            isAllDay: true,
+        })
+    })
+
+    test('stores no external count for a webmail account and ignores group calendar organizers', () => {
+        const fields = getCalendarMeetingFields(
+            { attendees: [{ email: 'friend@web.de' }], organizer: { email: 'x@group.calendar.google.com' } },
+            'me@gmail.com',
+            start,
+            end,
+            false
+        )
+        expect(fields.attendeeCount).toBe(1)
+        expect(fields).not.toHaveProperty('externalAttendeeCount')
+    })
+})
+
+describe('writeMeetingCategorySuggestion (AT-3137)', () => {
+    const { writeMeetingCategorySuggestion } = require('./calendarTasks')
+    beforeEach(() => admin.__mock.reset())
+
+    test('merges only the private suggestion and bounds into the owner review document', async () => {
+        const written = await writeMeetingCategorySuggestion('user-1', { ...event, recurringEventId: 's1' }, 'p1', {
+            category: 'status',
+            confidence: 'medium',
+            signals: ['Weekly'],
+        })
+        expect(written).toBe(true)
+        const ref = admin.__mock.refs.get('users/user-1/meetingReviews/event-1')
+        const [data, options] = ref.set.mock.calls[0]
+        expect(options).toEqual({ merge: true })
+        expect(data).toMatchObject({
+            taskId: 'event-1',
+            projectId: 'p1',
+            recurringEventId: 's1',
+            startMs: Date.parse(event.start.dateTime),
+            aiSuggestion: { category: 'status', confidence: 'medium', signals: ['Weekly'] },
+        })
+        expect(data).not.toHaveProperty('category')
+        expect(data).not.toHaveProperty('usefulness')
+    })
+
+    test('writes nothing without a valid category', async () => {
+        expect(await writeMeetingCategorySuggestion('user-1', event, 'p1', { category: 'pointless' })).toBe(false)
+        expect(await writeMeetingCategorySuggestion('user-1', event, 'p1', null)).toBe(false)
+        expect(admin.__mock.refs.get('users/user-1/meetingReviews/event-1')).toBeUndefined()
     })
 })

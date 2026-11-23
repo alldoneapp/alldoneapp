@@ -16,9 +16,47 @@ const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsi
 const { getOpenRouterAssistantModelId } = require('../Assistant/assistantModelRouting')
 const { resolveClassifierClient } = require('../Assistant/classifierModelClient')
 const { appendCalendarLearnedRulesToPrompt } = require('./calendarProjectRoutingConfig')
+const { MEETING_CATEGORIES, isMeetingCategory } = require('../shared/meetingReview/meetingReviewConstants')
+const { toAiConfidenceLevel } = require('../shared/meetingReview/meetingCategorySuggestion')
+
+// AT-3137: the same run also proposes the meeting's PURPOSE category for the user's private meeting
+// statistics, so the suggestion costs no extra model call and sends no extra data. It is only a
+// type ("what kind of appointment"), never a judgement of whether the meeting was useful: that is
+// the user's call alone, and the model is told so explicitly.
+const MEETING_CATEGORY_PROMPT =
+    ' Additionally classify the PURPOSE of the event into exactly one meeting category, using only the event fields provided: ' +
+    `"${MEETING_CATEGORIES[0]}" (working meeting: jointly working out or deciding something concrete, workshops, planning, design sessions, co-creation, also with customers), ` +
+    `"${MEETING_CATEGORIES[1]}" (stakeholder meeting: aligning expectations, approval or support with management, customers, partners, investors, board), ` +
+    `"${MEETING_CATEGORIES[2]}" (status and routine: exchanging the current state, standups, jour fixe, weekly syncs, reporting, info all-hands, also with customers), ` +
+    `"${MEETING_CATEGORIES[3]}" (network and exchange: relationship, intro, mentoring, career talks, conferences, webinars, interviews, without a concrete work result), ` +
+    `"${MEETING_CATEGORIES[4]}" (own time: no other participants or private: focus blocks, solo work, preparation, travel, lunch, family, doctor, sport). ` +
+    'Precedence: no other participants or private comes first; then what happens in the meeting decides over who attends (reporting status to a customer is status, a workshop with a customer is working). ' +
+    'Add keys meetingCategory (one of the category keys, or null when the event gives no basis), meetingCategoryConfidence (0 to 1; use below 0.6 when the signals are thin or conflicting) and meetingCategorySignals (at most 3 short factual phrases in the language of the event title naming the event fields you used, e.g. a title word, the attendee count, the recurrence). ' +
+    'Never judge whether the meeting is useful, necessary, productive or a waste of time, and never invent outcomes, decisions or content that is not in the event.'
 
 const CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT =
-    "You route Google Calendar events to exactly one configured Alldone project or no match. Weigh every available signal in the event. Treat the attendees' and organizer's email addresses, and especially their domains, as a strong hint about which client or project an event belongs to: when attendees share a company or client domain, match that domain against the project descriptions, client names, and stakeholders. Return strict JSON only with keys matched, projectId, projectName, confidence, reasoning. projectName must exactly match the selected project name. Never invent project IDs or project names. Confidence must be a number between 0 and 1."
+    "You route Google Calendar events to exactly one configured Alldone project or no match. Weigh every available signal in the event. Treat the attendees' and organizer's email addresses, and especially their domains, as a strong hint about which client or project an event belongs to: when attendees share a company or client domain, match that domain against the project descriptions, client names, and stakeholders. Return strict JSON only with keys matched, projectId, projectName, confidence, reasoning. projectName must exactly match the selected project name. Never invent project IDs or project names. Confidence must be a number between 0 and 1." +
+    MEETING_CATEGORY_PROMPT
+
+// A "why" line that judges the meeting is dropped, whatever the prompt said: the suggestion must
+// never carry a usefulness verdict into the sheet.
+const JUDGEMENT_WORDS =
+    /(?<!\p{L})(useless|pointless|waste|wasted|unnecessary|unproductive|productive|worthwhile|not helpful|sinnlos|unnötig|überflüssig|verschwend\p{L}*|nutzlos|unproduktiv|produktiv|lohnt|gelohnt)(?!\p{L})/iu
+
+function coerceMeetingCategorySuggestion(result) {
+    const category = typeof result?.meetingCategory === 'string' ? result.meetingCategory.trim() : ''
+    if (!isMeetingCategory(category)) return null
+    const signals = (Array.isArray(result.meetingCategorySignals) ? result.meetingCategorySignals : [])
+        .filter(item => typeof item === 'string')
+        .map(item => item.trim().slice(0, 120))
+        .filter(item => item && !JUDGEMENT_WORDS.test(item))
+        .slice(0, 3)
+    return {
+        category,
+        confidence: toAiConfidenceLevel(Number(result.meetingCategoryConfidence)),
+        signals,
+    }
+}
 const INCONSISTENT_ROUTING_REASON = 'Classifier returned inconsistent project routing details.'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
@@ -159,6 +197,9 @@ function coerceCalendarProjectResult(
     const reasoningMismatch = matched && reasoningMentionsDifferentProject(reasoning, projectId, projectDefinitions)
 
     const inconsistent = projectNameMismatch || reasoningMismatch
+    // The category is independent of the project decision: a "no project matched" answer can still
+    // carry a perfectly good meeting category.
+    const meetingCategory = coerceMeetingCategorySuggestion(result)
 
     if (!matched || confidence < confidenceThreshold || (enforceConsistency && inconsistent)) {
         return {
@@ -170,6 +211,7 @@ function coerceCalendarProjectResult(
                     ? INCONSISTENT_ROUTING_REASON
                     : reasoning || 'No active project clearly matched.',
             usage,
+            meetingCategory,
         }
     }
 
@@ -180,6 +222,7 @@ function coerceCalendarProjectResult(
         confidence,
         reasoning,
         usage,
+        meetingCategory,
     }
 }
 
@@ -203,7 +246,7 @@ function buildCalendarClassifierRequestParams({
         `Configured confidence threshold: ${config.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD}.`
     const dynamicUserContent =
         `Calendar event:\n${JSON.stringify(normalizedEvent)}\n\n` +
-        'Return JSON exactly like {"matched":true,"projectId":"project-123","projectName":"Project name exactly as provided","confidence":0.92,"reasoning":"..."}. If no project matches clearly, return {"matched":false,"projectId":null,"projectName":null,"confidence":0.2,"reasoning":"..."}'
+        'Return JSON exactly like {"matched":true,"projectId":"project-123","projectName":"Project name exactly as provided","confidence":0.92,"reasoning":"...","meetingCategory":"status","meetingCategoryConfidence":0.7,"meetingCategorySignals":["..."]}. If no project matches clearly, return {"matched":false,"projectId":null,"projectName":null,"confidence":0.2,"reasoning":"...","meetingCategory":null,"meetingCategoryConfidence":0.2,"meetingCategorySignals":[]}'
     const promptCacheKey = buildOpenAiPromptCacheKey(
         'calendar-route',
         selectedModel,
@@ -421,7 +464,7 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
     // The repair pass uses the stronger consistency model and is the final adjudicator.
     // Continue to enforce explicit no-match, configured project IDs, and the confidence
     // threshold, but do not let the lightweight name/token heuristic overrule it again.
-    return coerceCalendarProjectResult(
+    const repairedResult = coerceCalendarProjectResult(
         {
             ...repairCompletion.parsed,
             usage: {
@@ -441,10 +484,16 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
         confidenceThreshold,
         { enforceConsistency: false }
     )
+    // The repair prompt is about the project; keep the first pass's category if it omitted one.
+    if (!repairedResult.meetingCategory && firstResult.meetingCategory) {
+        repairedResult.meetingCategory = firstResult.meetingCategory
+    }
+    return repairedResult
 }
 
 module.exports = {
     CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT,
+    coerceMeetingCategorySuggestion,
     INCONSISTENT_ROUTING_REASON,
     classifyCalendarEventProject,
     coerceCalendarProjectResult,

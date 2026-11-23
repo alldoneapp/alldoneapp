@@ -24,6 +24,7 @@ import CounterTag from '../../Tags/CounterTag'
 import TaskTypeTag from '../../Tags/TaskTypeTag'
 import ProjectTag from '../../Tags/ProjectTag'
 import TaskIdTag from '../../Tags/TaskIdTag'
+import MeetingReviewChip from '../../MeetingReview/MeetingReviewChip'
 import { DV_TAB_GOAL_LINKED_TASKS } from '../../../utils/TabNavigationConstants'
 import { WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
 import Backend from '../../../utils/BackendBridge'
@@ -237,6 +238,14 @@ export default function Tags({
                 style={[tagAlignment, tagsStyle]}
                 disabled={isActiveOrganizeMode}
             />
+            {task.done && task.calendarData && !isSubtask && (
+                <MeetingReviewChip
+                    task={task}
+                    projectId={projectId}
+                    containerStyle={[tagAlignment, tagsStyle]}
+                    disabled={isActiveOrganizeMode || isLocked}
+                />
+            )}
             {!!commentsData && !inCommentPopup && (
                 <TaskCommentsWrapper
                     tagStyle={tagsStyle}
