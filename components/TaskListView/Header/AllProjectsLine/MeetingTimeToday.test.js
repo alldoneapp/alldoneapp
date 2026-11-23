@@ -94,14 +94,6 @@ describe('MeetingTimeToday (AT-3136)', () => {
         expect(label).toContain('meetingTime summary {"meetings":"7h 30m","free":"1h 30m"}')
     })
 
-    it('says in the tooltip when solo work blocks counted as time to work, without changing the line', () => {
-        const label = view => render(view).root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel
-        expect(label({ ...READY, workBlockCount: 2 })).toContain('meetingTime work blocks hint {"count":2}')
-        expect(label({ ...READY, workBlockCount: 0 })).not.toContain('meetingTime work blocks hint')
-        expect(label(READY)).not.toContain('meetingTime work blocks hint')
-        expect(textOf(render({ ...READY, workBlockCount: 2 }))).toBe(textOf(render(READY)))
-    })
-
     it('opens the working hours settings from the display, and names assumed default hours in the tooltip', () => {
         const tree = render({ ...READY, workingHours: DEFAULT_HOURS, meetingMinutes: 0, freeMinutes: 480 })
         expect(tree.root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel).toContain(

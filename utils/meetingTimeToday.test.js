@@ -14,7 +14,6 @@ import {
     formatWorkingHoursRange,
     getMeetingInterval,
     getWorkingWindow,
-    isSoloWorkBlock,
     mergeIntervalsInWindow,
     resolveWorkingHours,
 } from './meetingTimeToday'
@@ -144,7 +143,6 @@ describe('computeMeetingTime', () => {
             freeMinutes: 480,
             windowMinutes: 480,
             meetingCount: 0,
-            workBlockCount: 0,
         })
     })
 
@@ -207,132 +205,6 @@ describe('computeMeetingTime', () => {
             },
         }
         expect(computeMeetingTime([yesterday], WINDOW_9_17).meetingMinutes).toBe(0)
-    })
-})
-
-// AT-3136 (2026-11-23): "meetings in which I am alone should count as real work time", narrowed by
-// the user to solo WORK blocks (the routing model or Google focus time decides "work block").
-describe('solo work blocks', () => {
-    const SOLO_WORK = { soloEvent: true, workBlock: true, workBlockSource: 'ai' }
-    const soloWork = (start, end, extra = {}) =>
-        meeting(start, end, {
-            ...extra,
-            calendarData: { attendeeCount: 0, ...SOLO_WORK, ...(extra.calendarData || {}) },
-        })
-
-    it('only a reliably solo event that is a work block is time to work', () => {
-        expect(isSoloWorkBlock(soloWork('10:00', '11:00'))).toBe(true)
-        // solo, but private (doctor) or not judged yet
-        expect(
-            isSoloWorkBlock(meeting('10:00', '11:00', { calendarData: { soloEvent: true, workBlock: false } }))
-        ).toBe(false)
-        expect(isSoloWorkBlock(meeting('10:00', '11:00', { calendarData: { soloEvent: true } }))).toBe(false)
-        // a work block with others in it is a working meeting
-        expect(
-            isSoloWorkBlock(meeting('10:00', '11:00', { calendarData: { soloEvent: false, workBlock: true } }))
-        ).toBe(false)
-        // participant data unknown (synced before AT-3136, group calendar organizer, hidden guests)
-        expect(isSoloWorkBlock(meeting('10:00', '11:00', { calendarData: { workBlock: true } }))).toBe(false)
-        expect(
-            isSoloWorkBlock(meeting('10:00', '11:00', { calendarData: { attendeeCount: 0, workBlock: true } }))
-        ).toBe(false)
-        expect(
-            isSoloWorkBlock(meeting('10:00', '11:00', { calendarData: { soloEvent: 'true', workBlock: 'true' } }))
-        ).toBe(false)
-    })
-
-    it('a solo work block (sole self attendee or organizer only) neither reduces time to work nor adds meeting time', () => {
-        const result = computeMeetingTime([soloWork('09:00', '12:00'), meeting('14:00', '15:00')], WINDOW_9_17)
-        expect(result).toEqual({
-            meetingMinutes: 60,
-            freeMinutes: 420,
-            windowMinutes: 480,
-            meetingCount: 1,
-            workBlockCount: 1,
-        })
-    })
-
-    it('keeps counting multi-person meetings, also when the others have not accepted, and private solo appointments', () => {
-        const invited = meeting('10:00', '11:00', {
-            calendarData: { soloEvent: false, attendeeCount: 2, workBlock: false, selfResponseStatus: 'accepted' },
-        })
-        const doctor = meeting('13:00', '14:00', {
-            calendarData: { soloEvent: true, attendeeCount: 0, workBlock: false },
-        })
-        const unjudged = meeting('15:00', '15:30', { calendarData: { soloEvent: true, attendeeCount: 0 } })
-        const result = computeMeetingTime([invited, doctor, unjudged], WINDOW_9_17)
-        expect(result.meetingMinutes).toBe(150)
-        expect(result.meetingCount).toBe(3)
-        expect(result.workBlockCount).toBe(0)
-    })
-
-    it('counts events with unavailable participant data as meetings', () => {
-        const legacy = meeting('10:00', '11:00', { calendarData: {} })
-        const groupCalendar = meeting('11:00', '11:30', { calendarData: { attendeeCount: 0, workBlock: true } })
-        const result = computeMeetingTime([legacy, groupCalendar], WINDOW_9_17)
-        expect(result.meetingMinutes).toBe(90)
-        expect(result.workBlockCount).toBe(0)
-    })
-
-    it('counts only the union of the multi-person meetings where they overlap a solo work block', () => {
-        const result = computeMeetingTime(
-            [
-                soloWork('09:00', '12:00'),
-                meeting('10:00', '11:00', { calendarData: { soloEvent: false, attendeeCount: 3 } }),
-                meeting('10:30', '11:30', { calendarData: { soloEvent: false, attendeeCount: 1 } }),
-                soloWork('11:00', '13:00'),
-            ],
-            WINDOW_9_17
-        )
-        expect(result.meetingMinutes).toBe(90)
-        expect(result.freeMinutes).toBe(390)
-        expect(result.meetingCount).toBe(2)
-        expect(result.workBlockCount).toBe(2)
-    })
-
-    it('still clips at the working-hours borders around a solo work block', () => {
-        const result = computeMeetingTime(
-            [soloWork('08:00', '10:00'), meeting('08:30', '09:30', { calendarData: { soloEvent: false } })],
-            WINDOW_9_17
-        )
-        expect(result.meetingMinutes).toBe(30)
-        expect(result.workBlockCount).toBe(1)
-    })
-
-    it('counts an event imported twice once as a meeting when only one copy is a reliable solo work block', () => {
-        const fromWork = soloWork('10:00', '11:00', { id: 'copy-a', name: 'Planning' })
-        const fromPrivate = meeting('10:00', '11:00', { id: 'copy-b', name: 'Planning', calendarData: {} })
-        for (const order of [
-            [fromWork, fromPrivate],
-            [fromPrivate, fromWork],
-        ]) {
-            const result = computeMeetingTime(order, WINDOW_9_17)
-            expect(result.meetingMinutes).toBe(60)
-            expect(result.meetingCount).toBe(1)
-            expect(result.workBlockCount).toBe(0)
-        }
-        const twice = computeMeetingTime(
-            [fromWork, soloWork('10:00', '11:00', { id: 'copy-c', name: 'planning' })],
-            WINDOW_9_17
-        )
-        expect(twice).toMatchObject({ meetingMinutes: 0, meetingCount: 0, workBlockCount: 1 })
-    })
-
-    it('reports the full window as time to work on a day of only solo work blocks', () => {
-        const view = deriveMeetingTimeView({
-            settings: null,
-            calendarConnected: true,
-            tasksLoaded: true,
-            tasksError: false,
-            tasks: [soloWork('09:00', '17:00')],
-            nowMs: NOW,
-        })
-        expect(view).toMatchObject({
-            status: MEETING_TIME_READY,
-            meetingMinutes: 0,
-            freeMinutes: 480,
-            workBlockCount: 1,
-        })
     })
 })
 

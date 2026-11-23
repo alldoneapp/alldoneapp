@@ -43,13 +43,13 @@ describe('shared GPT-Live configuration', () => {
             expect(runtime.realtimeModel).toBe('recap-model-override')
             expect(runtime.transcriptionModel).toBe('transcription-override')
             expect(buildLiveSession({ channel, voice: 'cedar', config: runtime })).toMatchObject({
-                model: 'gpt-live-1',
+                model: 'gpt-live-1.1',
                 delegation: { type: 'client' },
                 audio: { output: { voice: 'cedar' } },
             })
             expect(getLiveSessionDefaults()).toMatchObject({
                 voiceProvider: 'gpt-live',
-                voiceModel: 'gpt-live-1',
+                voiceModel: 'gpt-live-1.1',
                 realtimeModel: null,
                 voiceGoldPerMinute: 40,
             })

@@ -6,7 +6,7 @@ test('uses client delegation and keeps task instructions in the configured backe
         voice: 'marin',
         language: 'German',
     })
-    expect(config).toMatchObject({ model: 'gpt-live-1', store: false, delegation: { type: 'client' } })
+    expect(config).toMatchObject({ model: 'gpt-live-1.1', store: false, delegation: { type: 'client' } })
     expect(config.instructions).not.toContain('Private task workflow')
     expect(config.instructions).toContain('German')
 })

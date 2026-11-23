@@ -3621,7 +3621,6 @@
     "meetingTime working hours": "Arbeitszeit heute: {{range}} (aus den Einstellungen deines Meeting-Links).",
     "meetingTime default working hours": "Arbeitszeit heute: {{range}} (Standardwert, eigene Zeiten in den Einstellungen des Meeting-Links festlegen).",
     "meetingTime summary": "{{meetings}} in Meetings über alle Projekte; {{free}} Zeit zum Arbeiten bleiben in deiner Arbeitszeit (im Kalender frei). Das ist Kalender-Verfügbarkeit, keine gemessene Arbeitszeit.",
-    "meetingTime work blocks hint": "Arbeitsblöcke nur mit dir zählen als Zeit zum Arbeiten ({{count}} heute).",
     "meetingTime syncing": "Der Kalender wird gerade synchronisiert.",
     "meetingTime sync failed hint": "Die letzte Kalender-Synchronisierung ist fehlgeschlagen, die Werte können unvollständig sein.",
     "meetingTime no calendar hint": "Kein Kalender verbunden, deine Meetingzeit ist daher unbekannt.",

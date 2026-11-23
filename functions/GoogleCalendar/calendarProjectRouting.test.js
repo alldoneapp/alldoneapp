@@ -134,38 +134,6 @@ describe('calendarProjectRouting', () => {
         expect(deductGold).toHaveBeenCalledTimes(1)
     })
 
-    test('AT-3136: passes the work block verdict from the same call through, booleans only', async () => {
-        classifyCalendarEventProject.mockResolvedValueOnce({
-            matched: false,
-            projectId: null,
-            confidence: 0.2,
-            reasoning: 'Focus block.',
-            usage: { totalTokens: 100 },
-            workBlock: true,
-        })
-        classifyCalendarEventProject.mockResolvedValueOnce({
-            matched: false,
-            projectId: null,
-            confidence: 0.2,
-            reasoning: 'No basis.',
-            usage: { totalTokens: 100 },
-            workBlock: null,
-        })
-
-        const result = await routeCalendarEventsToProjects({
-            userId: 'user-1',
-            syncProjectId: 'connected-project',
-            userData: premiumUser,
-            events: [event, { ...event, id: 'event-2' }],
-            calendarEmail: 'me@example.com',
-        })
-
-        expect(result['event-1'].workBlock).toBe(true)
-        expect(result['event-2']).not.toHaveProperty('workBlock')
-        expect(classifyCalendarEventProject).toHaveBeenCalledTimes(2)
-        expect(deductGold).toHaveBeenCalledTimes(2)
-    })
-
     test('falls back to the connected project when there is no confident match', async () => {
         classifyCalendarEventProject.mockResolvedValue({
             matched: false,

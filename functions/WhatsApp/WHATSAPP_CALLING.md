@@ -9,7 +9,7 @@ secrets before enabling each channel:
 - `OPENAI_PROJECT_ID`
 - `OPENAI_WEBHOOK_SECRET`
 - `WHATSAPP_CALL_ROUTING_SECRET`
-- `OPENAI_REALTIME_MODEL=gpt-realtime-2` (now only the WhatsApp recap and the legacy Realtime fallback; calls themselves run on `gpt-live-1`, see `GPT_LIVE_CALLING.md`)
+- `OPENAI_REALTIME_MODEL=gpt-realtime-2.1` (code default since AT-3144; now only the WhatsApp recap and the legacy Realtime fallback; calls themselves run on `gpt-live-1.1`, see `GPT_LIVE_CALLING.md`)
 - `OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-realtime-whisper`
 - `OPENAI_REALTIME_REASONING_EFFORT=medium`
 - `WHATSAPP_CALL_MAX_DURATION_SECONDS=1800`

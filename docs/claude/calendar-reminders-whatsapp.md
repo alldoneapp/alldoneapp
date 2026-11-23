@@ -131,43 +131,9 @@ Rules live in `utils/meetingTimeToday.js` and are pinned by `utils/meetingTimeTo
   measured in the browser with the German labels at 320/360/390/430/600px; check them again with
   the browser when the line gets another element.
 - The previous layouts (a separate row under the line on mobile, `wrap-reverse` secondary text
-  before the figure) are gone; `utils/meetingTimeToday.js` was not touched by either layout
-  revision (only by the solo work block change below).
+  before the figure) are gone; `utils/meetingTimeToday.js` was not touched by either revision.
 - Known gap: a Google event marked "free" (`transparency: transparent`) still counts, because the
   sync does not store `transparency` on `calendarData`.
-- **Solo work blocks are time to work (user correction after !939, 2026-11-23).** "Meetings in
-  denen ich alleine bin sollten als echte Arbeitszeit gelten", narrowed by the user in the same
-  thread: only solo appointments that are _work blockers_; private solo appointments (doctor,
-  childcare) still take time away, and "the LLM decides when it looks at the event". An event is
-  left out of the meeting time only when `calendarData.soloEvent === true` AND
-  `calendarData.workBlock === true` (`isSoloWorkBlock`). Everything unknown stays a meeting, so a gap
-  in the data can only make "time to work" smaller. Only the union of the remaining meetings is
-  counted, so an overlapping solo block changes nothing there; the copy check runs after the solo
-  check, so an event imported twice where only one copy is a solo work block still counts once.
-    - `soloEvent` (sync, `getSoloEventFlag` in `calendarTasks.js`, a rule, never the model): `false`
-      as soon as anybody else is in it (attendee or organizer, whatever their answer: unanswered,
-      tentative AND declined invitees keep it a meeting, decided with the user; rooms/resources are
-      not people). `true` only with nobody else AND the user verifiably the organizer (Google
-      `organizer.self`, Microsoft `isOrganizer`, now in the Graph `$select` and mapped to
-      `organizer.self` by `graphEventToGoogleEvent`, or the organizer address equals the connected
-      account). Only the organizer is sure to see the full guest list. Unset (unknown) for a group
-      calendar organizer, no organizer, or Google `attendeesOmitted`. Microsoft without `isOrganizer`
-      and an alias address counts the "other" organizer: a meeting (safe direction).
-    - `workBlock` / `workBlockSource`: `calendar` for Google `eventType: 'focusTime'` (always wins);
-      otherwise `ai`, the `workBlock` key of the EXISTING calendar routing call
-      (`WORK_BLOCK_PROMPT` in `calendarProjectClassifier.js`, booleans only via
-      `coerceWorkBlockVerdict`, null = no decision; no extra model call, no extra Gold). The model sees
-      an event only once (routed events are never re-classified), so `applyWorkBlockVerdict` keeps
-      the stored `ai` verdict on later syncs (otherwise the regenerated `calendarData` would drop it).
-      No verdict exists, i.e. the event stays a meeting, when routing is off, the user is not premium,
-      Gold is insufficient, a learned series route skipped the model, or the event was routed before
-      this change (today's events at deploy time).
-    - The tooltip adds "Work blocks with only you count as time to work (n today)" when n > 0; the
-      visible line is unchanged. Pinned by "solo work blocks" in `meetingTimeToday.test.js`, "solo
-      events and work blocks (AT-3136)" and the AT-3136 routing test in `calendarTasks.test.js`, and
-      the AT-3136 cases in `calendarProjectClassifier.test.js` / `calendarProjectRouting.test.js`.
-    - The AT-3137 statistics and the "no other participants → own time" category suggestion still
-      use `attendeeCount` and are unchanged.
 
 ## Task reminders and the channel they come back on (AT-2211)
 

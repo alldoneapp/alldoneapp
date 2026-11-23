@@ -80,8 +80,6 @@ const buildTooltip = view => {
                 free: formatDurationCompact(view.freeMinutes),
             })
         )
-        if (view.workBlockCount > 0)
-            parts.push(translate('meetingTime work blocks hint', { count: view.workBlockCount }))
         if (view.syncStatus === CALENDAR_SYNC_SYNCING) parts.push(translate('meetingTime syncing'))
         if (view.syncStatus === CALENDAR_SYNC_FAILED) parts.push(translate('meetingTime sync failed hint'))
     } else if (view.status === MEETING_TIME_CALENDAR_LOADING) {
