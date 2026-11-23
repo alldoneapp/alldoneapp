@@ -7,7 +7,7 @@ import renderer, { act } from 'react-test-renderer'
 import { StyleSheet } from 'react-native'
 import { useSelector } from 'react-redux'
 
-import { isSelectedProjectHeader } from './centeredHeaderTitle'
+import { isSelectedProjectHeader, shouldCenterProjectHeaderTitle } from './centeredHeaderTitle'
 import AllProjectsLine from './AllProjectsLine/AllProjectsLine'
 import ProjectHeader from './ProjectHeader'
 
@@ -55,7 +55,20 @@ describe('isSelectedProjectHeader', () => {
     })
 })
 
-describe('AllProjectsLine centres its title block (AT-3132)', () => {
+describe('shouldCenterProjectHeaderTitle', () => {
+    it('centres the selected project line on mobile sizes only', () => {
+        expect(shouldCenterProjectHeaderTitle(true, 2, 2)).toBe(true)
+        expect(shouldCenterProjectHeaderTitle(false, 2, 2)).toBe(false)
+        expect(shouldCenterProjectHeaderTitle(undefined, 2, 2)).toBe(false)
+    })
+
+    it('never centres a per-project line, on mobile either', () => {
+        expect(shouldCenterProjectHeaderTitle(true, -1, 0)).toBe(false)
+        expect(shouldCenterProjectHeaderTitle(true, 2, 3)).toBe(false)
+    })
+})
+
+describe('AllProjectsLine centres its title block on mobile (AT-3132)', () => {
     beforeEach(() => {
         mockState({
             loggedUser: { uid: 'user-1', photoURL: '' },
@@ -113,13 +126,13 @@ describe('AllProjectsLine centres its title block (AT-3132)', () => {
     })
 })
 
-describe('ProjectHeader centres only the selected project line (AT-3132)', () => {
-    const state = selectedProjectIndex => ({
+describe('ProjectHeader centres only the selected project line on mobile (AT-3132)', () => {
+    const state = (selectedProjectIndex, mobile = true) => ({
         currentUser: { uid: 'u1' },
         loggedUser: { uid: 'u1' },
         selectedSidebarTab: 'tasks',
-        smallScreenNavigation: false,
-        smallScreenNavSidebarCollapsed: false,
+        smallScreenNavigation: mobile,
+        smallScreenNavSidebarCollapsed: mobile,
         loggedUserProjectsMap: {},
         selectedProjectIndex,
     })
@@ -153,11 +166,52 @@ describe('ProjectHeader centres only the selected project line (AT-3132)', () =>
         expect(tree.root.findAllByType('TagsArea')).toHaveLength(1)
     })
 
+    it('keeps the selected project left aligned on desktop, without a spacer', () => {
+        mockState(state(3, false))
+        const tree = renderer.create(<ProjectHeader projectIndex={3} projectId="p3" showTaskMore />)
+
+        expect(tree.root.findByType('ProjectAndUserData').props.centered).toBe(false)
+        expect(byTestID(tree, 'project-line-mirror')).toHaveLength(0)
+        expect(byTestID(tree, 'project-line-actions')).toHaveLength(0)
+        expect(tree.root.findByType('TagsArea').props.showTaskMore).toBe(true)
+    })
+
     it('does not centre a line of another project', () => {
         mockState(state(1))
         const tree = renderer.create(<ProjectHeader projectIndex={3} projectId="p3" />)
 
         expect(tree.root.findByType('ProjectAndUserData').props.centered).toBe(false)
         expect(byTestID(tree, 'project-line-mirror')).toHaveLength(0)
+    })
+})
+
+describe('AllProjectsLine stays left aligned on desktop (AT-3132)', () => {
+    beforeEach(() => {
+        mockState({
+            loggedUser: { uid: 'user-1', photoURL: '' },
+            taskViewToggleSection: 'Open',
+            smallScreenNavigation: false,
+        })
+    })
+
+    it('does not centre the title block and adds no spacer', () => {
+        const tree = renderer.create(<AllProjectsLine />)
+        const title = byTestID(tree, 'all-projects-line-title')[0]
+
+        expect(style(title).justifyContent).toBeUndefined()
+        expect(style(title).flex).toBe(1)
+        expect(byTestID(tree, 'all-projects-line-mirror')).toHaveLength(0)
+        expect(title.findAllByType('Avatar')).toHaveLength(1)
+        expect(title.findAllByType('AllProjectData')).toHaveLength(1)
+        expect(title.findAllByType('ToggleByTime')).toHaveLength(1)
+    })
+
+    it('keeps the actions on the right, unmeasured', () => {
+        const tree = renderer.create(<AllProjectsLine />)
+        const actions = byTestID(tree, 'all-projects-line-actions')[0]
+
+        expect(actions.props.onLayout).toBeUndefined()
+        expect(actions.findAllByType('More')).toHaveLength(1)
+        expect(style(actions).flexShrink).toBe(0)
     })
 })

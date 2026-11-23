@@ -29,15 +29,20 @@ export default function AllProjectsLine({ showActions = true, customRight, botto
     const annaOnTop = useSelector(state => isSectionsTopSidebarNavigation(state.loggedUser.sidebarNavigationMode))
 
     const inOpenSection = taskViewToggleSection === 'Open'
-    // AT-3132: the avatar, title and grouping toggle sit centred on the whole line as one block.
+    // AT-3132: on mobile sizes (smallScreenNavigation) the avatar, title and grouping toggle sit
+    // centred on the whole line as one block; on desktop they stay left aligned.
+    const centerTitle = mobile
     const [actionsWidth, onActionsLayout] = useMirroredActionsWidth()
 
     return (
         <>
             <HeaderActionsContext.Provider value={true}>
                 <View style={[localStyles.container, localStyles.hierarchyHeader, { marginBottom: bottomSpacing }]}>
-                    <MirroredActionsSpacer width={actionsWidth} testID="all-projects-line-mirror" />
-                    <View style={localStyles.rightContainer} testID="all-projects-line-title">
+                    {centerTitle && <MirroredActionsSpacer width={actionsWidth} testID="all-projects-line-mirror" />}
+                    <View
+                        style={[localStyles.rightContainer, centerTitle && localStyles.centeredTitle]}
+                        testID="all-projects-line-title"
+                    >
                         <Avatar
                             borderSize={0}
                             avatarId={loggedUserId}
@@ -54,7 +59,7 @@ export default function AllProjectsLine({ showActions = true, customRight, botto
                     </View>
                     <View
                         testID="all-projects-line-actions"
-                        onLayout={onActionsLayout}
+                        onLayout={centerTitle ? onActionsLayout : undefined}
                         style={[localStyles.leftContainer, { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}
                     >
                         {customRight}
@@ -126,8 +131,11 @@ const localStyles = StyleSheet.create({
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
         minWidth: 0,
+    },
+    // AT-3132: mobile only, see centeredHeaderTitle.js.
+    centeredTitle: {
+        justifyContent: 'center',
     },
     avatar: {
         marginRight: 10,

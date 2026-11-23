@@ -12,12 +12,20 @@ import { View } from 'react-native'
  * on the whole line, and a long name truncates inside it instead of running under the menu.
  *
  * Only the top line is centred: the per-project lines in the All projects lists stay left aligned.
+ *
+ * Mobile sizes only: the centring applies where `smallScreenNavigation` is set (the app's mobile
+ * navigation breakpoint, utils/responsiveLayout.js). On desktop the line stays left aligned as it
+ * was before AT-3132 (reviewer decision), with no spacer.
  */
 
 // The project line is the selected project's top line, not one of the per-project lines of an
 // All projects list (where `selectedProjectIndex` is ALL_PROJECTS_INDEX, -1).
 export const isSelectedProjectHeader = (selectedProjectIndex, projectIndex) =>
     typeof selectedProjectIndex === 'number' && selectedProjectIndex >= 0 && selectedProjectIndex === projectIndex
+
+// The selected project's top line is centred on mobile sizes only.
+export const shouldCenterProjectHeaderTitle = (smallScreenNavigation, selectedProjectIndex, projectIndex) =>
+    !!smallScreenNavigation && isSelectedProjectHeader(selectedProjectIndex, projectIndex)
 
 // Width of the actions cluster on the right, mirrored by the spacer on the left. Rounded up so a
 // sub-pixel width never leaves the title one pixel off-centre, and only stored when it changes.

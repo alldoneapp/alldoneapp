@@ -1094,7 +1094,12 @@ header rows and a one-row workflow bar.
 
 ## Centred title on the top project line (AT-3132, 2026-11-23)
 
-- "All projects" (`AllProjectsLine`) and the **selected** project's line (`ProjectHeader` when
+- **Mobile sizes only** (reviewer decision after !926 centred it everywhere): the centring applies
+  where `smallScreenNavigation` is set, the app's mobile navigation breakpoint
+  (`utils/responsiveLayout.js`). On desktop the line is left aligned as before, with no spacer and
+  no measuring. `shouldCenterProjectHeaderTitle(smallScreenNavigation, selectedProjectIndex,
+projectIndex)` decides it for `ProjectHeader`; `AllProjectsLine` uses its `mobile` flag.
+- On mobile, "All projects" (`AllProjectsLine`) and the **selected** project's line (`ProjectHeader` when
   `selectedProjectIndex === projectIndex`) centre their title block on the **whole** line, like the
   section card and the assistant header below. The per-project lines of the All projects lists stay
   left aligned (user decision).
@@ -1106,4 +1111,5 @@ header rows and a one-row workflow bar.
   aligned under the title. The invisible legacy `compass` placeholder in `ProjectAndUserData` is
   left out on the centred line, or the name sits ~10px left of centre.
 - Tests: `components/TaskListView/Header/centeredHeaderTitle.test.js`,
-  `ProjectAndUserData.test.js`.
+  `ProjectAndUserData.test.js`, mobile/desktop snapshots in
+  `__tests__/TaskListView/Header/ProjectHeader.test.js`.

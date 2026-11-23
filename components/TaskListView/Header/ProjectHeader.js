@@ -22,7 +22,7 @@ import { useContext } from 'react'
 import { HeaderActionsContext, ProjectSectionContext, taskHierarchyStyles } from '../TaskHierarchy'
 import { PROJECT_COLOR_SYSTEM, PROJECT_COLOR_DEFAULT } from '../../../Themes/Modern/ProjectColors'
 import ProjectPostponeSwipe from './ProjectPostponeSwipe'
-import { isSelectedProjectHeader, MirroredActionsSpacer, useMirroredActionsWidth } from './centeredHeaderTitle'
+import { MirroredActionsSpacer, shouldCenterProjectHeaderTitle, useMirroredActionsWidth } from './centeredHeaderTitle'
 
 /**
  * AT-2535 — `ProjectSection` owns the completed-sweep run now that the whole rounded card leaves.
@@ -48,9 +48,11 @@ export default function ProjectHeader({
     const selectedTab = useSelector(state => state.selectedSidebarTab)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const mobileCollapsed = useSelector(state => state.smallScreenNavSidebarCollapsed)
-    // AT-3132: the selected project's top line centres its title on the whole line; the per-project
-    // lines of the All projects lists keep it on the left.
-    const centerTitle = useSelector(state => isSelectedProjectHeader(state.selectedProjectIndex, projectIndex))
+    // AT-3132: on mobile sizes the selected project's top line centres its title on the whole line;
+    // on desktop, and on the per-project lines of the All projects lists, it stays on the left.
+    const centerTitle = useSelector(state =>
+        shouldCenterProjectHeaderTitle(state.smallScreenNavigation, state.selectedProjectIndex, projectIndex)
+    )
     const [actionsWidth, onActionsLayout] = useMirroredActionsWidth()
 
     const userInHeader =
