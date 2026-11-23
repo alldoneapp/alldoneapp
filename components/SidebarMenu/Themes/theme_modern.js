@@ -170,6 +170,11 @@ const ThemeColors = {
                                     PROJECT_COLOR_SYSTEM[color]?.PROJECT_ITEM_SECTION_SELECTED ||
                                     PROJECT_COLOR_SYSTEM[PROJECT_COLOR_DEFAULT]?.PROJECT_ITEM_SECTION_SELECTED,
                             }),
+                            // SectionDivider component (below Chats, AT-3139); themed, so it flips
+                            // with light/dark mode.
+                            divider: {
+                                backgroundColor: Colors.Grey400,
+                            },
                             // UserItem component
                             UserItem: {
                                 // here we use a unique color
