@@ -47,6 +47,16 @@
  * Everything unknown stays a meeting, so a gap in the data can only make "time to work" smaller,
  * never larger. Only the union of the remaining (meeting) intervals is counted, so a solo block that
  * overlaps a real meeting neither adds nor removes anything there.
+ *
+ * ## "Time to work" is what is still available from now (AT-3136, user correction 2026-11-23)
+ *
+ * The large figure is the calendar-free time in the REST of today's working window,
+ * [max(now, start), end): before the working day the whole window, after it 0. Free time that has
+ * passed is no longer available; an ongoing meeting only takes its remaining part. The meeting total
+ * next to it stays the whole working day's (meetings already over still count), so the two figures
+ * no longer add up to the window during the day; the tooltip says which is which. The hook
+ * re-evaluates this every minute and on tab focus/visibility (`useMinuteClock`), not only when the
+ * calendar syncs.
  */
 
 import moment from 'moment-timezone'
@@ -80,13 +90,36 @@ export const resolveWorkingHours = settings => {
 
 /**
  * Today's working window in the device's local time: `{ startMs, endMs, minutes }`. The whole day
- * window, not "from now on": meetings that already happened today still count.
+ * window, not "from now on": the meeting total counts meetings that already happened today too
+ * (the remaining part for "time to work" is `getRemainingWindow`).
  */
 export const getWorkingWindow = ({ start, end }, nowMs = Date.now()) => {
     const day = moment(nowMs).startOf('day')
     const startMs = day.clone().add(clockToMinutes(start), 'minutes').valueOf()
     const endMs = day.clone().add(clockToMinutes(end), 'minutes').valueOf()
     return { startMs, endMs, minutes: Math.max(0, (endMs - startMs) / MS_PER_MINUTE) }
+}
+
+export const WORKDAY_BEFORE = 'before'
+export const WORKDAY_DURING = 'during'
+export const WORKDAY_AFTER = 'after'
+
+/**
+ * The part of today's working window that is still ahead (AT-3136, user correction 2026-11-23:
+ * "free hours that have already passed are no longer available"):
+ *
+ *   [max(now, window start), window end)
+ *
+ * Before the working day it is the whole window, during it it starts now, after it it is empty.
+ * Returns `{ startMs, endMs, minutes, phase }`.
+ */
+export const getRemainingWindow = (window, nowMs = Date.now()) => {
+    const { startMs: windowStartMs, endMs } = window
+    let phase = WORKDAY_DURING
+    if (nowMs < windowStartMs) phase = WORKDAY_BEFORE
+    else if (nowMs >= endMs) phase = WORKDAY_AFTER
+    const startMs = Math.min(Math.max(nowMs, windowStartMs), endMs)
+    return { startMs, endMs, minutes: Math.max(0, (endMs - startMs) / MS_PER_MINUTE), phase }
 }
 
 const HAS_OFFSET = /(Z|[+-]\d{2}:?\d{2})$/i
@@ -160,13 +193,25 @@ export const isSoloWorkBlock = task => task?.calendarData?.soloEvent === true &&
 const getMeetingIdentity = (task, interval) =>
     `${trimmed(task.name).toLowerCase()}|${interval.startMs}|${interval.endMs}`
 
+const sumMinutes = intervals =>
+    intervals.reduce((total, interval) => total + (interval.endMs - interval.startMs), 0) / MS_PER_MINUTE
+
 /**
- * `{ meetingMinutes, freeMinutes, windowMinutes, meetingCount, workBlockCount }` for one working
- * window. `freeMinutes` is calendar availability (window minus meeting time, never negative), not
- * time actually spent working. `workBlockCount` is the number of solo work blocks in the window that
- * were left out of the meeting time.
+ * The figures for one working window at `nowMs`:
+ *
+ * - `meetingMinutes`, `meetingCount`, `workBlockCount`, `windowMinutes`: the WHOLE working day
+ *   (meetings already over still count; "how much of my day is meetings").
+ * - `freeMinutes`: time to work that is still AVAILABLE, i.e. the remaining window
+ *   [max(now, start), end) minus the union of the meetings inside it, never negative. Free time that
+ *   has already passed is gone; an ongoing meeting only takes its rest. Calendar availability, not
+ *   time actually spent working.
+ * - `remainingWindowMinutes`, `remainingMeetingMinutes`, `remainingFromMs`, `workdayPhase`
+ *   ('before' | 'during' | 'after'): the parts of that calculation, for the tooltip and tests.
+ *
+ * `workBlockCount` is the number of solo work blocks in the window that were left out of the
+ * meeting time. Without `nowMs` the whole window counts as remaining (the pre-live behaviour).
  */
-export const computeMeetingTime = (tasks, window) => {
+export const computeMeetingTime = (tasks, window, nowMs = window.startMs) => {
     const { startMs, endMs } = window
     const windowMinutes = Math.max(0, (endMs - startMs) / MS_PER_MINUTE)
 
@@ -195,16 +240,23 @@ export const computeMeetingTime = (tasks, window) => {
         intervals.push(interval)
     })
 
-    const busyMs = mergeIntervalsInWindow(intervals, startMs, endMs).reduce(
-        (total, interval) => total + (interval.endMs - interval.startMs),
-        0
+    const meetingMinutes = Math.min(sumMinutes(mergeIntervalsInWindow(intervals, startMs, endMs)), windowMinutes)
+
+    // Same union, only over what is still ahead of `nowMs`.
+    const remaining = getRemainingWindow(window, nowMs)
+    const remainingMeetingMinutes = Math.min(
+        sumMinutes(mergeIntervalsInWindow(intervals, remaining.startMs, remaining.endMs)),
+        remaining.minutes
     )
-    const meetingMinutes = Math.min(busyMs / MS_PER_MINUTE, windowMinutes)
 
     return {
         meetingMinutes,
-        freeMinutes: Math.max(0, windowMinutes - meetingMinutes),
+        freeMinutes: Math.max(0, remaining.minutes - remainingMeetingMinutes),
         windowMinutes,
+        remainingWindowMinutes: remaining.minutes,
+        remainingMeetingMinutes,
+        remainingFromMs: remaining.startMs,
+        workdayPhase: remaining.phase,
         meetingCount: intervals.length,
         workBlockCount: [...seenWorkBlockIdentities].filter(identity => !seenIdentities.has(identity)).length,
     }
@@ -220,6 +272,9 @@ export const formatDurationCompact = minutes => {
     if (rest > 0) return `${rest}m`
     return '0h'
 }
+
+/** "9:00", "14:05": a local clock time in 24 h form (like the working hours settings). */
+export const formatClockTime = ms => moment(ms).format('H:mm')
 
 /** "9–17" for whole hours, "8:30–17" otherwise. */
 export const formatWorkingHoursRange = ({ start, end }) => {
@@ -265,5 +320,5 @@ export const deriveMeetingTimeView = ({
     if (tasksError) return { ...base, status: MEETING_TIME_CALENDAR_UNAVAILABLE }
     if (!tasksLoaded) return { ...base, status: MEETING_TIME_CALENDAR_LOADING }
 
-    return { ...base, ...computeMeetingTime(tasks, window), status: MEETING_TIME_READY, syncStatus }
+    return { ...base, ...computeMeetingTime(tasks, window, nowMs), status: MEETING_TIME_READY, syncStatus }
 }

@@ -9,6 +9,14 @@ import { getTasksCompletedTodayQuery } from '../../../../utils/backends/Tasks/my
 import { resetCalendarSyncStatuses, setCalendarSyncStatus } from '../../../../utils/calendarSyncStatus'
 
 jest.mock('react-redux', () => ({ useSelector: jest.fn(), shallowEqual: jest.fn((a, b) => a === b) }))
+// The page-visible signal (tab shown, focus, thaw) is fired by hand.
+const mockPageVisibleSubscribers = new Set()
+jest.mock('../../../../utils/appResume', () => ({
+    subscribePageVisible: callback => {
+        mockPageVisibleSubscribers.add(callback)
+        return () => mockPageVisibleSubscribers.delete(callback)
+    },
+}))
 jest.mock('../../../../utils/backends/firestore', () => ({ getDb: jest.fn() }))
 jest.mock('../../../../utils/backends/Tasks/myDayDoneTasks', () => ({ getTasksCompletedTodayQuery: jest.fn() }))
 jest.mock('../../taskBoardCalendarSync', () => ({
@@ -38,14 +46,16 @@ const snapshot = docs => ({
     forEach: fn => docs.forEach(([id, data]) => fn({ id, data: () => data })),
 })
 
-const today = moment().format('YYYY-MM-DD')
-const meetingDoc = (id, start, end) => [
+// A fixed clock (jest modern fake timers mock Date too): every case is deterministic.
+const today = '2026-11-23'
+const at = (clock, day = today) => moment(`${day}T${clock}`).valueOf()
+const meetingDoc = (id, start, end, day = today) => [
     id,
     {
         name: id,
         calendarData: {
-            start: { dateTime: moment(`${today}T${start}:00`).format() },
-            end: { dateTime: moment(`${today}T${end}:00`).format() },
+            start: { dateTime: moment(`${day}T${start}:00`).format() },
+            end: { dateTime: moment(`${day}T${end}:00`).format() },
         },
     },
 ]
@@ -75,9 +85,13 @@ describe('useMeetingTimeToday (AT-3136)', () => {
     afterEach(() => {
         mountedTrees.forEach(tree => act(() => tree.unmount()))
         mountedTrees = []
+        jest.useRealTimers()
     })
 
     beforeEach(() => {
+        // Before the working day by default: the remaining window is the whole day.
+        jest.useFakeTimers({ now: at('08:00:00') })
+        mockPageVisibleSubscribers.clear()
         listeners = []
         settingsListener = null
         latest = undefined
@@ -188,5 +202,94 @@ describe('useMeetingTimeToday (AT-3136)', () => {
         expect(taskListeners().length).toBeGreaterThan(0)
         act(() => tree.unmount())
         expect(taskListeners()).toHaveLength(0)
+    })
+
+    // AT-3136, user correction 2026-11-23: time to work counts down live from now.
+    describe('live remaining time to work', () => {
+        const answerAll = docs => act(() => taskListeners().forEach(entry => entry.onNext(snapshot(docs))))
+        const ready = () => {
+            mount()
+            answerSettings({ workingHoursStart: '09:00', workingHoursEnd: '18:00' })
+        }
+        const advance = ms => act(() => jest.advanceTimersByTime(ms))
+
+        it('counts down every minute without a calendar sync, a snapshot or a navigation', () => {
+            jest.setSystemTime(at('09:57:00'))
+            ready()
+            answerAll([meetingDoc('call', '10:00', '11:00')])
+            const listenersBefore = listeners.length
+            // 18:00 − 09:57 = 483 min, minus the 60 min meeting ahead.
+            expect(latest).toMatchObject({ status: 'ready', meetingMinutes: 60, freeMinutes: 423 })
+
+            advance(60 * 1000 + 250) // first tick just after 09:58
+            expect(Math.round(latest.freeMinutes)).toBe(422)
+            advance(60 * 1000) // 09:59
+            expect(Math.round(latest.freeMinutes)).toBe(421)
+            // During the meeting the free time stays put; after it, it counts down again.
+            advance(30 * 60 * 1000) // 10:29
+            expect(Math.round(latest.freeMinutes)).toBe(420)
+            advance(35 * 60 * 1000) // 11:04
+            expect(Math.round(latest.freeMinutes)).toBe(416)
+            // The whole-day meeting total does not change as the meeting passes.
+            expect(latest.meetingMinutes).toBe(60)
+            // No listener was re-opened for any of this.
+            expect(listeners.length).toBe(listenersBefore)
+        })
+
+        it('reaches 0 at the end of the working hours and says the working day is over', () => {
+            jest.setSystemTime(at('17:58:30'))
+            ready()
+            answerAll([])
+            expect(latest).toMatchObject({ freeMinutes: 1.5, workdayPhase: 'during' })
+            advance(2 * 60 * 1000)
+            expect(latest).toMatchObject({ freeMinutes: 0, workdayPhase: 'after', meetingMinutes: 0 })
+        })
+
+        it('refreshes at once when the page is visible again, even if the timers were frozen', () => {
+            jest.setSystemTime(at('10:00:00'))
+            ready()
+            answerAll([])
+            expect(latest.freeMinutes).toBe(480)
+            expect(mockPageVisibleSubscribers.size).toBe(1)
+            // The tab slept for two hours: the clock moved, no timer ran.
+            jest.setSystemTime(at('12:00:00'))
+            act(() => mockPageVisibleSubscribers.forEach(callback => callback({ hiddenMs: 2 * 60 * 60 * 1000 })))
+            expect(latest.freeMinutes).toBe(360)
+        })
+
+        it('clears its timer and its page-visible subscription on unmount', () => {
+            const tree = mount()
+            expect(jest.getTimerCount()).toBe(1)
+            expect(mockPageVisibleSubscribers.size).toBe(1)
+            act(() => tree.unmount())
+            expect(jest.getTimerCount()).toBe(0)
+            expect(mockPageVisibleSubscribers.size).toBe(0)
+        })
+
+        it("never shows yesterday's meetings after midnight: it waits for the new day's listeners", () => {
+            jest.setSystemTime(at('23:59:30'))
+            ready()
+            answerAll([meetingDoc('late-review', '16:00', '17:00')])
+            expect(latest).toMatchObject({ status: 'ready', meetingMinutes: 60, workdayPhase: 'after' })
+            const oldListeners = taskListeners()
+
+            advance(31 * 1000) // 00:00:00.25 on the next day
+            expect(latest.status).toBe('calendarLoading')
+            expect(latest.meetingMinutes).toBeUndefined()
+            oldListeners.forEach(entry => expect(entry.active).toBe(false))
+            // Re-opened for the new day (the done-today query gets the new start of day).
+            const nextDay = '2026-11-24'
+            const doneListener = taskListeners().find(entry => entry.clauses[0][0] === 'done-today')
+            expect(doneListener.clauses[0][3]).toBe(at('00:00:00', nextDay))
+
+            answerAll([meetingDoc('late-review', '16:00', '17:00'), meetingDoc('standup', '09:30', '10:00', nextDay)])
+            // Only the new day's meeting counts; the whole new day is still ahead.
+            expect(latest).toMatchObject({
+                status: 'ready',
+                meetingMinutes: 30,
+                freeMinutes: 510,
+                workdayPhase: 'before',
+            })
+        })
     })
 })

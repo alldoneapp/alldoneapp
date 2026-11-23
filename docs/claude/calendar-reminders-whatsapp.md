@@ -168,6 +168,33 @@ Rules live in `utils/meetingTimeToday.js` and are pinned by `utils/meetingTimeTo
       the AT-3136 cases in `calendarProjectClassifier.test.js` / `calendarProjectRouting.test.js`.
     - The AT-3137 statistics and the "no other participants → own time" category suggestion still
       use `attendeeCount` and are unchanged.
+- **Time to work is what is still available, live (user correction after !940, 2026-11-23).** "Die
+  verfügbare Arbeitszeit sollte live aktualisiert werden. Wenn die vorherigen Zeitfenster bereits
+  vorbei sind, stehen die entsprechenden Stunden auch nicht mehr zur Verfügung."
+    - The large figure (`view.freeMinutes`) is the remaining window `[max(now, start), end)`
+      (`getRemainingWindow`) minus the union of the meetings inside it: before the working day the
+      whole window, after it 0 (`workdayPhase` `before`/`during`/`after`). An ongoing meeting only
+      takes its rest; free time that has passed is gone. Solo work blocks, dedup, clipping, all-day,
+      cancelled/declined are the same rules as before, applied to the remaining window.
+    - The meeting figure (`meetingMinutes`, `meetingCount`, `workBlockCount`, `windowMinutes`)
+      stays the WHOLE working day ("how much of my day is meetings"); so during the day the two
+      figures no longer add up to the window. The visible labels are unchanged; the tooltip and the
+      accessibility label say "Meetings today …: 4h (whole working day, including meetings that are
+      over). Still free to work from 14:05 to 18:00: 2h; free time that has passed no longer
+      counts." and, after the working hours, `meetingTime summary after hours`.
+    - The clock is `hooks/useMinuteClock.js`: one chained timeout re-aligned to just after every full
+      minute, plus an immediate refresh through `subscribePageVisible` (`utils/appResume.js`: tab
+      shown, focus, thaw, bfcache), cleared on unmount. No calendar sync, snapshot or navigation is
+      needed for the figure to move; no listener is re-opened by a tick.
+    - Day rollover: the same clock gives the local day key. A new day re-opens the listeners and
+      the line shows "…" until they answer (`tasksState.key` mismatch), never yesterday's figures.
+      `utils/DailyAppReload.js` then reloads the page as usual (deferred while offline).
+    - `dailyPlanModel.computePlanCapacity` (AT-3142) still reads `windowMinutes − meetingMinutes`
+      (whole day) and ignores `freeMinutes`; it was deliberately not changed with this (open product
+      question whether Plan my day should plan against the remaining time).
+    - Pinned by "remaining time to work (live)" in `meetingTimeToday.test.js`, "live remaining time
+      to work" in `useMeetingTimeToday.test.js` (fake clock: ticks, resume, unmount, midnight),
+      `hooks/useMinuteClock.test.js` and the tooltip cases in `MeetingTimeToday.test.js`.
 
 ## Task reminders and the channel they come back on (AT-2211)
 

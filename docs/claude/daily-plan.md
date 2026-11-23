@@ -21,6 +21,9 @@ Today with one Undo. Approved design: mockup artifact `TzP8PBCGg1d4gB8pmMhF` v2 
   task's Must/Should/Could becomes Do later so the plan leads the list. Observed tasks: only the
   observer's own due date is ever moved, never the owner's priority.
 - **Capacity = 80% of "Time to work"** (AT-3136: working hours minus merged meetings), 20% buffer.
+  Note: since 2026-11-23 the header's "Time to work" is the time still available from now; the plan
+  still computes the whole working day (`windowMinutes − meetingMinutes`), see
+  `calendar-reminders-whatsapp.md`.
   No core/stretch split, no aging quota.
 - **Proposal is deterministic** (no model call, no Gold): your Must tasks always (never dropped, even
   when they alone exceed the budget — that is the Overload state), the focus task, then ranked by

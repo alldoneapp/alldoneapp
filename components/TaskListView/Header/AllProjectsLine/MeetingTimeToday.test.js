@@ -53,14 +53,25 @@ const render = (view, density) => {
     return tree
 }
 
+// 14:05 local time today (the hook passes the remaining window's start).
+const at = (hours, minutes) => {
+    const date = new Date()
+    date.setHours(hours, minutes, 0, 0)
+    return date.getTime()
+}
+
 const READY = {
     status: 'ready',
     workingHours: SAVED_HOURS,
     meetingMinutes: 450,
     freeMinutes: 90,
     windowMinutes: 540,
+    remainingFromMs: at(14, 5),
+    workdayPhase: 'during',
     syncStatus: 'synced',
 }
+
+const SUMMARY = 'meetingTime summary {"meetings":"7h 30m","free":"1h 30m","from":"14:05","until":"18:00"}'
 
 describe('MeetingTimeToday (AT-3136)', () => {
     beforeEach(() => {
@@ -91,7 +102,27 @@ describe('MeetingTimeToday (AT-3136)', () => {
         // ... but stay in the tooltip / accessibility label with the full explanation.
         const label = tree.root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel
         expect(label).toContain('meetingTime working hours {"range":"9–18"}')
-        expect(label).toContain('meetingTime summary {"meetings":"7h 30m","free":"1h 30m"}')
+        expect(label).toContain(SUMMARY)
+    })
+
+    it('explains that time to work is what is left from now until the end of the working hours', () => {
+        const label = view => render(view).root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel
+        // Before the working day the remaining window starts at the working-hours start.
+        expect(label({ ...READY, workdayPhase: 'before', remainingFromMs: at(9, 0), freeMinutes: 90 })).toContain(
+            '"from":"9:00","until":"18:00"'
+        )
+        // Views without the live fields (older callers) fall back to the working-hours start.
+        const { remainingFromMs, workdayPhase, ...legacy } = READY
+        expect(label(legacy)).toContain('"from":"9:00","until":"18:00"')
+    })
+
+    it('after the working hours shows 0h and says the working day is over, keeping the meeting total', () => {
+        const view = { ...READY, freeMinutes: 0, workdayPhase: 'after', remainingFromMs: at(18, 0) }
+        const tree = render(view)
+        expect(textOf(tree)).toBe('0h|meetingTime time to work|meetingTime meetings duration {"duration":"7h 30m"}')
+        const label = tree.root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel
+        expect(label).toContain('meetingTime summary after hours {"meetings":"7h 30m"}')
+        expect(label).not.toContain('meetingTime summary {')
     })
 
     it('says in the tooltip when solo work blocks counted as time to work, without changing the line', () => {
@@ -202,9 +233,7 @@ describe('MeetingTimeToday (AT-3136)', () => {
         const minimal = render(READY, MEETING_TIME_DENSITY_MINIMAL)
         expect(textOf(minimal)).toBe('1h 30m')
         // The meeting time is still in the tooltip / accessibility label.
-        expect(minimal.root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel).toContain(
-            'meetingTime summary {"meetings":"7h 30m","free":"1h 30m"}'
-        )
+        expect(minimal.root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel).toContain(SUMMARY)
     })
 })
 

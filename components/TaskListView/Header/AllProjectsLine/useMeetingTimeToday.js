@@ -11,6 +11,7 @@ import {
     summarizeCalendarSyncStatus,
 } from '../../../../utils/calendarSyncStatus'
 import { deriveMeetingTimeView } from '../../../../utils/meetingTimeToday'
+import useMinuteClock from '../../../../hooks/useMinuteClock'
 
 /**
  * AT-3136 — data for the "Meetings / calendar-free" figures in the All projects line.
@@ -27,9 +28,14 @@ import { deriveMeetingTimeView } from '../../../../utils/meetingTimeToday'
  *     for the whole working day.
  *
  * Only calendar tasks are kept from the snapshots.
+ *
+ * Clock: `useMinuteClock` re-derives the view every minute and when the page is visible again, so
+ * "time to work" (what is still free from now until the end of the working hours) counts down on
+ * its own, without a calendar sync or a navigation. The same clock gives the local day: when it
+ * changes (a tab left open over midnight, before `utils/DailyAppReload.js` reloads the page, or
+ * while that reload waits for the network), the listeners are re-opened for the new day and the
+ * line shows "…" until they answer; yesterday's meetings are never shown as today's.
  */
-
-const ONE_MINUTE = 60 * 1000
 
 const getActiveProjectIds = (projectIds, archivedProjectIds, templateProjectIds, guideProjectIds) => {
     const excluded = new Set([...(archivedProjectIds || []), ...(templateProjectIds || []), ...(guideProjectIds || [])])
@@ -45,15 +51,6 @@ const getCalendarTasksFromSnapshot = snapshot => {
     return tasks
 }
 
-const useLocalDayKey = () => {
-    const [dayKey, setDayKey] = useState(() => moment().format('YYYY-MM-DD'))
-    useEffect(() => {
-        const interval = setInterval(() => setDayKey(moment().format('YYYY-MM-DD')), ONE_MINUTE)
-        return () => clearInterval(interval)
-    }, [])
-    return dayKey
-}
-
 export default function useMeetingTimeToday({ enabled = true } = {}) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -67,7 +64,8 @@ export default function useMeetingTimeToday({ enabled = true } = {}) {
     // The assistant profile board renders these views for another `currentUser`; the figures are
     // about the signed-in human's calendar only.
     const active = enabled && !!loggedUserId && !isAnonymous && currentUserId === loggedUserId
-    const dayKey = useLocalDayKey()
+    const nowMs = useMinuteClock()
+    const dayKey = moment(nowMs).format('YYYY-MM-DD')
 
     const calendarProjectIds = useMemo(() => getCalendarConnectedProjectIdsFromApis(apisConnected), [apisConnected])
     const calendarConnected = calendarProjectIds.length > 0
@@ -104,8 +102,9 @@ export default function useMeetingTimeToday({ enabled = true } = {}) {
 
         const key = `${watchedProjectIdsKey}|${dayKey}`
         const watchedIds = watchedProjectIdsKey.split(',')
-        const endOfDay = moment().endOf('day').valueOf()
-        const startOfToday = moment().startOf('day').valueOf()
+        const day = moment(dayKey, 'YYYY-MM-DD')
+        const endOfDay = day.clone().endOf('day').valueOf()
+        const startOfToday = day.clone().startOf('day').valueOf()
         const byStream = {}
         let error = false
         let disposed = false
@@ -169,8 +168,9 @@ export default function useMeetingTimeToday({ enabled = true } = {}) {
             tasksError: isCurrent && tasksState.error,
             syncStatus: summarizeCalendarSyncStatus(calendarProjectIds, syncStatuses),
             tasks,
+            nowMs,
         })
-        // dayKey re-derives the working window when the local day changes.
+        // nowMs re-derives the remaining window every minute (and the working window on a new day).
     }, [
         active,
         settings,
@@ -180,5 +180,6 @@ export default function useMeetingTimeToday({ enabled = true } = {}) {
         syncStatuses,
         watchedProjectIdsKey,
         dayKey,
+        nowMs,
     ])
 }

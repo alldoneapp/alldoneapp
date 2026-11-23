@@ -12,6 +12,8 @@ import {
     MEETING_TIME_CALENDAR_UNAVAILABLE,
     MEETING_TIME_NO_CALENDAR,
     MEETING_TIME_READY,
+    WORKDAY_AFTER,
+    formatClockTime,
     formatDurationCompact,
     formatWorkingHoursRange,
 } from '../../../../utils/meetingTimeToday'
@@ -29,8 +31,10 @@ import { CALENDAR_SYNC_FAILED, CALENDAR_SYNC_SYNCING } from '../../../../utils/c
  * the full explanation, and the whole display opens the settings where they are edited.
  *
  * Presentational only; `view` comes from `useMeetingTimeToday` (see utils/meetingTimeToday.js for
- * the rules). The large figure is calendar availability inside the working hours, not measured
- * work; the tooltip says so. Unknown values never render as numbers: without a connected calendar
+ * the rules). The large figure is the calendar-free time still AHEAD inside today's working hours
+ * (from now, or from the start before the working day, until the end; 0 after it), not measured
+ * work. The meeting figure is the whole working day's. The tooltip says both, with the clock times
+ * ("from 14:05 to 17:00"), and is re-rendered with every minute tick of the hook. Unknown values never render as numbers: without a connected calendar
  * or with unavailable calendar data there is no large figure at all.
  *
  * `density` comes from AllProjectsLine, which measures the room in its row (mobile sizes put the
@@ -67,6 +71,25 @@ export const getMeetingTimeDensity = (mobile, lineWidth, withWarning = false) =>
     return MEETING_TIME_DENSITY_MINIMAL
 }
 
+// "17:00" → "17:00", "08:30" → "8:30" (same 24 h form as formatClockTime).
+const shortClock = clock => {
+    const [hours, minutes] = clock.split(':')
+    return `${Number(hours)}:${minutes}`
+}
+
+const buildSummary = view => {
+    const meetings = formatDurationCompact(view.meetingMinutes)
+    if (view.workdayPhase === WORKDAY_AFTER) return translate('meetingTime summary after hours', { meetings })
+    return translate('meetingTime summary', {
+        meetings,
+        free: formatDurationCompact(view.freeMinutes),
+        from: Number.isFinite(view.remainingFromMs)
+            ? formatClockTime(view.remainingFromMs)
+            : shortClock(view.workingHours.start),
+        until: shortClock(view.workingHours.end),
+    })
+}
+
 const buildTooltip = view => {
     const range = formatWorkingHoursRange(view.workingHours)
     const hours = view.workingHours.isDefault
@@ -74,12 +97,7 @@ const buildTooltip = view => {
         : translate('meetingTime working hours', { range })
     const parts = [hours]
     if (view.status === MEETING_TIME_READY) {
-        parts.push(
-            translate('meetingTime summary', {
-                meetings: formatDurationCompact(view.meetingMinutes),
-                free: formatDurationCompact(view.freeMinutes),
-            })
-        )
+        parts.push(buildSummary(view))
         if (view.workBlockCount > 0)
             parts.push(translate('meetingTime work blocks hint', { count: view.workBlockCount }))
         if (view.syncStatus === CALENDAR_SYNC_SYNCING) parts.push(translate('meetingTime syncing'))
