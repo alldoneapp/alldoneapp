@@ -4,7 +4,7 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
 
 ## GPT-Live voice calls (in-app, phone, WhatsApp)
 
-Every assistant call uses GPT-Live (`gpt-live-1`) for speech and client delegation to the current
+Every assistant call uses GPT-Live (`gpt-live-1.1`, AT-3144) for speech and client delegation to the current
 assistant's configured chat model, instructions, history and tools. Voice is 40 Gold/min with
 a 15-second minimum; backend reasoning uses the assistant's normal model rate. In-app calls use
 WebRTC; phone and WhatsApp calls arrive over SIP as `live.transport.incoming` and run on the same

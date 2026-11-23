@@ -30,6 +30,23 @@
  * - A meeting is clipped to the working-hours window; overlapping meetings and the same event
  *   imported twice (two connected calendars, two projects) are merged before summing, so no minute
  *   is counted twice.
+ *
+ * ## Solo work blocks are time to work (AT-3136, decided with the user 2026-11-23)
+ *
+ * An event is left out of the meeting time only when BOTH are stored on the calendar task:
+ *
+ * - `calendarData.soloEvent === true`: the sync found nobody else in it AND the user is verifiably
+ *   its organizer (`getSoloEventFlag` in functions/GoogleCalendarTasks/calendarTasks.js). Nobody
+ *   else "accepted" is not enough: invitees who have not answered or declined still make it a
+ *   meeting. Missing or unclear participant data (tasks synced before the field existed, a group
+ *   calendar organizer, hidden guest lists) leaves the field unset.
+ * - `calendarData.workBlock === true`: Google "Focus time", or the calendar routing model judged it
+ *   a block for the user's own work. A private solo appointment (doctor, childcare) still counts:
+ *   it is not time to work.
+ *
+ * Everything unknown stays a meeting, so a gap in the data can only make "time to work" smaller,
+ * never larger. Only the union of the remaining (meeting) intervals is counted, so a solo block that
+ * overlaps a real meeting neither adds nor removes anything there.
  */
 
 import moment from 'moment-timezone'
@@ -131,6 +148,9 @@ export const mergeIntervalsInWindow = (intervals, windowStartMs, windowEndMs) =>
     return merged
 }
 
+/** True only for a reliably solo event that is a block of the user's own work (see above). */
+export const isSoloWorkBlock = task => task?.calendarData?.soloEvent === true && task.calendarData.workBlock === true
+
 /**
  * The same task document can reach us twice (the open and the done-today stream during a
  * completion, or a project move), and the same event can be imported by two connected calendars.
@@ -141,9 +161,10 @@ const getMeetingIdentity = (task, interval) =>
     `${trimmed(task.name).toLowerCase()}|${interval.startMs}|${interval.endMs}`
 
 /**
- * `{ meetingMinutes, freeMinutes, windowMinutes, meetingCount }` for one working window.
- * `freeMinutes` is calendar availability (window minus meeting time, never negative), not time
- * actually spent working.
+ * `{ meetingMinutes, freeMinutes, windowMinutes, meetingCount, workBlockCount }` for one working
+ * window. `freeMinutes` is calendar availability (window minus meeting time, never negative), not
+ * time actually spent working. `workBlockCount` is the number of solo work blocks in the window that
+ * were left out of the meeting time.
  */
 export const computeMeetingTime = (tasks, window) => {
     const { startMs, endMs } = window
@@ -151,6 +172,7 @@ export const computeMeetingTime = (tasks, window) => {
 
     const seenTaskIds = new Set()
     const seenIdentities = new Set()
+    const seenWorkBlockIdentities = new Set()
     const intervals = []
 
     ;(tasks || []).forEach(task => {
@@ -162,6 +184,12 @@ export const computeMeetingTime = (tasks, window) => {
         const interval = getMeetingInterval(task)
         if (!interval || interval.endMs <= startMs || interval.startMs >= endMs) return
         const identity = getMeetingIdentity(task, interval)
+        // Checked before the duplicate check: when the same event comes from two calendars and only
+        // one copy is reliably a solo work block, the other copy still counts as a meeting.
+        if (isSoloWorkBlock(task)) {
+            seenWorkBlockIdentities.add(identity)
+            return
+        }
         if (seenIdentities.has(identity)) return
         seenIdentities.add(identity)
         intervals.push(interval)
@@ -178,6 +206,7 @@ export const computeMeetingTime = (tasks, window) => {
         freeMinutes: Math.max(0, windowMinutes - meetingMinutes),
         windowMinutes,
         meetingCount: intervals.length,
+        workBlockCount: [...seenWorkBlockIdentities].filter(identity => !seenIdentities.has(identity)).length,
     }
 }
 

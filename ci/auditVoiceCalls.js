@@ -24,7 +24,7 @@ function summarizeCalls(rows, limit) {
             const accepted = Number(values.acceptCompletedAt) > 0
             const mode = !accepted
                 ? 'unaccepted'
-                : values.voiceProvider === 'gpt-live' && values.voiceModel === 'gpt-live-1'
+                : values.voiceProvider === 'gpt-live' && /^gpt-live-\d/.test(values.voiceModel || '')
                   ? 'live'
                   : !values.voiceProvider && /^gpt-(?:realtime|4o.*realtime)/.test(values.realtimeModel || '')
                     ? 'legacy'

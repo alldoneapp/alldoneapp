@@ -157,7 +157,7 @@ describe('assistant browser calls', () => {
         )
         const initialSession = JSON.parse(global.fetch.mock.calls[0][1].body).session
         expect(initialSession.delegation).toEqual({ type: 'client' })
-        expect(initialSession.model).toBe('gpt-live-1')
+        expect(initialSession.model).toBe('gpt-live-1.1')
         expect(initialSession.store).toBe(false)
         expect(initialSession.instructions).toContain(
             'Read a URL aloud only when the caller explicitly asks to hear that URL'
@@ -276,7 +276,7 @@ describe('assistant browser calls', () => {
         ).toEqual(
             expect.objectContaining({
                 delegation: { type: 'client' },
-                model: 'gpt-live-1',
+                model: 'gpt-live-1.1',
                 instructions: expect.stringContaining(
                     'Read a URL aloud only when the caller explicitly asks to hear that URL'
                 ),
@@ -364,7 +364,7 @@ describe('Live startup failures and usage privacy', () => {
         }))
         await expect(startAssistantBrowserCall(request, { uid: 'user-1' })).rejects.toMatchObject({
             code: status === 500 ? 'internal' : 'unavailable',
-            ...(status !== 500 ? { message: expect.stringContaining('gpt-live-1 access') } : {}),
+            ...(status !== 500 ? { message: expect.stringContaining('gpt-live-1.1 access') } : {}),
         })
         expect(global.fetch.mock.calls.map(([url]) => url)).toEqual(['https://api.openai.com/v1/live/sessions'])
         expect(reconcileLiveUsage).not.toHaveBeenCalled()

@@ -7,7 +7,7 @@ import moment from 'moment'
 import renderer, { act } from 'react-test-renderer'
 
 import { DailyPlanDialog } from './DailyPlanModal'
-import { getOpenPlannedKey, summarizeAppliedPlan } from './DailyPlanEntry'
+import DailyPlanEntry, { getOpenPlannedKey, summarizeAppliedPlan } from './DailyPlanEntry'
 
 let mockState
 let mockSizing = { width: 640, maxHeight: 700, isSheet: false }
@@ -443,5 +443,28 @@ describe('applied plan summary (Today pill)', () => {
             ['product', 2, 90, 1],
             ['client', 1, 45, 0],
         ])
+    })
+})
+
+// AT-3136 keeps the All projects line one fixed-height row on mobile (merged with AT-3142).
+describe('DailyPlanEntry — full and compact', () => {
+    const meetingView = { status: 'ready', meetingMinutes: 0, meetingCount: 0, workingHours: {} }
+    const texts = root => root.findAllByType(require('react-native').Text).map(node => node.props.children)
+
+    it('shows the labelled button next to the time display on desktop', () => {
+        const root = renderer.create(<DailyPlanEntry meetingView={meetingView} />).root
+        expect(root.findAllByProps({ testID: 'daily-plan-open' }).length).toBeGreaterThan(0)
+        expect(texts(root)).toContain('dailyPlan plan my day')
+    })
+
+    it('is an unlabelled round icon button with an accessibility label in the compact row', () => {
+        const root = renderer.create(<DailyPlanEntry meetingView={meetingView} compact />).root
+        const button = root.findAllByProps({ testID: 'daily-plan-open' })[0]
+        expect(button.props.accessibilityLabel).toBe('dailyPlan plan my day')
+        expect(texts(root)).not.toContain('dailyPlan plan my day')
+    })
+
+    it('renders nothing without a meeting view', () => {
+        expect(renderer.create(<DailyPlanEntry meetingView={null} compact />).toJSON()).toBeNull()
     })
 })

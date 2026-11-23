@@ -74,13 +74,19 @@ export const summarizeAppliedPlan = (plan, leftByProject, projectOrder = []) => 
     }
 }
 
-export default function DailyPlanEntry({ meetingView }) {
+// AT-3136 keeps the All projects line one fixed-height row on mobile, so there the entry is a
+// round icon button (filled while a plan is active) and its status text opens as a popover instead
+// of a line of its own. The time display beside it gets the line width minus this.
+const COMPACT_BUTTON_SIZE = 28
+const COMPACT_MARGIN = 8
+export const DAILY_PLAN_COMPACT_ENTRY_WIDTH = COMPACT_BUTTON_SIZE + COMPACT_MARGIN
+
+export default function DailyPlanEntry({ meetingView, compact = false }) {
     const dispatch = useDispatch()
     const userId = useSelector(state => state.loggedUser.uid)
     const projectOrder = useSelector(state => state.loggedUser.projectIds, shallowEqual)
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
     const filters = useSelector(state => state.taskPriorityFilters, shallowEqual)
-    const mobile = useSelector(state => state.smallScreenNavigation)
     const dateKey = getLocalPlanDateKey()
 
     const [open, setOpen] = useState(false)
@@ -122,6 +128,8 @@ export default function DailyPlanEntry({ meetingView }) {
             result?.skipped?.length ? translate('dailyPlan applied with skipped', { count: result.skipped.length }) : ''
         )
         dispatch(setTaskPriorityFilters(PLAN_FILTER))
+        // Compact: the skipped-tasks note has no line of its own, the summary (which shows it) opens.
+        if (compact && result?.skipped?.length) setPopoverOpen(true)
     }
 
     const undo = () => {
@@ -206,8 +214,74 @@ export default function DailyPlanEntry({ meetingView }) {
         </View>
     )
 
+    const messageCard = (
+        <View
+            dataSet={{ adPopup: 'true' }}
+            style={[s.card, { maxWidth: 280, padding: 12 }]}
+            testID="daily-plan-message-popover"
+        >
+            <Text style={s.mutedText}>{message}</Text>
+        </View>
+    )
+
+    if (compact) {
+        return (
+            <View style={localStyles.compactContainer}>
+                {planActive && applied ? (
+                    <AppPopover
+                        content={popoverContent}
+                        isOpen={popoverOpen}
+                        onClickOutside={() => setPopoverOpen(false)}
+                        position={['bottom', 'left', 'right', 'top']}
+                        align="end"
+                        padding={4}
+                    >
+                        <TouchableOpacity
+                            testID="daily-plan-pill"
+                            accessibilityLabel={translate('dailyPlan pill', {
+                                left: applied.left,
+                                count: applied.count,
+                            })}
+                            style={[localStyles.compactButton, localStyles.compactActive]}
+                            onPress={() => setPopoverOpen(value => !value)}
+                        >
+                            <Icon name="sun" size={14} color="white" />
+                        </TouchableOpacity>
+                    </AppPopover>
+                ) : (
+                    <AppPopover
+                        content={messageCard}
+                        isOpen={!!message}
+                        onClickOutside={() => setMessage('')}
+                        position={['bottom', 'left', 'right', 'top']}
+                        align="end"
+                        padding={4}
+                    >
+                        <TouchableOpacity
+                            testID="daily-plan-open"
+                            accessibilityLabel={translate('dailyPlan plan my day')}
+                            style={localStyles.compactButton}
+                            onPress={() => {
+                                setMessage('')
+                                setOpen(true)
+                            }}
+                        >
+                            <Icon name="sun" size={14} color={colors.Primary100} />
+                        </TouchableOpacity>
+                    </AppPopover>
+                )}
+                <DailyPlanModal
+                    visible={open}
+                    onClose={() => setOpen(false)}
+                    meetingView={meetingView}
+                    onApplied={onApplied}
+                />
+            </View>
+        )
+    }
+
     return (
-        <View style={[localStyles.container, mobile && localStyles.mobile]}>
+        <View style={localStyles.container}>
             {planActive && applied ? (
                 <AppPopover
                     content={popoverContent}
@@ -258,10 +332,21 @@ const localStyles = StyleSheet.create({
         marginLeft: 12,
         flexShrink: 0,
     },
-    mobile: {
-        marginLeft: 0,
-        marginTop: 4,
-        flexShrink: 1,
+    compactContainer: {
+        marginLeft: COMPACT_MARGIN,
+        flexShrink: 0,
+    },
+    compactButton: {
+        width: COMPACT_BUTTON_SIZE,
+        height: COMPACT_BUTTON_SIZE,
+        borderRadius: COMPACT_BUTTON_SIZE / 2,
+        borderWidth: 1,
+        borderColor: colors.Primary100,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    compactActive: {
+        backgroundColor: colors.Primary100,
     },
     button: {
         flexDirection: 'row',

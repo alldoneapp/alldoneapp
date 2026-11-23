@@ -22,6 +22,13 @@ test('distinguishes accepted call modes from routing configuration and incomplet
                 voiceModel: 'gpt-live-1',
                 acceptCompletedAt: 10,
             }),
+            // AT-3144: calls from 2026-11 on run on gpt-live-1.1; both versions are Live.
+            row('app11', {
+                channel: 'browser_call',
+                voiceProvider: 'gpt-live',
+                voiceModel: 'gpt-live-1.1',
+                acceptCompletedAt: 10,
+            }),
             row('phone', { channel: 'phone_call', realtimeModel: 'gpt-realtime-2', acceptCompletedAt: 10 }),
             row('routing', { channel: 'phone_call', realtimeModel: 'gpt-realtime-2' }),
             row('old', { channel: 'whatsapp_call', acceptCompletedAt: 10 }),
@@ -29,7 +36,7 @@ test('distinguishes accepted call modes from routing configuration and incomplet
         ],
         10
     )
-    expect(report.counts).toEqual({ live: 1, legacy: 1, unknown: 1, unaccepted: 1 })
+    expect(report.counts).toEqual({ live: 2, legacy: 1, unknown: 1, unaccepted: 1 })
     expect(report.byChannel.phone_call).toEqual({ live: 0, legacy: 1, unknown: 0, unaccepted: 1 })
     expect(report.acceptedExceptions.map(call => call.sessionId)).toEqual(['phone', 'old'])
     expect(report.sampleMayBeTruncated).toBe(false)
