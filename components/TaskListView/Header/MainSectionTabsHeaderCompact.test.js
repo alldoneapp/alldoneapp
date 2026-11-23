@@ -36,7 +36,7 @@ const buildState = () => ({
     selectedSidebarTab: 'Tasks',
     selectedProjectIndex: -1,
     loggedUserProjects: [],
-    loggedUser: { realProjectIds: [], isAnonymous: false },
+    loggedUser: { realProjectIds: [], isAnonymous: false, sidebarNavigationMode: 'simple' },
 })
 
 const setViewportWidth = width => {

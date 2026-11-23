@@ -2,11 +2,14 @@ import React from 'react'
 import { Provider } from 'react-redux'
 import ProjectHeader from '../../../components/TaskListView/Header/ProjectHeader'
 import store from '../../../redux/store'
-import { storeCurrentUser, toggleSmallScreenNavigation } from '../../../redux/actions'
+import { storeCurrentUser, storeLoggedUser, toggleSmallScreenNavigation } from '../../../redux/actions'
 
 import renderer from 'react-test-renderer'
 
 describe('ProjectHeader component', () => {
+    // These snapshots show the simple sidebar; since AT-3122 a user without a stored mode gets "Anna on top".
+    beforeEach(() => store.dispatch(storeLoggedUser({ sidebarNavigationMode: 'simple' })))
+
     describe('ProjectHeader snapshot test', () => {
         it('should render correctly', () => {
             store.dispatch(storeCurrentUser({ workflow: [] }))
