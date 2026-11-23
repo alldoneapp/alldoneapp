@@ -151,10 +151,6 @@ const ThemeColors = {
                                 // here we use a unique color
                                 backgroundColor: Colors.Secondary200,
                             }),
-                            // SectionDivider component (below Chats, AT-3139)
-                            divider: {
-                                backgroundColor: Colors.Secondary100,
-                            },
                             // UserItem component
                             UserItem: {
                                 // here we use a unique color
