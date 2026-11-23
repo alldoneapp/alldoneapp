@@ -118,35 +118,18 @@ export default function MeetingTimeToday({ view }) {
         return null
     }
 
-    const valueStyle = [localStyles.text, mobile && localStyles.mobileText, syncing && localStyles.pending]
+    const valueStyle = [localStyles.text, syncing && localStyles.pending]
 
-    if (mobile) {
-        // Two short lines; the working hours stay reachable through the tooltip / settings.
-        return (
-            <View
-                ref={setTooltip}
-                style={localStyles.mobileContainer}
-                accessibilityLabel={tooltip}
-                testID="meeting-time-today"
-            >
-                <Text style={valueStyle} numberOfLines={1}>
-                    {meetingsText}
-                </Text>
-                {freeText ? (
-                    <Text style={valueStyle} numberOfLines={1}>
-                        {freeText}
-                        {workingHours.isDefault ? ` (${range})` : ''}
-                        {syncFailed ? ' ⚠' : ''}
-                    </Text>
-                ) : (
-                    extra
-                )}
-            </View>
-        )
-    }
-
+    // On mobile sizes AllProjectsLine puts this in its own row under the line (there is no room
+    // beside the centred title), so the same single line is used and may wrap on very narrow
+    // screens instead of overflowing.
     return (
-        <View ref={setTooltip} style={localStyles.container} accessibilityLabel={tooltip} testID="meeting-time-today">
+        <View
+            ref={setTooltip}
+            style={[localStyles.container, mobile && localStyles.mobileContainer]}
+            accessibilityLabel={tooltip}
+            testID="meeting-time-today"
+        >
             {hoursSegment}
             <Separator />
             <Text style={valueStyle} numberOfLines={1}>
@@ -178,19 +161,14 @@ const localStyles = StyleSheet.create({
         marginRight: 4,
     },
     mobileContainer: {
-        flexDirection: 'column',
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-        flexShrink: 0,
-        marginRight: 2,
+        flexWrap: 'wrap',
+        justifyContent: 'flex-end',
+        flexShrink: 1,
+        marginRight: 0,
     },
     text: {
         ...styles.caption2,
         color: colors.Text02,
-    },
-    mobileText: {
-        fontSize: 11,
-        lineHeight: 16,
     },
     hours: {
         color: colors.Text03,

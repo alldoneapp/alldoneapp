@@ -47,11 +47,22 @@ export default function AllProjectsLine({
     // centred on the whole line as one block; on desktop they stay left aligned.
     const centerTitle = mobile
     const [actionsWidth, onActionsLayout] = useMirroredActionsWidth()
+    // AT-3136: on mobile sizes the meeting figures get their own right-aligned row under the line.
+    // In the actions cluster they would be mirrored by the centring spacer (AT-3132) and leave the
+    // title no room, so "All projects" and the figures were drawn over each other at 390px.
+    const meetingTimeBelow = showMeetingTime && mobile
+    const meetingTimeInLine = showMeetingTime && !mobile
 
     return (
         <>
             <HeaderActionsContext.Provider value={true}>
-                <View style={[localStyles.container, localStyles.hierarchyHeader, { marginBottom: bottomSpacing }]}>
+                <View
+                    style={[
+                        localStyles.container,
+                        localStyles.hierarchyHeader,
+                        { marginBottom: meetingTimeBelow ? 4 : bottomSpacing },
+                    ]}
+                >
                     {centerTitle && <MirroredActionsSpacer width={actionsWidth} testID="all-projects-line-mirror" />}
                     <View
                         style={[localStyles.rightContainer, centerTitle && localStyles.centeredTitle]}
@@ -76,7 +87,7 @@ export default function AllProjectsLine({
                         onLayout={centerTitle ? onActionsLayout : undefined}
                         style={[localStyles.leftContainer, { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}
                     >
-                        {showMeetingTime && <MeetingTime />}
+                        {meetingTimeInLine && <MeetingTime />}
                         {customRight}
                         {showActions && inOpenSection && (
                             <TaskHeaderMoreButton
@@ -91,6 +102,11 @@ export default function AllProjectsLine({
                     </View>
                 </View>
             </HeaderActionsContext.Provider>
+            {meetingTimeBelow && (
+                <View style={[localStyles.meetingTimeRow, { marginBottom: bottomSpacing }]} testID="meeting-time-row">
+                    <MeetingTime />
+                </View>
+            )}
             {annaOnTop && <SectionNavigation />}
         </>
     )
@@ -166,6 +182,11 @@ const localStyles = StyleSheet.create({
         minHeight: 32,
         borderRadius: 8,
         backgroundColor: alphaColor(themed.Surface, 0.85),
+    },
+    meetingTimeRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        paddingHorizontal: 12,
     },
     toggleByTimeInline: {
         marginTop: 0,

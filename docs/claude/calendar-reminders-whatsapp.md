@@ -76,7 +76,10 @@ function actually exists after the deploy rather than trusting the deploy summar
 
 The task boards and My Day show "Meetings 2h 30m · Calendar-free 5h 30m" on the right of the All
 projects line (`AllProjectsLine showMeetingTime` → `AllProjectsMeetingTime`, required on use so
-Notes/Chats/Contacts/Goals never load it). Rules live in `utils/meetingTimeToday.js` and are pinned
+Notes/Chats/Contacts/Goals never load it). On mobile sizes (`smallScreenNavigation`) it is NOT in
+the actions cluster but in its own right-aligned row under the line (`meeting-time-row`): the
+AT-3132 centring spacer mirrors the actions' width, and with the figures there the title had no room
+and was drawn over them at 390px (seen in the browser, 2026-11-23). Rules live in `utils/meetingTimeToday.js` and are pinned
 by `utils/meetingTimeToday.test.js`:
 
 - **Working hours are NOT a My Day setting.** There is none. The only stored working day is the

@@ -132,18 +132,20 @@ describe('MeetingTimeToday (AT-3136)', () => {
         )
     })
 
-    it('uses two short lines on mobile and keeps the default range visible', () => {
+    it('on mobile shows the same single line, allowed to wrap, with the default range (AT-3136)', () => {
         mobile = true
-        const text = textOf(
-            render({
-                status: 'ready',
-                workingHours: DEFAULT_HOURS,
-                meetingMinutes: 30,
-                freeMinutes: 450,
-                windowMinutes: 480,
-                syncStatus: 'synced',
-            })
+        const tree = render({
+            status: 'ready',
+            workingHours: DEFAULT_HOURS,
+            meetingMinutes: 30,
+            freeMinutes: 450,
+            windowMinutes: 480,
+            syncStatus: 'synced',
+        })
+        expect(textOf(tree)).toBe(
+            'meetingTime default hours {"range":"9–17"}| · |meetingTime meetings 30m| · |meetingTime calendar free 7h 30m'
         )
-        expect(text).toBe('meetingTime meetings 30m|meetingTime calendar free 7h 30m (9–17)')
+        const style = [].concat(tree.root.findByProps({ testID: 'meeting-time-today' }).props.style)
+        expect(style).toContainEqual(expect.objectContaining({ flexWrap: 'wrap' }))
     })
 })

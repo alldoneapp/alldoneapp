@@ -60,6 +60,28 @@ describe('AllProjectsLine task actions', () => {
         expect(tree.root.findAllByType('More')).toHaveLength(1)
     })
 
+    it('on mobile puts the meeting time in its own row under the line, not beside the centred title (AT-3136)', () => {
+        const state = {
+            smallScreenNavigation: true,
+            loggedUser: { uid: 'user-1', photoURL: '', sidebarNavigationMode: 'simple' },
+            taskViewToggleSection: 'Open',
+        }
+        useSelector.mockImplementation(selector => selector(state))
+        const tree = renderer.create(<AllProjectsLine showMeetingTime />)
+
+        const actions = tree.root.findByProps({ testID: 'all-projects-line-actions' })
+        expect(actions.findAllByType('AllProjectsMeetingTime')).toHaveLength(0)
+        const row = tree.root.findByProps({ testID: 'meeting-time-row' })
+        expect(row.findAllByType('AllProjectsMeetingTime')).toHaveLength(1)
+    })
+
+    it('on desktop keeps the meeting time in the actions on the right (AT-3136)', () => {
+        const tree = renderer.create(<AllProjectsLine showMeetingTime />)
+        const actions = tree.root.findByProps({ testID: 'all-projects-line-actions' })
+        expect(actions.findAllByType('AllProjectsMeetingTime')).toHaveLength(1)
+        expect(tree.root.findAllByProps({ testID: 'meeting-time-row' })).toHaveLength(0)
+    })
+
     it('shows the meeting time only where a view asks for it (AT-3136)', () => {
         expect(renderer.create(<AllProjectsLine />).root.findAllByType('AllProjectsMeetingTime')).toHaveLength(0)
         expect(
