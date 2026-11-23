@@ -2,6 +2,8 @@ const {
     handleVmMcpRequest,
     buildVmMcpAccess,
     describeVmProjectTools,
+    findSharedBrowserTools,
+    isAlldoneMcpServerUrl,
     selectVmMcpServers,
     listVmMcpTools,
     mintVmMcpToken,
@@ -15,6 +17,32 @@ const SECRET = 'test-signing-secret'
 const ENV = { VM_PROXY_SIGNING_SECRET: SECRET, VM_LLM_PROXY_BASE_URL: 'https://proxy.example/vmLlmProxy' }
 const NOW = 1_800_000_000_000
 const STORY_URL = 'https://alldone.team/mcp'
+const ALLDONE_ORIGINS = ['https://my.alldone.app']
+const ALLDONE_MCP_URL = 'https://my.alldone.app/mcpServer'
+const BROWSER_NAMES = [
+    'browser_navigate',
+    'browser_inspect',
+    'browser_click',
+    'browser_type',
+    'browser_wait',
+    'browser_screenshot',
+]
+
+// The browser tools as Alldone's MCP server lists them: each takes the taskId that binds the session.
+const alldoneBrowserTool = name => ({
+    name,
+    description: `${name} in the shared Alldone browser`,
+    inputSchema: {
+        type: 'object',
+        properties: { taskId: { type: 'string' }, url: { type: 'string' } },
+    },
+})
+// Playwright MCP uses the same names for a browser nobody can watch, without taskId.
+const playwrightBrowserTool = name => ({
+    name,
+    description: `${name} (Playwright)`,
+    inputSchema: { type: 'object', properties: { url: { type: 'string' } } },
+})
 
 const specialist = (id, family, extra = {}) => ({
     id,
@@ -118,7 +146,7 @@ function setup({ job = {}, project = { userIds: ['user-1'] }, assistants = null,
     const resolveMcpSecret = jest.fn(async ({ authType }) =>
         authType === 'alldone_app' ? { token: 'user-token' } : { token: 'stored' }
     )
-    const deps = { mcpClient: { listTools, callTool }, resolveMcpSecret }
+    const deps = { mcpClient: { listTools, callTool }, resolveMcpSecret, alldoneMcpOrigins: ALLDONE_ORIGINS }
     const send = async (body, { token = jobToken(), method = 'POST' } = {}) => {
         const res = fakeRes()
         await handleVmMcpRequest(fakeReq({ method, token, body }), res, { db, env: ENV, deps, nowMs: NOW })
@@ -328,7 +356,50 @@ describe('describeVmProjectTools', () => {
             serverName: 'project_tools',
             toolCount: 1,
             apps: [{ name: 'Story Builder', summary: 'story app', toolCount: 1 }],
+            sharedBrowser: null,
         })
+    })
+
+    const ctoWithServer = (url, extra = {}) => [
+        {
+            id: 'cto',
+            data: {
+                allowedTools: ['mcp_servers'],
+                mcpServers: [{ id: 'own', label: 'Own', url, authType: 'bearer', ...extra }],
+            },
+        },
+    ]
+
+    test("reports the shared browser when Alldone's MCP server offers the browser tools", async () => {
+        const { db, deps } = setup({
+            assistants: ctoWithServer(ALLDONE_MCP_URL),
+            tools: [...BROWSER_NAMES.map(alldoneBrowserTool), appTool('get_tasks', 'alldone')],
+        })
+        const context = await describeVmProjectTools({
+            projectId: 'p1',
+            assistantId: 'cto',
+            requestUserId: 'user-1',
+            db,
+            deps,
+        })
+        expect(context.sharedBrowser).toEqual({ toolNames: BROWSER_NAMES })
+        expect(context.toolCount).toBe(7)
+    })
+
+    test('reports no shared browser when only other MCP tools are there, even ones called browser_*', async () => {
+        const { db, deps } = setup({
+            assistants: ctoWithServer('https://playwright.example/mcp'),
+            tools: BROWSER_NAMES.map(playwrightBrowserTool),
+        })
+        const context = await describeVmProjectTools({
+            projectId: 'p1',
+            assistantId: 'cto',
+            requestUserId: 'user-1',
+            db,
+            deps,
+        })
+        expect(context.enabled).toBe(true)
+        expect(context.sharedBrowser).toBeNull()
     })
 
     test('is null when the project offers no tools', async () => {
@@ -336,6 +407,54 @@ describe('describeVmProjectTools', () => {
         expect(
             await describeVmProjectTools({ projectId: 'p1', assistantId: 'cto', requestUserId: 'user-1', db, deps })
         ).toBeNull()
+    })
+})
+
+describe('findSharedBrowserTools (AT-3141)', () => {
+    const target = (remoteName, { url = ALLDONE_MCP_URL, name = remoteName, tool = null } = {}) => ({
+        name,
+        remoteName,
+        server: { id: 'own', url },
+        definition: { name, inputSchema: (tool || alldoneBrowserTool(remoteName)).inputSchema },
+    })
+
+    test("finds the complete browser family on Alldone's own MCP server, under the names the agent sees", () => {
+        const targets = BROWSER_NAMES.map(name =>
+            target(name, { name: name === 'browser_click' ? 'alldone__browser_click' : name })
+        )
+        expect(findSharedBrowserTools(targets, ALLDONE_ORIGINS)).toEqual({
+            toolNames: BROWSER_NAMES.map(name => (name === 'browser_click' ? 'alldone__browser_click' : name)),
+        })
+    })
+
+    test('no tools at all means no shared browser', () => {
+        expect(findSharedBrowserTools([], ALLDONE_ORIGINS)).toBeNull()
+        expect(findSharedBrowserTools(undefined, ALLDONE_ORIGINS)).toBeNull()
+    })
+
+    test('a browser_* family on another server is not the shared browser', () => {
+        const targets = BROWSER_NAMES.map(name => target(name, { url: 'https://playwright.example/mcp' }))
+        expect(findSharedBrowserTools(targets, ALLDONE_ORIGINS)).toBeNull()
+    })
+
+    test('tools without taskId cannot be bound to the task and do not count', () => {
+        const targets = BROWSER_NAMES.map(name => target(name, { tool: playwrightBrowserTool(name) }))
+        expect(findSharedBrowserTools(targets, ALLDONE_ORIGINS)).toBeNull()
+    })
+
+    test('a partial family fails closed', () => {
+        const targets = BROWSER_NAMES.filter(name => name !== 'browser_inspect').map(name => target(name))
+        expect(findSharedBrowserTools(targets, ALLDONE_ORIGINS)).toBeNull()
+    })
+
+    test("Alldone's MCP endpoint is matched by origin and path, not by host name alone", () => {
+        expect(isAlldoneMcpServerUrl('https://my.alldone.app/mcpServer', ALLDONE_ORIGINS)).toBe(true)
+        expect(isAlldoneMcpServerUrl('https://my.alldone.app/mcpServer/', ALLDONE_ORIGINS)).toBe(true)
+        expect(isAlldoneMcpServerUrl('https://my.alldone.app/other', ALLDONE_ORIGINS)).toBe(false)
+        expect(isAlldoneMcpServerUrl('https://my.alldone.app.evil.example/mcpServer', ALLDONE_ORIGINS)).toBe(false)
+        expect(isAlldoneMcpServerUrl('http://my.alldone.app/mcpServer', ALLDONE_ORIGINS)).toBe(false)
+        expect(isAlldoneMcpServerUrl('not a url', ALLDONE_ORIGINS)).toBe(false)
+        expect(isAlldoneMcpServerUrl(ALLDONE_MCP_URL, [])).toBe(false)
     })
 })
 

@@ -24,7 +24,7 @@ Taking Alldone control defers assistant navigation and blocks relevant native wr
 
 The Browser pane displays the existing browser worker's actual viewport, refreshed every five seconds while foreground and visible. It is a sequence of screenshots, not a VM desktop video stream. Human clicks, typing, keys, and scrolling use that same authenticated session. Screenshots and typed values are not persisted by the pane. Existing policy, session limits, and billing apply to actions; merely watching does not cost browser-step Gold. Browser ownership and project membership are checked on the server.
 
-For delegated VM browsing, the assistant uses the shared Alldone browser tools through MCP, with the real `taskId` on every browser call. Task access is validated before binding the session. This lets Anna resume the same browser from the continuous conversation. General VM terminal execution continues to be represented by its ordinary task and comments.
+For delegated VM browsing, the VM agent uses the shared Alldone browser tools through MCP, with the real `taskId` on every browser call, when those tools actually reach the run (see `docs/claude/vm.md`, AT-3141). Otherwise it does no interactive real-web work and reports that; local headless tests against isolated test environments stay allowed. Task access is validated before binding the session. This lets Anna resume the same browser from the continuous conversation. General VM terminal execution continues to be represented by its ordinary task and comments.
 
 ## Verification
 

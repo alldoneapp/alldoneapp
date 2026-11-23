@@ -485,6 +485,123 @@ describe('VM runner prompt', () => {
         })
     })
 
+    describe('browsers and browser tests (AT-3141)', () => {
+        const BROWSER_NAMES = [
+            'browser_navigate',
+            'browser_inspect',
+            'browser_click',
+            'browser_type',
+            'browser_wait',
+            'browser_screenshot',
+        ]
+        const taskJob = {
+            taskType: 'prototype',
+            objective: 'Check MR !934 in a browser',
+            projectId: 'p1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+        }
+        const withBrowser = {
+            enabled: true,
+            serverName: 'project_tools',
+            toolCount: 7,
+            apps: [{ name: 'Alldone', summary: '', toolCount: 7 }],
+            sharedBrowser: { toolNames: BROWSER_NAMES },
+        }
+        const otherToolsOnly = {
+            enabled: true,
+            serverName: 'project_tools',
+            toolCount: 6,
+            apps: [{ name: 'Playwright', summary: '', toolCount: 6 }],
+            sharedBrowser: null,
+        }
+        const sharedBrowserLine = 'happens only in the shared Alldone browser'
+        const notAvailableLine = 'is not possible in this run'
+
+        const expectLocalTestRules = prompt => {
+            expect(prompt).toContain('# Browsers and browser tests')
+            expect(prompt).toContain('Local browser tests are allowed')
+            expect(prompt).toContain('on localhost, or against an isolated emulator or test environment')
+            expect(prompt).toContain('using only synthetic test data')
+            expect(prompt).toContain('no real credentials or user accounts, no production Firebase project')
+            expect(prompt).toContain('A local app can still talk to real services')
+            expect(prompt).toContain('Such tests are not risk-free')
+            expect(prompt).not.toMatch(/tests are risk-free|without (any )?risk|harmless/i)
+            expect(prompt).toContain('do not run it; say why')
+            expect(prompt).toContain(
+                'Reading public web pages is allowed with a headless browser in this VM only for reading'
+            )
+            expect(prompt).toContain('no signing in')
+        }
+
+        test('shared browser tools present: interactive real-web work goes through them with the taskId', () => {
+            const prompt = __private__.buildAgentPrompt(taskJob, null, null, null, withBrowser)
+            expectLocalTestRules(prompt)
+            expect(prompt).toContain(sharedBrowserLine)
+            expect(prompt).toContain(`the tools ${BROWSER_NAMES.join(', ')} of the MCP server "project_tools"`)
+            expect(prompt).toContain(
+                'Pass taskId task-1 on every call, so the user can see that session and take control of it'
+            )
+            expect(prompt).toContain('Do not do this work in a browser you start inside the VM')
+            expect(prompt).not.toContain(notAvailableLine)
+        })
+
+        test('no MCP tools: no shared-browser instruction, the limitation is reported instead', () => {
+            const prompt = __private__.buildAgentPrompt(taskJob)
+            expectLocalTestRules(prompt)
+            expect(prompt).not.toContain(sharedBrowserLine)
+            expect(prompt).not.toContain('browser_navigate')
+            expect(prompt).not.toContain('taskId')
+            expect(prompt).toContain(notAvailableLine)
+            expect(prompt).toContain(
+                'the shared Alldone browser, which the user can watch and take over, is not connected to it'
+            )
+            expect(prompt).toContain(
+                'Do not do it with a browser you start inside the VM, with another MCP or browser tool'
+            )
+            expect(prompt).toContain(
+                'which step needed interactive browsing and that the shared browser was not available'
+            )
+        })
+
+        test('only other MCP tools: still no shared browser, and no unshared fallback', () => {
+            const prompt = __private__.buildAgentPrompt(taskJob, null, null, null, otherToolsOnly)
+            expectLocalTestRules(prompt)
+            expect(prompt).toContain('# Project tools')
+            expect(prompt).not.toContain(sharedBrowserLine)
+            expect(prompt).not.toContain('taskId')
+            expect(prompt).toContain(notAvailableLine)
+            expect(prompt).toContain('with another MCP or browser tool')
+        })
+
+        test('project tools the runner could not hand over do not count as a shared browser', () => {
+            // runAgentInSandbox passes null when the proxy cannot be configured.
+            const prompt = __private__.buildAgentPrompt(taskJob, null, null, null, null)
+            expect(prompt).not.toContain(sharedBrowserLine)
+            expect(prompt).toContain(notAvailableLine)
+            expect(
+                __private__.buildBrowsingPromptLines(taskJob, { ...withBrowser, enabled: false }).join('\n')
+            ).toContain(notAvailableLine)
+        })
+
+        test('a run without a task gets the same rules but no shared browser, as there is no task to bind it to', () => {
+            const chatJob = { ...taskJob, objectType: 'topics', objectId: 'chat-1' }
+            const prompt = __private__.buildAgentPrompt(chatJob, null, null, null, withBrowser)
+            expectLocalTestRules(prompt)
+            expect(prompt).not.toContain(sharedBrowserLine)
+            expect(prompt).toContain('it has no Alldone task to bind the shared Alldone browser to')
+            const noHost = __private__.buildBrowsingPromptLines({ taskType: 'research', objective: 'x' }, withBrowser)
+            expect(noHost.join('\n')).toContain('it has no Alldone task to bind the shared Alldone browser to')
+        })
+
+        test('the old blanket ban on any unshared browser is gone', () => {
+            for (const context of [null, otherToolsOnly, withBrowser]) {
+                const prompt = __private__.buildAgentPrompt(taskJob, null, null, null, context)
+                expect(prompt).not.toContain('Do not start an unshared browser inside the VM for this purpose')
+            }
+        })
+    })
+
     test('resolveAgentRunDetails restores a previously observed concrete model', () => {
         expect(
             __private__.resolveAgentRunDetails({
