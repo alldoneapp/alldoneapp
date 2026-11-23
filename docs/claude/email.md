@@ -344,11 +344,29 @@ eligible definition has), for incoming and sent mail alike.
 **What a fallback label does and does not do.**
 
 - It runs **no follow-up prompt**: the definition is passed with `postLabelPrompt: ''`, so no model
-  run, no Gold beyond the classification, no project task and no "Daily emails" line. What unlabeled
-  mail always got still happens: thread continuation, the thread topic, and the "Daily ads" line for
-  an ad. A pending continuation replay of a fallback record strips the prompt too
-  (`labelSource === 'fallback'`). A user's follow-up-type correction in the feedback UI is explicit
-  and may still run the label's prompt.
+  run, no Gold beyond the classification and no project task. What unlabeled mail always got still
+  happens: thread continuation, the thread topic, and the "Daily ads" line for an ad. A pending
+  continuation replay of a fallback record strips the prompt too (`labelSource === 'fallback'`). A
+  user's follow-up-type correction in the feedback UI is explicit and may still run the label's
+  prompt.
+- **An incoming email under a fallback label still gets one line (decided with Karsten
+  2026-11-23).** Until then such mail was labeled in Gmail but reached neither Chats > Unread nor a
+  task, so clearing Alldone left it in the inbox (the report: DHL, Booking, Facebook Memories,
+  Claude status and a newsletter, all in the fallback labels Privat and Newsletter).
+  `writeFallbackLineForMessage` writes `Email from <name> (<email>): <subject>` without a model
+  (`buildEmailSubjectLineText`, shared with the "Daily ads" line) into the **project-wide** "Daily
+  emails <label> <date>" digest of the default project label's project
+  (`resolveDefaultProjectLabelDefinition`, the topic its prompt writes to), or of the default
+  project when it has no label (custom mode, `Alldone/Other`). Karsten chose the project digest over
+  a private topic. A thread that already has its own topic gets the line there. The comment carries
+  the fallback label as tag and the classification's `followUpType`, so an email called actionable
+  is a followed (red) entry, never a task; the unread settings still archive newsletters and ads
+  and store the line read. Ads keep their "Daily ads" line, sent mail gets none. The line is stamped
+  into `emailComments` for the read sync, also on a continuation replay. Pinned by the "Daily
+  emails line" block of `gmailLabelingFallbackAndRetry.test.js`.
+- Not changed, on purpose (Karsten, 2026-11-23): a row cleared by the Gmail read sync because the
+  mail was **read** in Gmail leaves the mail in the inbox (read is handled), and "Mark as read" on an
+  email row never archives.
 - It **never archives on its own**: neither the label's `autoArchive` nor `autoArchiveAllLabeled`
   applies, so unsure mail does not leave the inbox. Only the user's unread setting for newsletters
   and ads archives it, in the same `messages.modify` call as the label.

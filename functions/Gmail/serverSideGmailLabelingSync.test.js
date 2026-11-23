@@ -1506,7 +1506,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 )
             })
 
-            test('a newsletter under the fallback label gets no line', async () => {
+            test('a newsletter under the fallback label gets no "Daily ads" line, only its "Daily emails" line', async () => {
                 classifyGmailMessage.mockResolvedValue({
                     ...adClassification,
                     matched: false,
@@ -1516,7 +1516,15 @@ describe('serverSideGmailLabelingSync helpers', () => {
 
                 await processWith(buildGmail(), {})
 
-                expect(assistantHelper.addChatCommentFromAssistantTool).not.toHaveBeenCalled()
+                expect(chatCreate).not.toHaveBeenCalled()
+                expect(assistantHelper.addChatCommentFromAssistantTool).toHaveBeenCalledTimes(1)
+                expect(assistantHelper.addChatCommentFromAssistantTool).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        chatId: '',
+                        chatTitle: expect.stringMatching(/^Daily emails /),
+                        gmailContext: expect.objectContaining({ labelKey: 'newsletter', emailKind: 'newsletter' }),
+                    })
+                )
             })
 
             test('without a default project assistant the line is reported as blocked', async () => {

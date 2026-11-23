@@ -60,7 +60,7 @@ const {
     shouldArchiveForUnreadSettings,
 } = require('./unreadEmailSettings')
 const { GMAIL_ACTIONABILITY_GUIDANCE } = require('./gmailClassifierPrompt')
-const { shouldWriteDailyAdsLine, writeDailyAdsLine } = require('./dailyAdsDigest')
+const { buildEmailSubjectLineText, shouldWriteDailyAdsLine, writeDailyAdsLine } = require('./dailyAdsDigest')
 const { parseListUnsubscribe } = require('../Email/emailLine/emailLineShared')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { Timestamp } = require('firebase-admin/firestore')
@@ -112,7 +112,9 @@ const DEFAULT_ADS_LABEL_DEFINITION = {
 //   - anything else → the connection's default project label;
 //   - no default project label (custom prompt mode, default project archived/inactive/missing)
 //     → the built-in catch-all "Alldone/Other".
-// A fallback label never runs a label's follow-up prompt and never archives on its own.
+// A fallback label never runs a label's follow-up prompt and never archives on its own. An incoming
+// email under a fallback label still gets one line in the default project's "Daily emails" digest,
+// written without a model (writeFallbackLineForMessage), so it reaches Chats > Unread.
 const FALLBACK_NEWSLETTER_LABEL_DEFINITION = {
     key: 'newsletter',
     gmailLabelName: 'Newsletter',
@@ -480,6 +482,15 @@ function getFallbackReason(classifierResult = {}, config = {}) {
  * a fallback label adds no model run, no Gold and no project task; archiving still follows the
  * user's unread settings.
  */
+// The label of the connection's default project (config.defaultProjectId), or null in custom prompt
+// mode or when that project has no label.
+function resolveDefaultProjectLabelDefinition({ config = {}, labelDefinitions = [] } = {}) {
+    const definitions = Array.isArray(labelDefinitions) ? labelDefinitions.filter(label => label?.key) : []
+    const defaultProjectId = typeof config.defaultProjectId === 'string' ? config.defaultProjectId.trim() : ''
+    if (!defaultProjectId) return null
+    return definitions.find(label => label.sourceProjectId === defaultProjectId && label.gmailLabelName) || null
+}
+
 function resolveFallbackLabelDefinition({ config = {}, labelDefinitions = [], emailKind = null } = {}) {
     const definitions = Array.isArray(labelDefinitions) ? labelDefinitions.filter(label => label?.key) : []
     const asFallback = (definition, fallbackKind) => ({
@@ -496,10 +507,7 @@ function resolveFallbackLabelDefinition({ config = {}, labelDefinitions = [], em
         return asFallback(configuredNewsletter || FALLBACK_NEWSLETTER_LABEL_DEFINITION, 'newsletter')
     }
 
-    const defaultProjectId = typeof config.defaultProjectId === 'string' ? config.defaultProjectId.trim() : ''
-    const defaultProjectLabel = defaultProjectId
-        ? definitions.find(label => label.sourceProjectId === defaultProjectId && label.gmailLabelName)
-        : null
+    const defaultProjectLabel = resolveDefaultProjectLabelDefinition({ config, labelDefinitions: definitions })
     if (defaultProjectLabel) return asFallback(defaultProjectLabel, 'default_project')
 
     return asFallback(FALLBACK_OTHER_LABEL_DEFINITION, 'other')
@@ -1574,6 +1582,10 @@ async function executePostLabelPrompt({
     needsReply = false,
     emailKind = null,
     suppressUnread = false,
+    // 'fallback' when the label is a fallback label (AT-3102): an incoming email then gets a line in
+    // the "Daily emails" digest of `fallbackDigestDefinition`'s project (the default project label).
+    labelSource = '',
+    fallbackDigestDefinition = null,
 }) {
     // A later email in a thread that already has a task reopens a done task only when it asks
     // something of the user (decided 2026-11-09, changes the AT-2709 rule): a plain "thanks" is
@@ -1755,6 +1767,32 @@ async function executePostLabelPrompt({
             prompt,
             promptHash,
         })
+    }
+
+    // An incoming email under a fallback label (AT-3102) has no prompt, so nothing above wrote it
+    // anywhere: it gets one line without a model, in its conversation's topic or else in the default
+    // project's "Daily emails" digest, so every labeled email reaches Chats > Unread.
+    if (labelSource === LABEL_SOURCE_FALLBACK && !isOutgoing && !prompt) {
+        const fallbackLine = await writeFallbackLineForMessage({
+            userId,
+            userData,
+            selectedDefinition,
+            digestDefinition: fallbackDigestDefinition,
+            normalizedMessage,
+            gmailEmail,
+            direction,
+            connectionId,
+            connectionProjectId,
+            archivedByLabeling,
+            followUpType,
+            needsReply,
+            emailKind,
+            suppressUnread,
+            threadTopic,
+            prompt,
+            promptHash,
+        })
+        return { ...fallbackLine, ...(threadTopicSummary ? { threadTopic: threadTopicSummary } : {}) }
     }
 
     if (!promptRunsForDirection || !prompt) {
@@ -1981,6 +2019,126 @@ async function executePostLabelPrompt({
             tokenUsage: null,
             executedAt: Timestamp.now(),
         }
+    }
+}
+
+async function loadProjectName(projectId) {
+    if (!projectId) return ''
+    const snapshot = await admin.firestore().doc(`projects/${projectId}`).get()
+    const name = snapshot.exists ? snapshot.data()?.name : ''
+    return typeof name === 'string' ? name.trim() : ''
+}
+
+// The line of an incoming email under a fallback label (AT-3102 follow-up, decided with Karsten
+// 2026-11-23): "Email from <name> (<email>): <subject>", no model and no Gold, like a "Daily ads"
+// line. It goes to the conversation's own topic when the thread already has one, else to the
+// "Daily emails <label> <date>" digest of the default project label's project (the same topic its
+// prompt writes to); without a default project label, to the default project's digest. The comment
+// carries the fallback label as its tag and the classification's followUpType, so an email the
+// classifier called actionable is a followed (red) unread entry. Authored by the default project's
+// assistant; without one it is reported as blocked, as for a prompt.
+async function writeFallbackLineForMessage({
+    userId,
+    userData,
+    selectedDefinition,
+    digestDefinition,
+    normalizedMessage,
+    gmailEmail,
+    direction,
+    connectionId,
+    connectionProjectId,
+    archivedByLabeling,
+    followUpType,
+    needsReply,
+    emailKind,
+    suppressUnread,
+    threadTopic,
+    prompt,
+    promptHash,
+}) {
+    const { assistantProjectId, assistantId, assistant } = await resolvePostLabelAssistantContext(userId, userData)
+    if (!assistantProjectId || !assistantId || !assistant) {
+        return buildPostLabelActionSkipped({
+            prompt,
+            promptHash,
+            status: 'blocked',
+            error: 'No assistant could be resolved for the user default project.',
+            assistantProjectId,
+            assistantId,
+        })
+    }
+
+    try {
+        const digestProjectId =
+            (typeof digestDefinition?.sourceProjectId === 'string' && digestDefinition.sourceProjectId.trim()) ||
+            assistantProjectId
+        const digestLabelName =
+            (typeof digestDefinition?.gmailLabelName === 'string' && digestDefinition.gmailLabelName.trim()) ||
+            (await loadProjectName(digestProjectId))
+        const topicChatTitle = buildDefaultProjectFollowUpTopicTitle(digestLabelName, userData)
+        const routedThreadTopic = threadTopic?.chatId && threadTopic?.projectId ? threadTopic : null
+        const gmailContext = buildPostLabelGmailContext({
+            normalizedMessage,
+            gmailEmail,
+            assistantProjectId,
+            connectionId,
+            connectionProjectId,
+            direction,
+            topicChatTitle: routedThreadTopic ? '' : topicChatTitle,
+            followUpType,
+            archivedByLabeling,
+            needsReply,
+            threadTopic: routedThreadTopic,
+            labelKey: selectedDefinition?.key || '',
+            labelName: selectedDefinition?.gmailLabelName || '',
+            emailKind,
+            suppressUnread,
+        })
+        const result = await addChatCommentFromAssistantTool({
+            projectId: routedThreadTopic ? routedThreadTopic.projectId : digestProjectId,
+            chatId: routedThreadTopic ? routedThreadTopic.chatId : '',
+            chatTitle: routedThreadTopic ? '' : topicChatTitle,
+            createIfMissing: !routedThreadTopic,
+            comment: buildEmailSubjectLineText(normalizedMessage),
+            assistantId,
+            userId,
+            gmailContext,
+        })
+        const lineProjectId = result?.projectId || (routedThreadTopic ? routedThreadTopic.projectId : digestProjectId)
+        const lineChatId = result?.chatId || ''
+        const commentId = result?.commentId || ''
+        return {
+            ...buildPostLabelActionSkipped({
+                prompt,
+                promptHash,
+                status: 'completed',
+                assistantProjectId,
+                assistantId,
+            }),
+            // Lifted onto the audit record for the server-side read sync (AT-2376), like a prompt's.
+            createdChatCommentResults:
+                commentId && lineChatId ? [{ projectId: lineProjectId, chatId: lineChatId, commentId }] : [],
+            fallbackLine: {
+                projectId: lineProjectId,
+                chatId: lineChatId,
+                chatTitle: routedThreadTopic ? '' : topicChatTitle,
+                commentId,
+            },
+        }
+    } catch (error) {
+        console.warn('[gmailLabeling] Could not write the fallback email line', {
+            userId,
+            messageId: normalizedMessage?.messageId || '',
+            error: error.message,
+        })
+        return buildPostLabelActionSkipped({
+            prompt,
+            promptHash,
+            status: 'failed',
+            error: error.message || 'Failed to write the fallback email line.',
+            assistantProjectId,
+            assistantId,
+        })
     }
 }
 
@@ -2306,11 +2464,17 @@ async function processSingleMessage({
             needsReply: existingAuditEntry.needsReply === true,
             emailKind: existingAuditEntry.emailKind || null,
             suppressUnread: existingAuditEntry.archivedForUnreadSettings === true,
+            labelSource: existingAuditEntry.labelSource || '',
+            fallbackDigestDefinition: resolveDefaultProjectLabelDefinition({
+                config,
+                labelDefinitions: eligibleLabelDefinitions,
+            }),
         })
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             postLabelAction: action,
             threadContinuationPending: !!action.threadContinuationPending,
             ...(action.continuedTask ? { taskCreated: action.continuedTask } : {}),
+            ...buildEmailCommentAuditPatch(action.createdChatCommentResults),
         })
         return {
             labeled: 0,
@@ -2510,9 +2674,10 @@ async function processSingleMessage({
             confidence: classifierResult.confidence,
             emailKind,
         })
-        // The definition carries no follow-up prompt, so this only does what unlabeled mail always
-        // got: thread continuation, the thread topic and the "Daily ads" line. The selected project
-        // is not passed on, so the fallback label routes nothing into that project.
+        // The definition carries no follow-up prompt: thread continuation, the thread topic, the
+        // "Daily ads" line for an ad, and otherwise a line without a model in the default project's
+        // "Daily emails" digest. The selected project is not passed on, so the classifier's unsure
+        // pick routes nothing into that project.
         const action = await executePostLabelPrompt({
             userId,
             userData,
@@ -2527,6 +2692,11 @@ async function processSingleMessage({
             emailKind,
             archivedByLabeling: fallbackModifyResult.archived,
             suppressUnread: archiveForUnreadSettings,
+            labelSource: LABEL_SOURCE_FALLBACK,
+            fallbackDigestDefinition: resolveDefaultProjectLabelDefinition({
+                config,
+                labelDefinitions: eligibleLabelDefinitions,
+            }),
         })
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             syncRunId,
@@ -2559,7 +2729,7 @@ async function processSingleMessage({
             postLabelAction: action,
             threadContinuationPending: !!action.threadContinuationPending,
             ...(action.continuedTask ? { taskCreated: action.continuedTask } : {}),
-            // An ad under a fallback label still gets its "Daily ads" line; map it for the read sync (AT-2376).
+            // The fallback line (or an ad's "Daily ads" line); map it for the read sync (AT-2376).
             ...buildEmailCommentAuditPatch(action.createdChatCommentResults),
         })
         return {
@@ -3312,6 +3482,7 @@ module.exports = {
     processSingleMessage,
     recordMessageProcessingError,
     resolveEffectiveGmailLabelingConfig,
+    resolveDefaultProjectLabelDefinition,
     resolveFallbackLabelDefinition,
     resolveEffectiveLabelingConfig,
     resolvePostLabelAssistantModel,

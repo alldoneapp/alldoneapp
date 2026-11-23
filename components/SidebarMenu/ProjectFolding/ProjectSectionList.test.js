@@ -27,6 +27,7 @@ jest.mock(
         ({ text, selected }) =>
             `section:${text}${selected ? ' *' : ''}`
 )
+jest.mock('./SectionDivider', () => () => '---')
 jest.mock('./SectionItems/TasksBoards', () => () => 'people under tasks')
 jest.mock('./SectionItems/GoalsBoards', () => () => 'people under goals')
 jest.mock('../../MediaBar/MediaBar', () => () => 'chat media')
@@ -34,7 +35,7 @@ jest.mock('../../MediaBar/MediaBar', () => () => 'chat media')
 import ProjectSectionList from './ProjectSectionList'
 
 const project = { id: 'p1', index: 0, color: '#39CCCC', globalAssistantIds: [] }
-const rowsWithMarks = (route, mode, tab = route, { allProjects = false, navItem = null } = {}) => {
+const rowsWithMarks = (route, mode, tab = route, { allProjects = false, navItem = null, shared = false } = {}) => {
     mockState = {
         selectedNavItem: navItem,
         selectedSidebarTab: tab,
@@ -48,7 +49,7 @@ const rowsWithMarks = (route, mode, tab = route, { allProjects = false, navItem 
             allProjects ? (
                 <ProjectSectionList projectType="active" inAllProjects />
             ) : (
-                <ProjectSectionList projectData={project} projectType="active" isShared={false} />
+                <ProjectSectionList projectData={project} projectType="active" isShared={shared} />
             )
         )
     })
@@ -80,6 +81,7 @@ describe('ProjectSectionList', () => {
                 'section:Notes',
                 'section:Contacts',
                 'section:Chats',
+                '---',
                 'section:Artifacts',
                 'section:Wiki',
                 'section:Project Settings',
@@ -105,6 +107,7 @@ describe('ProjectSectionList', () => {
             'section:Notes',
             'section:Contacts',
             'section:Chats',
+            '---',
             'section:Artifacts',
             'section:Wiki',
             'section:Settings',
@@ -120,6 +123,17 @@ describe('ProjectSectionList', () => {
         expect(rowsWithMarks('ROOT_TASKS', 'advanced', 'ROOT_TASKS', { allProjects: true })).not.toContain(
             'section:Wiki'
         )
+    })
+
+    // AT-3139: a quiet line under Chats sets the main sections apart from Artifacts, Wiki and the
+    // settings, in a project and in All projects; where nothing follows Chats there is no line.
+    it('draws the divider right below Chats only where further rows follow', () => {
+        const below = list => list[list.indexOf('section:Chats') + 1]
+        expect(below(rows('ROOT_TASKS', 'advanced'))).toBe('---')
+        expect(below(rows('ROOT_TASKS', 'sectionsTop'))).toBe('---')
+        expect(below(rowsWithMarks('ROOT_TASKS', 'sectionsTop', 'ROOT_TASKS', { allProjects: true }))).toBe('---')
+        expect(rowsWithMarks('ROOT_TASKS', 'advanced', 'ROOT_TASKS', { allProjects: true })).not.toContain('---')
+        expect(rowsWithMarks('ROOT_TASKS', 'sectionsTop', 'ROOT_TASKS', { shared: true })).not.toContain('---')
     })
 
     it('unfolds nothing while Anna is alone on screen', () => {
