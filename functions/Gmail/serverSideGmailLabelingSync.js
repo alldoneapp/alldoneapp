@@ -1176,6 +1176,31 @@ function getTargetContactEmail(
 const NEEDS_REPLY_TASK_INSTRUCTION =
     'Needs reply: yes. The user owes the sender a written answer. Create exactly one task for it, titled "Reply to [sender first name]: [what they ask, in a few words]", in the language of the email. The server makes it a private reply task; do not draft the reply here.'
 
+// AT-3135: recurring mail of one sender and handling context goes into one collection to-do. The
+// model names the context; the server keys it by mailbox and sender domain and decides whether a
+// collection to-do already exists (Email/emailTaskBundle.js).
+function buildEmailBundleInstruction(emailBundles = null) {
+    if (emailBundles?.enabled !== true) return []
+    const existing = Array.isArray(emailBundles.existing) ? emailBundles.existing : []
+    return [
+        'Collection to-dos: when this email is one of a recurring kind from this sender that is handled the same way ' +
+            '(for example buyer inquiries about listings on a marketplace, several orders of one shop), pass ' +
+            'create_task.emailBundle = {key, label} instead of creating a stand-alone task. The server then adds the email ' +
+            'as a new line to the collection to-do of that context (or starts it). key is a short stable slug of the ' +
+            'handling context, label a short title prefix naming the source (e.g. "Kleinanzeigen"). The task name is ' +
+            'then the current state in a few words, naming the person when known (e.g. "Layla möchte ein Foto der ' +
+            'Wickelkommode"), in the language of the email, without the label; the server adds it. Do not set dueDate ' +
+            'or alertEnabled for a collected email. Never collect an email that is urgent, has its own deadline, ' +
+            'concerns money owed, legal matters, security or account problems, or is otherwise unrelated to the ' +
+            'context; create a normal task for it. Sharing a sender domain alone is not a reason to collect.',
+        existing.length
+            ? `Existing collection to-dos for this sender (reuse the exact key when the email belongs to one): ${existing
+                  .map(bundle => `key "${bundle.key}" = "${bundle.label}"`)
+                  .join('; ')}`
+            : 'Existing collection to-dos for this sender: none.',
+    ]
+}
+
 function buildPostLabelAssistantMessages({
     prompt,
     normalizedMessage,
@@ -1187,6 +1212,7 @@ function buildPostLabelAssistantMessages({
     followUpType = 'informational',
     classificationReasoning = '',
     needsReply = false,
+    emailBundles = null,
 }) {
     const gmailWebUrl = buildGmailMessageUrl(gmailEmail, normalizedMessage.messageId)
     const resolvedTargetContactEmail = getTargetContactEmail(normalizedMessage, direction, targetContactEmail)
@@ -1205,6 +1231,7 @@ function buildPostLabelAssistantMessages({
                     `Matched Gmail direction scope: ${getDefinitionDirectionScope(selectedDefinition)}`,
                     `Follow-up type: ${followUpType === 'actionable' ? 'actionable' : 'informational'}`,
                     ...(needsReply ? [NEEDS_REPLY_TASK_INSTRUCTION] : []),
+                    ...buildEmailBundleInstruction(emailBundles),
                     `Classification reasoning: ${classificationReasoning || ''}`,
                     `Gmail messageId: ${normalizedMessage.messageId || ''}`,
                     `Gmail threadId: ${normalizedMessage.threadId || ''}`,
@@ -1496,6 +1523,36 @@ async function linkCreatedTaskInThreadTopic({ threadTopic, createdTaskResults, a
     }
 }
 
+// Which collection to-dos the run may offer for this email. A failed lookup only means the model is
+// not told about existing ones; the server still finds them by key when it creates the task.
+async function loadPostLabelEmailBundles({ userId, gmailEmail, normalizedMessage }) {
+    try {
+        const { getEmailIdentity } = require('../Email/emailThreadIdentity')
+        const { listEmailBundlesForSender } = require('../Email/emailTaskBundle')
+        const identity = getEmailIdentity(userId, {
+            provider: 'google',
+            gmailEmail,
+            messageId: normalizedMessage.messageId,
+            threadId: normalizedMessage.threadId,
+        })
+        if (!identity) return null
+        let existing = []
+        try {
+            existing = await listEmailBundlesForSender({
+                database: admin.firestore(),
+                identity,
+                from: normalizedMessage.from,
+            })
+        } catch (error) {
+            console.warn('[gmailLabeling] Could not list collection to-dos', { userId, error: error.message })
+        }
+        return { enabled: true, existing }
+    } catch (error) {
+        console.warn('[gmailLabeling] Collection to-dos unavailable', { userId, error: error.message })
+        return null
+    }
+}
+
 async function executePostLabelPrompt({
     userId,
     userData,
@@ -1732,6 +1789,10 @@ async function executePostLabelPrompt({
     const executionModel = resolvePostLabelAssistantModel(selectedDefinition, configuredPrompt)
     const messages = []
     const targetContactName = getTargetContactName(normalizedMessage, direction, targetContactEmail)
+    const emailBundles =
+        !isOutgoing && !ambiguousThread && followUpType === 'actionable'
+            ? await loadPostLabelEmailBundles({ userId, gmailEmail, normalizedMessage })
+            : null
 
     await addBaseInstructions(
         messages,
@@ -1757,6 +1818,7 @@ async function executePostLabelPrompt({
             followUpType,
             classificationReasoning: reasoning,
             needsReply,
+            emailBundles,
         })
     )
 
@@ -1786,6 +1848,8 @@ async function executePostLabelPrompt({
             suppressUnread: suppressUnread === true && !ambiguousThread,
         })
         gmailContext.emailContext = normalizedMessage
+        // Read by create_task (resolveCreateTaskEmailBundle): only this run may collect its email.
+        if (emailBundles) gmailContext.emailBundles = emailBundles
         const toolRuntimeContext = {
             projectId: assistantProjectId,
             assistantId,
@@ -3233,6 +3297,7 @@ module.exports = {
     buildPostLabelGmailContext,
     createPostLabelPromptHash,
     executePostLabelPrompt,
+    buildEmailBundleInstruction,
     formatDefaultFollowUpTopicDate,
     getGmailLabelingConfigWithState,
     getGmailLabelingLookupKeys,

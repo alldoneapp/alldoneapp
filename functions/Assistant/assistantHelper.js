@@ -986,6 +986,23 @@ function buildReplyTaskMessageData(toolRuntimeContext = null, gmailTaskData = nu
     }
 }
 
+// AT-3135: the email of this run joins a collection to-do. Only where the labeling sync offered it
+// (incoming mail, thread not ambiguous: gmailContext.emailBundles.enabled), only for a task without
+// its own deadline or reminder, and the identity comes from the mailbox and the From header, never
+// from the model; the model only names the handling context.
+function resolveCreateTaskEmailBundle(toolRuntimeContext = null, toolArgs = {}, gmailTaskData = null) {
+    const gmailContext = toolRuntimeContext?.gmailContext
+    if (!gmailTaskData || gmailContext?.emailBundles?.enabled !== true || !toolArgs?.emailBundle) return null
+    const { resolveEmailBundle, shouldBundleCreateTask } = require('../Email/emailTaskBundle')
+    if (!shouldBundleCreateTask(toolArgs)) return null
+    const { getEmailIdentity } = require('../Email/emailThreadIdentity')
+    return resolveEmailBundle({
+        identity: getEmailIdentity(toolRuntimeContext.requestUserId, gmailTaskData),
+        from: gmailContext.emailContext?.from || '',
+        proposal: toolArgs.emailBundle,
+    })
+}
+
 function getGmailLabelFollowUpSelectedProjectId(toolRuntimeContext = null) {
     const gmailContext = toolRuntimeContext?.gmailContext
     if (!gmailContext || gmailContext.origin !== GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN) return ''
@@ -6096,9 +6113,31 @@ async function executeToolNativelyImpl(
             }
 
             try {
-                const gmailTaskData = buildGmailTaskDataFromRuntimeContext(toolRuntimeContext, targetProjectId)
-                const replyMessageData = buildReplyTaskMessageData(toolRuntimeContext, gmailTaskData)
-                const descriptionWithImages = mergeTaskDescriptionWithImages(toolArgs.description, toolArgs.images)
+                const baseGmailTaskData = buildGmailTaskDataFromRuntimeContext(toolRuntimeContext, targetProjectId)
+                const emailBundle = resolveCreateTaskEmailBundle(toolRuntimeContext, toolArgs, baseGmailTaskData)
+                const emailBundleHelpers = emailBundle ? require('../Email/emailTaskBundle') : null
+                // A collection to-do (AT-3135) is a normal private to-do of the mailbox owner, not one
+                // conversation in Messages: no reply data, and each email is a line of its description.
+                const gmailTaskData = emailBundle
+                    ? {
+                          ...baseGmailTaskData,
+                          threadIds: baseGmailTaskData.threadId ? [baseGmailTaskData.threadId] : [],
+                          bundle: {
+                              id: emailBundle.id,
+                              key: emailBundle.key,
+                              label: emailBundle.label,
+                              senderDomain: emailBundle.senderDomain,
+                              itemCount: 1,
+                              lastItemAt: Date.now(),
+                          },
+                      }
+                    : baseGmailTaskData
+                const replyMessageData = emailBundle
+                    ? null
+                    : buildReplyTaskMessageData(toolRuntimeContext, gmailTaskData)
+                const descriptionWithImages = emailBundle
+                    ? emailBundleHelpers.buildEmailBundleItemLine({ text: toolArgs.name, webUrl: gmailTaskData.webUrl })
+                    : mergeTaskDescriptionWithImages(toolArgs.description, toolArgs.images)
                 const trackAssistantWork =
                     !!assistantId && toolArgs.trackAssistantWork === true && !isAssistantSuggestion
                 const responsibleAssistant = trackAssistantWork
@@ -6120,7 +6159,9 @@ async function executeToolNativelyImpl(
                 // Create task using unified service
                 const result = await cachedTaskService.createAndPersistTask(
                     {
-                        name: toolArgs.name,
+                        name: emailBundle
+                            ? emailBundleHelpers.buildEmailBundleTitle(emailBundle.label, toolArgs.name)
+                            : toolArgs.name,
                         description: descriptionWithImages,
                         dueDate: processedDueDate,
                         recurrence: toolArgs.recurrence,
@@ -6128,7 +6169,7 @@ async function executeToolNativelyImpl(
                         userId: creatorId,
                         assigneeType: 'USER',
                         projectId: targetProjectId,
-                        isPrivate: !!replyMessageData,
+                        isPrivate: !!replyMessageData || !!emailBundle,
                         ...parentGoalFields,
                         feedUser,
                         gmailData: gmailTaskData,
@@ -6156,11 +6197,39 @@ async function executeToolNativelyImpl(
                                           require('../shared/privacyAccess').getAccessibleProjectIdsFromUserData(
                                               userData
                                           ),
+                                      ...(emailBundle ? { bundle: emailBundle } : {}),
                                   },
                               },
                           ]
                         : [])
                 )
+                if (gmailTaskData && result.existing && result.bundleExisting) {
+                    // The context already has a collection to-do: this email becomes its next line.
+                    const appended = await emailBundleHelpers.appendEmailToBundleTask({
+                        database: db,
+                        userId: creatorId,
+                        projectIds: require('../shared/privacyAccess').getAccessibleProjectIdsFromUserData(userData),
+                        selected: { taskId: result.taskId, projectId: result.projectId, task: result.task },
+                        bundleId: emailBundle.id,
+                        via: 'bundle',
+                        gmailData: baseGmailTaskData,
+                        context: toolRuntimeContext.gmailContext.emailContext || {},
+                        itemText: toolArgs.name,
+                        state: toolArgs.name,
+                        commentText: toolArgs.description || toolArgs.name,
+                        actionable: true,
+                        actor: { uid: assistantId || creatorId, displayName: feedUser.displayName || 'Assistant' },
+                        fromAssistant: !!assistantId,
+                    })
+                    return {
+                        success: true,
+                        ...appended,
+                        task: result.task,
+                        suggested: !!result.task.suggestedBy,
+                        taskOrigin: result.task.suggestedBy ? 'assistant_suggestion' : 'user_request',
+                        message: `Added this email to the existing collection to-do "${emailBundle.label}"`,
+                    }
+                }
                 if (gmailTaskData && result.existing) {
                     const { continueEmailThread } = require('../Email/emailThreadContinuation')
                     const continued = await continueEmailThread({

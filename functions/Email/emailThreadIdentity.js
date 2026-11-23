@@ -43,7 +43,13 @@ function matchesEmailAccount(gmailData, identity) {
 
 function matchesEmailThread(gmailData, identity) {
     if (!matchesEmailAccount(gmailData, identity)) return false
-    if (identity.threadId) return normalizeString(gmailData.threadId) === identity.threadId
+    // A collection to-do (AT-3135, emailTaskBundle.js) holds several threads; the first one stays
+    // in threadId, the others are listed in threadIds.
+    if (identity.threadId)
+        return (
+            normalizeString(gmailData.threadId) === identity.threadId ||
+            (Array.isArray(gmailData.threadIds) && gmailData.threadIds.includes(identity.threadId))
+        )
     return [gmailData.messageId, ...(Array.isArray(gmailData.messageIds) ? gmailData.messageIds : [])].includes(
         identity.messageId
     )

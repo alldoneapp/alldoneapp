@@ -65,7 +65,30 @@ async function findEmailThreadTasks({ database, identity, projectIds, transactio
             })
         })
     )
-    return results.flat()
+    const matches = results.flat()
+    // A thread that joined a collection to-do after its first email (AT-3135) is not that task's
+    // threadId, so the query above cannot find it. Its pointer, written in the same transaction
+    // that added the thread, can; the task itself is re-checked like any other match.
+    if (identity.threadId) {
+        const pointer = await read(getBundleThreadPointerRef(database, identity))
+        const registered = pointer.exists ? pointer.data() : null
+        if (
+            registered?.projectId &&
+            registered?.taskId &&
+            projectIds.includes(registered.projectId) &&
+            !matches.some(match => match.taskId === registered.taskId && match.projectId === registered.projectId)
+        ) {
+            const taskSnapshot = await read(database.doc(`items/${registered.projectId}/tasks/${registered.taskId}`))
+            const task = taskSnapshot.exists ? taskSnapshot.data() : null
+            if (task && matchesEmailThread(task.gmailData, identity) && canAccessObject(task, identity.ownerId))
+                matches.push({ taskId: registered.taskId, projectId: registered.projectId, task })
+        }
+    }
+    return matches
+}
+
+function getBundleThreadPointerRef(database, identity) {
+    return database.doc(`users/${identity.ownerId}/emailThreadTasks/bundleThread_${identity.key}`)
 }
 
 // The task document and thread pointer commit together. Retrying a transaction never
@@ -78,6 +101,7 @@ async function persistEmailTaskAtomically({
     projectIds,
     scopeProjectId = '',
     selectMatch,
+    bundle = null,
 }) {
     const identity = getEmailIdentity(userId, taskResult.task.gmailData)
     if (!identity) throw new Error('A proven email account and message identity are required')
@@ -108,10 +132,66 @@ async function persistEmailTaskAtomically({
             existing = existing || selectMatch(matches, identity)
             if (existing && !matches.includes(existing)) throw new Error('Invalid email thread task selection')
         }
+        // A new thread whose email belongs to a collection to-do (AT-3135): the open or done
+        // collection to-do takes it instead of a new task. The caller appends the email to it.
+        // Only a thread without any task joins it; a thread that already has several (ambiguous,
+        // AT-2709) gets its separate task, which is then not a collection to-do.
+        let bundleRef = null
+        if (!existing && matches.length && bundle?.id) {
+            const { bundle: _bundle, threadIds: _threadIds, ...gmailData } = taskResult.task.gmailData
+            taskResult.task.gmailData = gmailData
+        } else if (!existing && bundle?.id) {
+            const { getEmailBundleRef, findLiveEmailBundleTask } = require('./emailTaskBundle')
+            bundleRef = getEmailBundleRef(database, identity.ownerId, bundle.id)
+            const live = await findLiveEmailBundleTask({
+                database,
+                identity,
+                bundleId: bundle.id,
+                projectIds,
+                transaction,
+            })
+            if (live) {
+                // The thread belongs to the collection to-do from this commit on, so a concurrent
+                // email of the same thread finds it here instead of creating a second task. The
+                // email itself (line, comment, message pointer) is added by appendEmailToBundleTask.
+                const threadIds = [
+                    ...new Set(
+                        [
+                            ...(live.task.gmailData.threadIds || []),
+                            live.task.gmailData.threadId,
+                            identity.threadId,
+                        ].filter(Boolean)
+                    ),
+                ]
+                const gmailData = { ...live.task.gmailData, threadIds }
+                transaction.update(database.doc(`items/${live.projectId}/tasks/${live.taskId}`), { gmailData })
+                transaction.set(registryRef, { projectId: live.projectId, taskId: live.taskId })
+                if (identity.threadId && identity.threadId !== live.task.gmailData.threadId) {
+                    transaction.set(getBundleThreadPointerRef(database, identity), {
+                        projectId: live.projectId,
+                        taskId: live.taskId,
+                    })
+                }
+                return {
+                    ...live,
+                    task: { ...live.task, gmailData },
+                    persisted: true,
+                    existing: true,
+                    bundleExisting: true,
+                }
+            }
+        }
         const selected = existing || taskResult
         if (!existing) {
             const taskRef = database.doc(`items/${taskResult.projectId}/tasks/${taskResult.taskId}`)
             transaction.set(taskRef, taskResult.task)
+        }
+        if (bundleRef) {
+            transaction.set(bundleRef, {
+                ...bundle.registry,
+                projectId: taskResult.projectId,
+                taskId: taskResult.taskId,
+            })
         }
         transaction.set(registryRef, { projectId: selected.projectId, taskId: selected.taskId })
         transaction.set(database.doc(`users/${identity.ownerId}/emailThreadTasks/message_${identity.messageKey}`), {
@@ -122,4 +202,10 @@ async function persistEmailTaskAtomically({
     })
 }
 
-module.exports = { findEmailThreadTasks, persistEmailTaskAtomically, selectEmailThreadTask, resolveEmailThreadTask }
+module.exports = {
+    findEmailThreadTasks,
+    getBundleThreadPointerRef,
+    persistEmailTaskAtomically,
+    selectEmailThreadTask,
+    resolveEmailThreadTask,
+}

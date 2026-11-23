@@ -419,6 +419,55 @@ upgraded reply task can be visible to the project. Pinned by the AT-3131 blocks 
 `gmailPromptClassifier.test.js`, `emailTaskContentUpdate.test.js`,
 `emailThreadContinuation.test.js` and the "reply task creation" block in `assistantHelper.test.js`.
 
+## Recurring email of one source is collected in one to-do (AT-3135, 2026-11-23)
+
+Kleinanzeigen buyer inquiries each arrive as a new thread, so AT-2709 thread reuse never applied and
+every inquiry became its own (mostly reply) task: 18 tasks from about 45 mails in two days, split over
+"Privat" and "Familie". This is task bundling, not the message grouping of AT-3131. Decided with
+Karsten:
+
+- **Who decides**: the post-label assistant names a handling context on `create_task`
+  (`emailBundle: { key, label }`), only where the sync offers it (`gmailContext.emailBundles`:
+  incoming, actionable, thread not ambiguous). The sync lists the existing contexts of the sender so the
+  key is reused. The **identity is the server's**: owner, provider, mailbox, the sender's registrable
+  domain from the From header (`mail.kleinanzeigen.de` = `kleinanzeigen.de`) and the key
+  (`resolveEmailBundle`). A task with its own `dueDate` or reminder is never collected
+  (`shouldBundleCreateTask`), and the prompt keeps urgent, legal, payment, security and unrelated mail
+  separate. Same domain alone is not a reason.
+- **Reply mail is collected too.** A collection to-do is a normal **private** to-do without
+  `messageData`, so collected buyer inquiries no longer appear one by one in Messages, and a later
+  reply in a collected thread never upgrades it to a reply task.
+- **Sticky project**: the to-do stays where it was created, like thread tasks, even when a later
+  email is routed to another project. It takes new conversations only while it is still the owner's
+  own private to-do in one of their projects (`isOwnerPrivateTask`); shared, reassigned or deleted, the
+  next email starts a new one (threads already in it keep continuing there, like AT-2709).
+- **Done**: the next actionable email of the context, or of a collected thread, reopens it.
+  Informational mail of a collected thread is a silent comment and leaves it done.
+- **Content**: each email is one line at the end of the description (`- <state> <Gmail link>`) and
+  one comment in the task chat (`email_<messageKey>`, so a retry never duplicates it). The title is
+  `<label>: <current state>` ("Kleinanzeigen: Layla möchte ein Foto der Wickelkommode"). It moves with
+  every newer actionable email, including later mail of a collected thread (the continuation summary
+  returns `state` when called with `bundle: true`), but only while it still equals the title the
+  automation wrote last (`gmailData.taskContent.name`). A user's rename and description edits are kept.
+
+Data: `users/{uid}/emailTaskBundles/{bundleId}` → `{ projectId, taskId, key, label, senderDomain,
+gmailEmail, provider }`. The task carries `gmailData.bundle` (`id`, `key`, `label`, `senderDomain`,
+`itemCount`, `lastItemAt`) and `gmailData.threadIds`. A thread that joins after the first email gets
+`users/{uid}/emailThreadTasks/bundleThread_<threadKey>`, which `findEmailThreadTasks` reads (one extra
+doc read per lookup), so AT-2709 continuation finds the to-do for later mail of that thread.
+`TaskCommentService.addComment({ emailBundle })` re-checks account, collection and selection inside
+its transaction. `persistEmailTaskAtomically({ bundle })` serializes creation of the first to-do of a
+context, and only collects a thread that has no task yet. It registers the thread on the to-do in the
+same commit (threadIds, thread registry, pointer), so a concurrent email of that thread cannot
+create a second task. A thread with several tasks gets AT-2709's separate task, without the collection
+marker. Only single-field indexes are used. MCP's `create_task` schema does not offer `emailBundle`.
+
+Not done: existing separate tasks are not merged; the explicit "Create task" of the email line never
+collects; the sender name of a relayed email is still the platform's display name unless the model
+names the person. Pinned by `functions/Email/emailTaskBundle.test.js`, the AT-3135 blocks in
+`assistantHelper.test.js`, `serverSideGmailLabelingSync.test.js`, `toolSchemas.test.js` and
+`mcpServerSimple.test.js`.
+
 ## The email a task was created from opens the task's chat (AT-3022)
 
 `continueEmailThread` only writes the **later** mail of a thread into its task's chat, and skips the

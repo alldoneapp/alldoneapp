@@ -191,6 +191,16 @@ const toolSchemas = {
                         description:
                             "Optional task completion mode. workflow (default) sends the task through the assignee's configured workflow; direct bypasses the workflow and goes straight to Done when completed.",
                     },
+                    emailBundle: {
+                        type: 'object',
+                        description:
+                            'Only in an automated email follow-up run whose instructions offer collection to-dos; ignored everywhere else. Names the handling context of a recurring kind of email from this sender (e.g. buyer inquiries on a marketplace), so the server adds the email to that collection to-do instead of creating another task. key: short stable slug of the context; label: short to-do prefix such as "Kleinanzeigen". Omit for one-off, urgent, legal, payment or otherwise separate matters.',
+                        properties: {
+                            key: { type: 'string', description: 'Stable slug, e.g. buyer-inquiries.' },
+                            label: { type: 'string', description: 'Short prefix of the collection to-do title.' },
+                        },
+                        required: ['key', 'label'],
+                    },
                     projectId: {
                         type: 'string',
                         description:
