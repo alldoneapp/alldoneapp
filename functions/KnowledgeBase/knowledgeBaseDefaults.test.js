@@ -58,7 +58,7 @@ describe('applyKnowledgeBaseDefaultsForUser', () => {
             ownerUserId: 'creator',
             instructions: '',
             model: 'MODEL_DEEPSEEK_V4_FLASH',
-            monthlyGoldCap: 500,
+            monthlyGoldCap: 3000,
             createdAt: NOW,
             enabledAt: NOW,
             updatedAt: NOW,
@@ -122,7 +122,7 @@ describe('applyKnowledgeBaseDefaultsForUser', () => {
                 enabled: true,
                 enabledBy: 'default',
                 ownerUserId: 'creator',
-                monthlyGoldCap: 500,
+                monthlyGoldCap: 3000,
                 nextRunAt: TONIGHT,
             })
         }
@@ -560,5 +560,67 @@ describe('applyKnowledgeBaseDefault', () => {
 
         expect(result).toBe('unchanged')
         expect(db.read(kbPath('p1'))).toEqual({ enabled: true, ownerUserId: 'someone', enabledBy: 'member' })
+    })
+})
+
+// AT-3126: the default cap went from 500 to 3,000 (the news screening bills its searches at cost).
+describe('raising the old default cap', () => {
+    const run = db => applyKnowledgeBaseDefaultsForUser({ db, userId: 'creator', userData: user(ACTIVE), now: NOW })
+
+    it('raises an untouched default wiki once, and resumes one paused at the old cap', async () => {
+        const db = createDb({
+            'users/creator': user(ACTIVE),
+            'projects/p1': project(),
+            [kbPath('p1')]: {
+                enabled: true,
+                enabledBy: 'default',
+                ownerUserId: 'creator',
+                monthlyGoldCap: 500,
+                monthlyGold: { month: '2026-10', spent: 500 },
+                lastRunStopReason: 'monthly_cap',
+                nextRunAt: Date.UTC(2026, 10, 1),
+            },
+        })
+        await run(db)
+        expect(db.read(kbPath('p1'))).toMatchObject({
+            monthlyGoldCap: 3000,
+            monthlyGoldCapDefaultRaisedAt: NOW,
+            nextRunAt: NOW,
+            lastRunStopReason: null,
+        })
+        const after = db.read(kbPath('p1'))
+        await run(db)
+        expect(db.read(kbPath('p1'))).toEqual(after)
+    })
+
+    it('leaves a cap a member chose, and wikis a member switched on', async () => {
+        const db = createDb({
+            'users/creator': user(ACTIVE, ['p1', 'p2']),
+            'projects/p1': project(),
+            'projects/p2': project(),
+            [kbPath('p1')]: {
+                enabled: true,
+                enabledBy: 'default',
+                ownerUserId: 'creator',
+                monthlyGoldCap: 500,
+                monthlyGoldCapSetBy: 'creator',
+                nextRunAt: TONIGHT,
+            },
+            [kbPath('p2')]: {
+                enabled: true,
+                enabledBy: 'member',
+                ownerUserId: 'creator',
+                monthlyGoldCap: 500,
+                nextRunAt: TONIGHT,
+            },
+        })
+        await applyKnowledgeBaseDefaultsForUser({
+            db,
+            userId: 'creator',
+            userData: user(ACTIVE, ['p1', 'p2']),
+            now: NOW,
+        })
+        expect(db.read(kbPath('p1')).monthlyGoldCap).toBe(500)
+        expect(db.read(kbPath('p2')).monthlyGoldCap).toBe(500)
     })
 })

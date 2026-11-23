@@ -9,7 +9,8 @@ import { storeLoggedUser } from '../../redux/actions'
 describe('CustomSideMenu component', () => {
     beforeEach(() => {
         jest.useFakeTimers()
-        store.dispatch(storeLoggedUser({ displayName: 'Pepe el loco' }))
+        // The snapshots show the simple sidebar; since AT-3122 a user without a stored mode gets "Anna on top".
+        store.dispatch(storeLoggedUser({ displayName: 'Pepe el loco', sidebarNavigationMode: 'simple' }))
     })
 
     describe('CustomSideMenu empty snapshot test', () => {

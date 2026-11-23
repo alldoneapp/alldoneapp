@@ -30,12 +30,13 @@ jest.mock('../../UIComponents/ModalShell/AppPopover', () => ({ __esModule: true,
 
 import MainSectionTabsHeader, { COMPACT_TABS_BREAKPOINT, TIGHT_TABS_BREAKPOINT } from './MainSectionTabsHeader'
 import { setLanguage } from '../../../i18n/TranslationService'
+import HeaderPickerArrow from './HeaderPickerArrow'
 
 const buildState = () => ({
     selectedSidebarTab: 'Tasks',
     selectedProjectIndex: -1,
     loggedUserProjects: [],
-    loggedUser: { realProjectIds: [], isAnonymous: false },
+    loggedUser: { realProjectIds: [], isAnonymous: false, sidebarNavigationMode: 'simple' },
 })
 
 const setViewportWidth = width => {
@@ -190,6 +191,47 @@ describe('MainSectionTabsHeader with Anna on top of the sidebar', () => {
         expect(buttons[0].props.testID).toBe('section-title')
         expect(title(tree).findAllByType(Text)[0].props.children).toBe('Notizen')
         expect(title(tree).props.accessibilityLabel).toBe('Notizen – Wähle die Sektion aus')
+    })
+
+    // AT-3123: on a phone the name and its arrow sat on the left of the card; they are centred as one
+    // unit for every section the picker offers, and the picker opens centred under them.
+    it.each(['ROOT_TASKS', 'ROOT_GOALS', 'ROOT_NOTES', 'ROOT_CONTACTS', 'ROOT_CHATS', 'ROOT_ARTIFACTS', 'ROOT_WIKI'])(
+        'centres the %s name with its arrow in the mobile card',
+        sectionTab => {
+            mockState = { ...mockState, selectedSidebarTab: sectionTab }
+            setViewportWidth(390)
+            const tree = renderHeader()
+
+            expect(flatten(title(tree).props.style)).toMatchObject({
+                alignSelf: 'center',
+                flexDirection: 'row',
+                justifyContent: 'center',
+            })
+            expect(tree.root.findByType(AppPopover).props.align).toBe('center')
+        }
+    )
+
+    it.each([600, 390, 340])('centres the name above the section toggle at %ipx', width => {
+        setViewportWidth(width)
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <MainSectionTabsHeader showSectionToggle={true} renderSectionToggle={() => <Text>toggle</Text>} />
+            )
+        })
+
+        expect(flatten(title(tree).props.style).alignSelf).toBe('center')
+        // The arrow lives inside the centred title, so both move together.
+        expect(title(tree).findAllByType(HeaderPickerArrow)).toHaveLength(1)
+        expect(tabLabels(tree)).toEqual(expect.arrayContaining(['Notes', 'toggle']))
+    })
+
+    it('keeps the desktop name on the left of the card', () => {
+        setViewportWidth(1440)
+        const tree = renderHeader()
+
+        expect(flatten(title(tree).props.style).alignSelf).toBe('flex-start')
+        expect(tree.root.findByType(AppPopover).props.align).toBe('start')
     })
 
     it('keeps the section toggle next to the name', () => {

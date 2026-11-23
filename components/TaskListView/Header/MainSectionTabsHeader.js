@@ -167,6 +167,9 @@ export default function MainSectionTabsHeader({
 
     // The name opens the section picker the Updates header uses (ChangeObjectListModal), centred on a
     // phone like there; a small arrow shows it can be opened.
+    // AT-3123: in the mobile layout the name and its arrow sit centred in the card as one unit, for
+    // every section, above the centred toggle, and the picker opens centred under them. The desktop
+    // row keeps the name on the left with the toggle on the right, like the desktop tabs.
     const sectionName = translate(SECTION_TITLES[selectedSidebarTab] || 'Tasks')
     const sectionTitle = (
         <AppPopover
@@ -175,18 +178,25 @@ export default function MainSectionTabsHeader({
             isOpen={sectionPickerOpen}
             position={['bottom', 'left', 'right', 'top']}
             padding={4}
-            align={'start'}
+            align={useMobileLayout ? 'center' : 'start'}
             contentLocation={smallScreenNavigation ? null : undefined}
         >
             <TouchableOpacity
-                style={localStyles.sectionTitle}
+                style={[localStyles.sectionTitle, useMobileLayout && localStyles.sectionTitleMobile]}
                 onPress={() => setSectionPickerOpen(true)}
                 disabled={!accessGranted}
                 accessibilityRole="button"
                 accessibilityLabel={`${sectionName} – ${translate('Switch section')}`}
                 testID="section-title"
             >
-                <Text style={[localStyles.tabText, localStyles.tabTextSelected]} numberOfLines={1}>
+                <Text
+                    style={[
+                        localStyles.tabText,
+                        localStyles.tabTextSelected,
+                        useMobileLayout && localStyles.sectionTitleTextMobile,
+                    ]}
+                    numberOfLines={1}
+                >
                     {sectionName}
                 </Text>
                 <HeaderPickerArrow />
@@ -373,6 +383,13 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         paddingHorizontal: 14,
         alignSelf: 'flex-start',
+    },
+    sectionTitleMobile: {
+        alignSelf: 'center',
+        maxWidth: '100%',
+    },
+    sectionTitleTextMobile: {
+        flexShrink: 1,
     },
     controlsRowTight: {
         paddingHorizontal: 3,

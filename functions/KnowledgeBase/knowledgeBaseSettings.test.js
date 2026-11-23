@@ -30,7 +30,7 @@ describe('setKnowledgeBaseSettings', () => {
             settings: { enabled: true },
         })
 
-        expect(view).toMatchObject({ enabled: true, ownerUserId: 'owner', nextRunAt: NOW, monthlyGoldCap: 500 })
+        expect(view).toMatchObject({ enabled: true, ownerUserId: 'owner', nextRunAt: NOW, monthlyGoldCap: 3000 })
         expect(view).not.toHaveProperty('justEnabled')
         expect(enqueue).toHaveBeenCalledWith({ projectId: PROJECT_ID, dueAt: NOW, trigger: 'enabled' })
         expect(db.read(KB_PATH)).toMatchObject({
@@ -450,5 +450,101 @@ describe('immediate runs', () => {
         expect(view.enabled).toBe(true)
         expect(db.read(KB_PATH)).toMatchObject({ enabled: true, nextRunAt: NOW })
         warn.mockRestore()
+    })
+})
+
+describe('daily news screening settings (AT-3126)', () => {
+    const syncNewsPage = () => jest.fn(async () => ({ changed: true }))
+    const save = (db, userId, settings, extra = {}) =>
+        setKnowledgeBaseSettings({ enqueue, db, now: NOW, userId, projectId: PROJECT_ID, settings, ...extra })
+
+    it('is on by default and shown so, without anything stored', async () => {
+        const db = createDb({ enabled: true, ownerUserId: 'owner' })
+        const view = await save(db, 'owner', { instructions: 'x' }, { syncNewsPage: syncNewsPage() })
+        expect(view.newsScreening).toMatchObject({ enabled: true, active: true })
+        expect(db.read(KB_PATH)).not.toHaveProperty('newsScreening')
+    })
+
+    it('is switched by whoever pays for the wiki, not by another member', async () => {
+        const db = createDb({ enabled: true, ownerUserId: 'owner' })
+        await expect(save(db, 'teammate', { newsScreeningEnabled: false })).rejects.toMatchObject({
+            code: 'permission-denied',
+        })
+        expect(db.read(KB_PATH)).not.toHaveProperty('newsScreening')
+    })
+
+    it('records when it was switched off, why, and marks the page paused', async () => {
+        const db = createDb({ enabled: true, ownerUserId: 'owner' })
+        const sync = syncNewsPage()
+        const view = await save(
+            db,
+            'owner',
+            { newsScreeningEnabled: false, newsScreeningDisabledReason: 'too_expensive' },
+            { syncNewsPage: sync }
+        )
+        expect(db.read(KB_PATH).newsScreening).toMatchObject({
+            enabled: false,
+            disabledAt: NOW,
+            disabledBy: 'owner',
+            disabledReason: 'too_expensive',
+        })
+        expect(view.newsScreening).toMatchObject({ enabled: false, pausedSince: NOW, hiddenFromAssistants: false })
+        expect(sync).toHaveBeenCalledWith(expect.objectContaining({ projectId: PROJECT_ID, now: NOW }))
+        expect(enqueue).not.toHaveBeenCalled()
+    })
+
+    it('runs the first screening soon when it is switched back on, and clears the pause', async () => {
+        const db = createDb({
+            enabled: true,
+            ownerUserId: 'owner',
+            nextRunAt: NOW + 10 * 60 * 60 * 1000,
+            newsScreening: { enabled: false, disabledAt: NOW - 1000, disabledReason: 'other' },
+        })
+        const sync = syncNewsPage()
+        await save(db, 'owner', { newsScreeningEnabled: true }, { syncNewsPage: sync })
+        expect(db.read(KB_PATH)).toMatchObject({
+            nextRunAt: NOW,
+            newsScreening: { enabled: true, disabledAt: null, disabledReason: null },
+        })
+        expect(enqueue).toHaveBeenCalledWith({ projectId: PROJECT_ID, dueAt: NOW, trigger: 'news_enabled' })
+        expect(sync).toHaveBeenCalled()
+    })
+
+    it('marks the news page paused when the whole wiki is switched off', async () => {
+        const db = createDb({ enabled: true, ownerUserId: 'owner' })
+        const sync = syncNewsPage()
+        await save(db, 'owner', { enabled: false }, { syncNewsPage: sync })
+        expect(sync).toHaveBeenCalledWith(
+            expect.objectContaining({ knowledgeBase: expect.objectContaining({ enabled: false, disabledAt: NOW }) })
+        )
+    })
+
+    it('stores topics a member chose with the description they were chosen for, and null goes back to automatic', async () => {
+        const db = createDb({ enabled: true, ownerUserId: 'owner' })
+        await save(
+            db,
+            'owner',
+            { newsScreeningTopics: ['OPC UA', 'Retrofit'] },
+            { newsDescriptionFingerprint: () => 'fp' }
+        )
+        expect(db.read(KB_PATH).newsScreening).toMatchObject({
+            topics: ['OPC UA', 'Retrofit'],
+            topicsUpdatedBy: 'owner',
+            topicsDescriptionFingerprint: 'fp',
+        })
+        await save(db, 'owner', { newsScreeningTopics: null })
+        expect(db.read(KB_PATH).newsScreening).toMatchObject({ topics: null, topicsDescriptionFingerprint: null })
+    })
+
+    it('records who chose a cap, so that the raise of the old default leaves it alone', async () => {
+        const db = createDb({ enabled: true, ownerUserId: 'owner', monthlyGoldCap: 500 })
+        await save(db, 'owner', { monthlyGoldCap: 500 })
+        expect(db.read(KB_PATH)).not.toHaveProperty('monthlyGoldCapSetBy')
+        await save(db, 'owner', { monthlyGoldCap: 800 })
+        expect(db.read(KB_PATH)).toMatchObject({
+            monthlyGoldCap: 800,
+            monthlyGoldCapSetBy: 'owner',
+            monthlyGoldCapSetAt: NOW,
+        })
     })
 })

@@ -27,6 +27,12 @@ const {
     SELECTABLE_ASSISTANT_MODELS,
     normalizeSelectableAssistantModelKey,
 } = require('../Assistant/selectableAssistantModels')
+const {
+    NEWS_DISABLED_REASONS,
+    NewsScreeningSettingsError,
+    normalizeNewsTopicsInput,
+    toNewsScreeningView,
+} = require('./knowledgeNewsModel')
 
 const KNOWLEDGE_BASES_COLLECTION = 'knowledgeBases'
 const KNOWLEDGE_PAGES_COLLECTION = 'pages'
@@ -47,7 +53,11 @@ const KNOWLEDGE_BASE_MAX_PAGES = 150
 const KNOWLEDGE_BASE_INSTRUCTIONS_MAX_CHARS = 4000
 
 const DEFAULT_KNOWLEDGE_BASE_MODEL = 'MODEL_DEEPSEEK_V4_FLASH'
-const DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP = 500
+// 3,000 since AT-3126 (Karsten, 2026-11-23): the daily news screening bills its searches at cost
+// into the same cap. Default wikis still holding the old untouched default are raised by
+// knowledgeBaseDefaults.js (LEGACY_DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP).
+const DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP = 3000
+const LEGACY_DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP = 500
 const MIN_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP = 50
 const MAX_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP = 100000
 const KNOWLEDGE_BASE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000
@@ -382,6 +392,36 @@ function normalizeKnowledgeBaseSettingsInput(input) {
         patch.descriptionUpdateIntervalDays = days
     }
 
+    // The daily news screening (AT-3126, knowledgeNewsModel.js): on/off, optional topics (null goes
+    // back to the topics derived from the description) and an optional reason for switching it off.
+    if (settings.newsScreeningEnabled !== undefined) {
+        if (typeof settings.newsScreeningEnabled !== 'boolean') {
+            throw new KnowledgeBaseSettingsError('newsScreeningEnabled must be a boolean.')
+        }
+        patch.newsScreeningEnabled = settings.newsScreeningEnabled
+    }
+
+    if (settings.newsScreeningTopics !== undefined) {
+        try {
+            patch.newsScreeningTopics = normalizeNewsTopicsInput(settings.newsScreeningTopics)
+        } catch (error) {
+            if (error instanceof NewsScreeningSettingsError) throw new KnowledgeBaseSettingsError(error.message)
+            throw error
+        }
+    }
+
+    if (settings.newsScreeningDisabledReason !== undefined) {
+        if (
+            settings.newsScreeningDisabledReason !== null &&
+            !NEWS_DISABLED_REASONS.includes(settings.newsScreeningDisabledReason)
+        ) {
+            throw new KnowledgeBaseSettingsError(
+                `newsScreeningDisabledReason must be one of ${NEWS_DISABLED_REASONS.join(', ')} or null.`
+            )
+        }
+        patch.newsScreeningDisabledReason = settings.newsScreeningDisabledReason
+    }
+
     return patch
 }
 
@@ -471,6 +511,7 @@ function toKnowledgeBaseSettingsView(projectId, data = {}, now = Date.now()) {
                 : null,
             lastResult: data.descriptionUpdateState?.lastResult || null,
         },
+        newsScreening: toNewsScreeningView(data, now),
     }
 }
 
@@ -505,6 +546,7 @@ module.exports = {
     KNOWLEDGE_BASE_INSTRUCTIONS_MAX_CHARS,
     DEFAULT_KNOWLEDGE_BASE_MODEL,
     DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
+    LEGACY_DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     MIN_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     MAX_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     KNOWLEDGE_BASE_REFRESH_COOLDOWN_MS,

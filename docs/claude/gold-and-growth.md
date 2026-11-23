@@ -9,6 +9,12 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
 - Add a human label for every new `source` in `components/SettingsView/Profile/Properties/GoldTransactionsModal.js` (`getTransactionLabel`) and a matching translation key in `i18n/translations/en.json`, `de.json`, and `es.json`. The modal falls back to `Gold transaction` if the source is unknown.
 - Prefer storing enough context that the transaction can deep-link back to its source (chat/topic, goal, contact, Gmail message, etc.). The modal's `getTransactionLink` builds the URL from `projectId` + `objectId` + `objectType` / `channel`; extend it when adding a new source type that has a natural destination.
 
+- **Web searches cost Gold at cost (AT-3126).** `functions/Assistant/webSearchPricing.js`
+  (`WEB_SEARCH_GOLD` = 20: a Tavily search is 0.5-0.8 US cents, a Gold about 0.00035 USD). An
+  assistant's `web_search` is settled per executed search as `web_search`; the wiki's news screening
+  bills its searches as `wiki_news_screening`, counted in the wiki's monthly cap. Failed searches cost
+  nothing.
+
 ### Nothing a client sends can create Gold
 
 Until October 2026 any signed-in account could mint Gold three ways: write `users/{uid}.gold` itself (the users update rule only protected membership fields), call `refundGoldSecondGen` with any amount (it credited whatever it was sent), or call `deductGoldSecondGen` with a negative amount (the ledger only checked "finite and not zero"). Three rules now hold, and a new gold path must keep them:

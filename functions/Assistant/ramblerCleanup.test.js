@@ -60,29 +60,62 @@ describe('system prompt contract', () => {
     // PT-4648: the semantic half of the dictation vocabulary. Deepgram's keyterm prompting biases
     // the acoustics towards the brand; only this prompt has the sentence and can tell the product
     // "Alldone" from the ordinary phrase "all done".
-    test('stays close to the original wording instead of summarizing (AT-3105)', () => {
-        expect(RAMBLER_SYSTEM_PROMPT).toContain("staying as close as possible to the speaker's original wording")
+    // AT-3127: AT-3105 made the cleanup near-verbatim and users found the text too raw. The edit
+    // strength is now in the middle: sentences are rewritten for readability, content is not cut.
+    test('edits into clear, well-formulated sentences with medium strength (AT-3127)', () => {
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('clear, well-formulated written text')
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('Edit with medium strength')
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('You may restructure and rephrase sentences')
+        // The AT-3105 wording that held the model to the spoken word order must not come back.
+        expect(RAMBLER_SYSTEM_PROMPT).not.toContain('Only make light cleanups')
+        expect(RAMBLER_SYSTEM_PROMPT).not.toContain('Do not swap words for synonyms')
+        expect(RAMBLER_SYSTEM_PROMPT).not.toMatch(/as close as possible to the speaker's original wording/)
+    })
+
+    test('keeps every statement, detail and the tone, and never summarizes (AT-3105, AT-3127)', () => {
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('not a summary: every statement the speaker made must still be')
         expect(RAMBLER_SYSTEM_PROMPT).toContain(
-            'Do not summarize, condense, shorten, paraphrase or reorder, and do not drop any detail'
+            'Keep every substantive statement, reason, example, condition, aside and nuance, in the order'
         )
-        expect(RAMBLER_SYSTEM_PROMPT).toContain('Only make light cleanups: remove filler words')
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('Do not summarize, condense into keywords or drop content')
+        expect(RAMBLER_SYSTEM_PROMPT).toContain("Keep the speaker's voice, tone and register")
         expect(RAMBLER_SYSTEM_PROMPT).toContain(
             "Preserve the speaker's meaning, intent, facts, names, numbers and dates"
         )
-        // The old prompt asked for polished prose, which is what made the model rewrite dictations.
-        expect(RAMBLER_SYSTEM_PROMPT).not.toContain('well-written')
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('do not add information')
     })
 
-    test('no prompt part asks for brevity or restructuring (AT-3105)', () => {
+    test('removes disfluencies and states a repeated point once without losing its details (AT-3127)', () => {
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('Remove filler words and hesitations')
+        expect(RAMBLER_SYSTEM_PROMPT).toContain('when they carry no meaning')
+        expect(RAMBLER_SYSTEM_PROMPT).toContain(
+            'When the speaker makes the same point more than once, state it once, but keep every detail'
+        )
+    })
+
+    test('no prompt part asks for brevity (AT-3105)', () => {
         // The per-target rules and the system prompt used to say "concise", "reasonably brief" and
-        // "structure it for readability", which made the model condense the dictation.
+        // "structure it for readability", which made the model condense the dictation. AT-3127 makes
+        // the edit stronger again, but still without any length goal.
         const brevity = /\b(concise|brief|briefly|succinct|terse|well-structured)\b|structure it for readability/i
         expect(RAMBLER_SYSTEM_PROMPT).not.toMatch(brevity)
         for (const [kind, rule] of Object.entries(TARGET_KIND_RULES)) {
             expect([kind, rule]).toEqual([kind, expect.not.stringMatching(brevity)])
             const content = buildRamblerUserContent({ transcript: 'hello', targetKind: kind })
             expect(content).not.toMatch(brevity)
+            expect(content).toContain('every statement kept')
         }
+    })
+
+    test('every target keeps every statement; layout rules differ, edit strength does not (AT-3127)', () => {
+        for (const kind of ['description', 'comment', 'note', 'generic']) {
+            expect([kind, TARGET_KIND_RULES[kind]]).toEqual([kind, expect.stringContaining('Keep every statement')])
+        }
+        expect(TARGET_KIND_RULES.title).toContain('Keep everything the speaker said')
+        // A list is allowed whenever several separate points are named, not only on "first, second".
+        expect(TARGET_KIND_RULES.note).toContain('use a list where the speaker names several separate items')
+        expect(TARGET_KIND_RULES.note).not.toContain('explicitly enumerates')
+        expect(TARGET_KIND_RULES.description).toContain('paragraphs where the topic changes')
     })
 
     test('carries the product glossary', () => {
@@ -120,10 +153,12 @@ describe('buildRamblerUserContent', () => {
         expect(content).toContain('do not shorten it')
     })
 
-    test('the request asks for the full-length text, not a summary (AT-3105)', () => {
+    test('the request asks for an edited text with every statement, not a summary (AT-3105, AT-3127)', () => {
         const content = buildRamblerUserContent({ transcript: 'hello', targetKind: 'note' })
-        expect(content).toContain('close to its original wording')
+        expect(content).toContain('edit into clear, well-formulated text')
+        expect(content).toContain('every statement kept')
         expect(content).toContain('not a summary')
+        expect(content).not.toContain('close to its original wording')
     })
 
     test('unknown target falls back to the generic rule', () => {
@@ -144,7 +179,7 @@ describe('buildRamblerUserContent', () => {
             userContext: 'Global user description from settings: Y',
         })
         expect(full).toContain('Assistant persona, for background only')
-        expect(full).toContain('must not change the wording or length')
+        expect(full).toContain('must not change how strongly you edit or what content is kept')
         expect(full).toContain('Name: Anna')
         expect(full).toContain('Instructions: Be terse.')
         expect(full).toContain('Workspace context')

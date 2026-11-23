@@ -157,20 +157,30 @@ row reading "System default" teaches a mis-pinned user nothing.
 Pinned by `components/UIControls/RambleButton.test.js` (message branch) plus the device blocks in
 the three suites above.
 
-## Dictation stays close to the spoken wording, it does not summarize (AT-3105)
+## Dictation is edited with medium strength: clear sentences, nothing cut (AT-3105, AT-3127)
 
-The rambler's LLM cleanup (`functions/Assistant/ramblerCleanup.js`) used to ask for "clear,
-coherent, well-written" text, "concise prose", "reasonably brief" comments, a "concise" title and
-notes "structured for readability", and the model condensed and rephrased what was said. It is
-now a light cleanup of a transcription. Fillers, stutters, repeated words, false starts and spoken
-self-corrections are removed or applied, and punctuation/grammar get minimal fixes. Wording, word
-order and every detail stay; no summary, no synonyms, no reordering. The per-target rules only
-describe formatting: a title is still a single line (the field needs that) but is not shortened,
-and a note gets paragraphs and lists only where the speaker enumerates. The assistant persona is
-background only and may not shorten or rephrase, because personas such as "concise answers" were
-pulling the cleanup towards brevity. Meeting transcription (`transcribeMeetingAudio`, the
-"Transcribe" tag) never had an LLM step and is unchanged. `ramblerCleanup.test.js` fails if any
-prompt part asks for brevity again.
+The rambler's LLM cleanup (`functions/Assistant/ramblerCleanup.js`) has been tuned in both
+directions, and both ends failed. Originally it asked for "clear, coherent, well-written" text,
+"concise prose", "reasonably brief" comments, a "concise" title and notes "structured for
+readability", and the model condensed and summarized what was said (AT-3105). AT-3105 then made it a
+near-verbatim transcription (speaker's wording and word order, minimal grammar fixes, no synonyms),
+and users found that too raw: spoken German stayed spoken German (AT-3127).
+
+It now sits in the middle. The model rewrites the speech into clear, grammatical, well-punctuated
+sentences, may restructure and rephrase sentences, split run-ons and replace awkward spoken phrasing,
+and removes fillers (including "also", "halt", "sozusagen" when they carry no meaning), stutters,
+false starts and verbal tics. A point made more than once is stated once, keeping every detail from
+any repetition (product decision). What may not change: every statement, reason, example, condition,
+aside and nuance stays, in the spoken order; voice, tone and register stay (first person, informal,
+questions, hedges); nothing is added; no summary. The text may only get shorter by losing
+disfluencies and repetitions. Every target gets the same edit strength, titles included (still one
+line, never shortened into a summary title). Notes and descriptions get paragraphs where the topic
+changes and a list wherever several separate items, steps or points are named, not only on an
+explicit "first, second". The assistant persona is background only and may not change edit strength
+or kept content, because personas such as "concise answers" pulled the cleanup towards brevity.
+Meeting transcription (`transcribeMeetingAudio`, the "Transcribe" tag) never had an LLM step and is
+unchanged. `ramblerCleanup.test.js` pins the medium-strength rules, fails if the AT-3105 verbatim
+wording returns, and fails if any prompt part asks for brevity.
 
 ## Holding the floating "+" is a hold on the add-task mic (AT-2823)
 

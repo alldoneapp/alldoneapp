@@ -430,7 +430,9 @@ does not touch the uncommitted `ai/email-thread-topics` work:
   (`plan.reopen` in `emailTaskContentUpdate.js`, `reopenOnNewEmail` in
   `emailThreadContinuation.js`). The explicit "Create task" action keeps reopening, since the user
   asked for that task. A newer email also moves `messageData.lastMessageAt` and turns `needsReply`
-  back on. `functions/Email/AT-2709.md` still states the old rule and needs updating.
+  back on. `functions/Email/AT-2709.md` still states the old rule and needs updating. Since AT-3131
+  a newer email that needs a reply also adds `messageData` to an ordinary email task of the
+  mailbox owner, keeping the task's visibility (docs/claude/email.md).
 - **Messages section.** `MESSAGE_TASK_INDEX` (12) in `openTasks.js`, newest message first,
   `MessagesSection.js`, wired into `TasksSections.js`, the hashtag and priority filters, drag lists
   and the All projects counts. The browser keeps `messageData` in `mapTaskData` only on tasks that

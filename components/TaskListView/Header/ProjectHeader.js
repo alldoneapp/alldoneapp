@@ -22,6 +22,7 @@ import { useContext } from 'react'
 import { HeaderActionsContext, ProjectSectionContext, taskHierarchyStyles } from '../TaskHierarchy'
 import { PROJECT_COLOR_SYSTEM, PROJECT_COLOR_DEFAULT } from '../../../Themes/Modern/ProjectColors'
 import ProjectPostponeSwipe from './ProjectPostponeSwipe'
+import { MirroredActionsSpacer, shouldCenterProjectHeaderTitle, useMirroredActionsWidth } from './centeredHeaderTitle'
 
 /**
  * AT-2535 — `ProjectSection` owns the completed-sweep run now that the whole rounded card leaves.
@@ -47,6 +48,12 @@ export default function ProjectHeader({
     const selectedTab = useSelector(state => state.selectedSidebarTab)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const mobileCollapsed = useSelector(state => state.smallScreenNavSidebarCollapsed)
+    // AT-3132: on mobile sizes the selected project's top line centres its title on the whole line;
+    // on desktop, and on the per-project lines of the All projects lists, it stays on the left.
+    const centerTitle = useSelector(state =>
+        shouldCenterProjectHeaderTitle(state.smallScreenNavigation, state.selectedProjectIndex, projectIndex)
+    )
+    const [actionsWidth, onActionsLayout] = useMirroredActionsWidth()
 
     const userInHeader =
         selectedTab === DV_TAB_ROOT_CONTACTS ||
@@ -83,6 +90,19 @@ export default function ProjectHeader({
     const headerBackgroundColor = (PROJECT_COLOR_SYSTEM[projectColor] || PROJECT_COLOR_SYSTEM[PROJECT_COLOR_DEFAULT])
         .PROJECT_ITEM_ACTIVE
     const headerTextColor = colors.Text01
+    const actions = (
+        <>
+            <TagsArea
+                projectId={projectId}
+                mobile={mobile || mobileCollapsed}
+                onClickWorkflowIndicator={onClickWorkflowIndicator}
+                showWorkflow={showWorkflow}
+                showTaskMore={showTaskMore}
+                showGoalMore={showGoalMore}
+            />
+            {customRight}
+        </>
+    )
     const line = (
         <View testID="project-line">
             <View
@@ -95,22 +115,26 @@ export default function ProjectHeader({
             >
                 <HeaderActionsContext.Provider value={true}>
                     <View style={[localStyles.container, taskHierarchyStyles.projectHeaderContent]}>
+                        {centerTitle && <MirroredActionsSpacer width={actionsWidth} testID="project-line-mirror" />}
                         <ProjectAndUserData
                             projectIndex={projectIndex}
                             projectId={projectId}
                             badge={badge}
                             userInHeader={userInHeader}
                             headerTextColor={headerTextColor}
+                            centered={centerTitle}
                         />
-                        <TagsArea
-                            projectId={projectId}
-                            mobile={mobile || mobileCollapsed}
-                            onClickWorkflowIndicator={onClickWorkflowIndicator}
-                            showWorkflow={showWorkflow}
-                            showTaskMore={showTaskMore}
-                            showGoalMore={showGoalMore}
-                        />
-                        {customRight}
+                        {centerTitle ? (
+                            <View
+                                testID="project-line-actions"
+                                onLayout={onActionsLayout}
+                                style={localStyles.centeredActions}
+                            >
+                                {actions}
+                            </View>
+                        ) : (
+                            actions
+                        )}
                     </View>
                 </HeaderActionsContext.Provider>
             </View>
@@ -138,6 +162,12 @@ const localStyles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingTop: 25,
         paddingBottom: 6,
+    },
+    // Same rule as TagsArea: the actions never give way to the title (AT-2263).
+    centeredActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 0,
     },
     subContainer: {
         maxHeight: 24,

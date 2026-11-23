@@ -6013,6 +6013,227 @@ describe('assistant create_task project routing comments', () => {
         })
         expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
     })
+
+    // UNIFIED_INBOX_PLAN.md / AT-3131: an email that needs a reply creates a private reply task
+    // with messageData (the Messages section); any other follow-up creates an ordinary task with
+    // the project's visibility.
+    describe('reply task creation from a Gmail follow-up', () => {
+        const createFromEmail = needsReply => {
+            ProjectService.mockImplementation(() => ({
+                initialize: jest.fn().mockResolvedValue(undefined),
+                getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-family', name: 'Familie' }]),
+            }))
+            mockDocGet.mockResolvedValueOnce({ exists: true, data: () => ({ name: 'Familie' }) }).mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultProjectId: 'project-family', projectIds: ['project-family'] }),
+            })
+            mockCreateAndPersistTask.mockResolvedValueOnce({
+                success: true,
+                taskId: 'task-reply',
+                projectId: 'project-family',
+                message: 'Task created',
+                task: { id: 'task-reply', name: 'Reply to Lesya', userId: 'user-1', commentsData: { amount: 0 } },
+            })
+            return executeToolNatively(
+                'create_task',
+                { name: 'Reply to Lesya: dimensions', taskOrigin: 'user_request' },
+                'project-family',
+                'assistant-1',
+                'user-1',
+                null,
+                {
+                    projectId: 'project-family',
+                    assistantId: 'assistant-1',
+                    requestUserId: 'user-1',
+                    gmailContext: {
+                        origin: 'gmail_label_follow_up',
+                        gmailEmail: 'karsten@example.com',
+                        projectId: 'gmail-connection-project',
+                        connectionProjectId: 'gmail-connection-project',
+                        selectedProjectId: 'project-family',
+                        messageId: 'message-1',
+                        threadId: 'thread-1',
+                        webUrl: 'https://mail.google.com/mail/u/0/#all/message-1',
+                        targetContactEmail: 'NoReply@mail.kleinanzeigen.de',
+                        needsReply,
+                        emailContext: {
+                            from: '"Lesya über Kleinanzeigen" <noreply@mail.kleinanzeigen.de>',
+                            internalDate: '1795376400000',
+                        },
+                    },
+                }
+            )
+        }
+
+        test('needsReply creates a private reply task with messageData', async () => {
+            await createFromEmail(true)
+            const params = mockCreateAndPersistTask.mock.calls[0][0]
+            expect(params.isPrivate).toBe(true)
+            expect(params.messageData).toEqual({
+                provider: 'gmail',
+                kind: 'email',
+                connectionKey: 'karsten@example.com',
+                conversationKey: 'thread-1',
+                senderName: 'Lesya über Kleinanzeigen',
+                senderEmail: 'noreply@mail.kleinanzeigen.de',
+                lastMessageAt: 1795376400000,
+                needsReply: true,
+                webUrl: 'https://mail.google.com/mail/u/0/#all/message-1',
+            })
+            expect(params.gmailData).toMatchObject({ origin: 'gmail_label_follow_up', threadId: 'thread-1' })
+        })
+
+        test('an email that needs no reply creates an ordinary, non-private email task', async () => {
+            await createFromEmail(false)
+            const params = mockCreateAndPersistTask.mock.calls[0][0]
+            expect(params.isPrivate).toBe(false)
+            expect(params.messageData).toBeNull()
+            expect(params.gmailData).toMatchObject({ origin: 'gmail_label_follow_up', threadId: 'thread-1' })
+        })
+    })
+
+    // AT-3135: the labeling run may collect recurring mail of one sender and context in one to-do.
+    describe('collection to-dos from a Gmail follow-up (AT-3135)', () => {
+        const emailTaskBundle = require('../Email/emailTaskBundle')
+        const createWith = ({ toolArgs = {}, emailBundles = { enabled: true, existing: [] }, persisted } = {}) => {
+            ProjectService.mockImplementation(() => ({
+                initialize: jest.fn().mockResolvedValue(undefined),
+                getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-family', name: 'Familie' }]),
+            }))
+            mockDocGet.mockResolvedValueOnce({ exists: true, data: () => ({ name: 'Familie' }) }).mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultProjectId: 'project-family', projectIds: ['project-family', 'project-private'] }),
+            })
+            mockCreateAndPersistTask.mockResolvedValueOnce(
+                persisted || {
+                    success: true,
+                    taskId: 'task-bundle',
+                    projectId: 'project-family',
+                    message: 'Task created',
+                    task: {
+                        id: 'task-bundle',
+                        name: 'Kleinanzeigen: x',
+                        userId: 'user-1',
+                        commentsData: { amount: 0 },
+                    },
+                }
+            )
+            return executeToolNatively(
+                'create_task',
+                {
+                    name: 'Layla möchte ein Foto der Wickelkommode',
+                    description: 'Foto von vorne schicken.',
+                    taskOrigin: 'assistant_suggestion',
+                    comment: 'Käuferanfrage',
+                    emailBundle: { key: 'buyer-inquiries', label: 'Kleinanzeigen' },
+                    ...toolArgs,
+                },
+                'project-family',
+                'assistant-1',
+                'user-1',
+                null,
+                {
+                    projectId: 'project-family',
+                    assistantId: 'assistant-1',
+                    requestUserId: 'user-1',
+                    gmailContext: {
+                        origin: 'gmail_label_follow_up',
+                        gmailEmail: 'karsten@example.com',
+                        projectId: 'gmail-connection-project',
+                        connectionProjectId: 'gmail-connection-project',
+                        selectedProjectId: 'project-family',
+                        messageId: 'message-1',
+                        threadId: 'thread-1',
+                        webUrl: 'https://mail.google.com/mail/u/0/#all/message-1',
+                        targetContactEmail: 'noreply@mail.kleinanzeigen.de',
+                        needsReply: true,
+                        ...(emailBundles ? { emailBundles } : {}),
+                        emailContext: {
+                            from: '"Layla über Kleinanzeigen" <noreply@mail.kleinanzeigen.de>',
+                            internalDate: '1795376400000',
+                        },
+                    },
+                }
+            )
+        }
+
+        afterEach(() => jest.restoreAllMocks())
+
+        test('a new context starts a private collection to-do without reply data', async () => {
+            await createWith()
+            const [params, , options] = mockCreateAndPersistTask.mock.calls[0]
+            expect(params).toMatchObject({
+                name: 'Kleinanzeigen: Layla möchte ein Foto der Wickelkommode',
+                description:
+                    '- Layla möchte ein Foto der Wickelkommode https://mail.google.com/mail/u/0/#all/message-1',
+                isPrivate: true,
+                messageData: null,
+            })
+            expect(params.gmailData).toMatchObject({
+                threadId: 'thread-1',
+                threadIds: ['thread-1'],
+                bundle: {
+                    key: 'buyer-inquiries',
+                    label: 'Kleinanzeigen',
+                    senderDomain: 'kleinanzeigen.de',
+                    itemCount: 1,
+                },
+            })
+            expect(options.emailThread.bundle).toMatchObject({
+                id: params.gmailData.bundle.id,
+                senderDomain: 'kleinanzeigen.de',
+            })
+        })
+
+        test('an existing collection to-do gets the email as its next line instead of a new task', async () => {
+            const append = jest.spyOn(emailTaskBundle, 'appendEmailToBundleTask').mockResolvedValue({
+                taskId: 'task-old',
+                projectId: 'project-private',
+                existing: true,
+                bundled: true,
+                updated: true,
+                commentId: 'email_x',
+            })
+            const result = await createWith({
+                persisted: {
+                    success: true,
+                    existing: true,
+                    bundleExisting: true,
+                    taskId: 'task-old',
+                    projectId: 'project-private',
+                    task: { id: 'task-old', name: 'Kleinanzeigen: alt', userId: 'user-1' },
+                },
+            })
+            expect(append).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    userId: 'user-1',
+                    selected: expect.objectContaining({ taskId: 'task-old', projectId: 'project-private' }),
+                    via: 'bundle',
+                    itemText: 'Layla möchte ein Foto der Wickelkommode',
+                    commentText: 'Foto von vorne schicken.',
+                    actionable: true,
+                    projectIds: ['project-family', 'project-private'],
+                })
+            )
+            // The appended task is reported as existing: no routing comment, no second origin line.
+            expect(result).toMatchObject({ success: true, existing: true, bundled: true, taskId: 'task-old' })
+        })
+
+        test.each([
+            ['the run did not offer collection to-dos', { emailBundles: null }],
+            ['the task has its own deadline', { toolArgs: { dueDate: '2026-11-24T10:00:00+01:00' } }],
+            ['the task has a reminder', { toolArgs: { alertEnabled: true, dueDate: '2026-11-24T10:00:00+01:00' } }],
+            ['the model named no context', { toolArgs: { emailBundle: undefined } }],
+        ])('nothing is collected when %s', async (_, options) => {
+            await createWith(options).catch(() => null)
+            const [params, , createOptions] = mockCreateAndPersistTask.mock.calls[0]
+            expect(params.name).toBe('Layla möchte ein Foto der Wickelkommode')
+            expect(params.gmailData.bundle).toBeUndefined()
+            expect(createOptions.emailThread.bundle).toBeUndefined()
+            // needsReply still makes it the conversation's reply task.
+            expect(params.messageData).toMatchObject({ needsReply: true, conversationKey: 'thread-1' })
+        })
+    })
 })
 
 describe('assistant task assignment and attribution', () => {

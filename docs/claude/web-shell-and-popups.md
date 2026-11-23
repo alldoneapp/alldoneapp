@@ -225,10 +225,23 @@ for a guest of a shared project. Chats opens the same tab as the advanced sideba
 (`SidebarMenu/openSidebarChats.js`): Followed, unless only unfollowed chats have unread comments.
 Pinned by `ChatsItem.test.js`, `openSidebarChats.test.js` and `TasksBoards.test.js`.
 
-**"Anna on top" sidebar (AT-3121, opt-in).** A third value of `loggedUser.sidebarNavigationMode`,
-labelled "Anna on top" (Settings → Sidebar navigation) next to simple (the default) and advanced; it
-is stored as `'sectionsTop'` and read through `isSectionsTopSidebarNavigation`, names from its first
-version, which had the sections fixed at the top. The other two modes are unchanged.
+**"Anna on top" sidebar (AT-3121; the default since AT-3122).** A third value of
+`loggedUser.sidebarNavigationMode`, labelled "Anna on top" (Settings → Sidebar navigation) next to
+simple and advanced; it is stored as `'sectionsTop'` and read through `isSectionsTopSidebarNavigation`,
+names from its first version, which had the sections fixed at the top. The other two modes are unchanged.
+
+- **Default (AT-3122, 2026-11-23)**: `DEFAULT_SIDEBAR_NAVIGATION_MODE` in `utils/SidebarNavigationModes.js`
+  is "Anna on top" (it was simple). `users/{uid}.sidebarNavigationMode` is written only by the Settings
+  pick (`setUserSidebarNavigationMode`); new user documents carry no value and `mapUserData` keeps a
+  missing one `null`. So unset means "never picked" and follows the default, and a stored value
+  (any of the three) is a deliberate pick that is kept. Never stamp the default into user documents
+  (no migration): it would become indistinguishable from a pick. Read the mode only through
+  `getSidebarNavigationMode` / the `is…SidebarNavigation` helpers, never compare the raw value. In
+  production on 2026-11-23, 2 of 4,392 users had a stored value (one advanced, one sectionsTop, no
+  simple). Anonymous viewers of shared links keep an explicit simple sidebar from
+  `ANONYMOUS_USER_DATA` (decided 2026-11-23). Tests that cover simple-mode behaviour pin
+  `sidebarNavigationMode: 'simple'` in their fixtures. Pinned by `utils/SidebarNavigationModes.test.js`
+  and `Customizations/Properties/SidebarNavigation.test.js`.
 
 - **Anna button** (`SectionsTop/SidebarAnnaButton.js`, through `AnnaSidebarModeContext`): one big
   button at the very top. It opens the chat as it was last shown (alone the first time,
@@ -1091,3 +1104,25 @@ header rows and a one-row workflow bar.
   "Finding a focus task…" restarted its slide-in from above on every tick and so sat above the
   pill's middle most of the time. The rolling pill without a reroll button pads both sides by
   12px (`.anna-focus-pill > .anna-focus-task:last-child`).
+
+## Centred title on the top project line (AT-3132, 2026-11-23)
+
+- **Mobile sizes only** (reviewer decision after !926 centred it everywhere): the centring applies
+  where `smallScreenNavigation` is set, the app's mobile navigation breakpoint
+  (`utils/responsiveLayout.js`). On desktop the line is left aligned as before, with no spacer and
+  no measuring. `shouldCenterProjectHeaderTitle(smallScreenNavigation, selectedProjectIndex,
+projectIndex)` decides it for `ProjectHeader`; `AllProjectsLine` uses its `mobile` flag.
+- On mobile, "All projects" (`AllProjectsLine`) and the **selected** project's line (`ProjectHeader` when
+  `selectedProjectIndex === projectIndex`) centre their title block on the **whole** line, like the
+  section card and the assistant header below. The per-project lines of the All projects lists stay
+  left aligned (user decision).
+- How: the actions stay in the row on the right (they never shrink, AT-2263); an invisible spacer
+  on the left mirrors their measured width (`centeredHeaderTitle.js`,
+  `useMirroredActionsWidth`). The title area between them is symmetric, so centring in it centres
+  on the line, and a long name truncates inside it instead of running under the menu.
+- Avatar, title and the "by project" toggle move as one block; inside it the toggle stays left
+  aligned under the title. The invisible legacy `compass` placeholder in `ProjectAndUserData` is
+  left out on the centred line, or the name sits ~10px left of centre.
+- Tests: `components/TaskListView/Header/centeredHeaderTitle.test.js`,
+  `ProjectAndUserData.test.js`, mobile/desktop snapshots in
+  `__tests__/TaskListView/Header/ProjectHeader.test.js`.

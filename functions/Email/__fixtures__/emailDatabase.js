@@ -24,7 +24,14 @@ function createEmailDatabase(initial = {}) {
             doc: id => db.doc(`${path}/${id}`),
             where: (field, op, value) => {
                 const ref = { path, field, value, query: true }
-                return { ...ref, get: async () => read(ref) }
+                const limited = count => ({
+                    ...ref,
+                    get: async () => {
+                        const snapshot = read(ref)
+                        return { ...snapshot, docs: snapshot.docs.slice(0, count) }
+                    },
+                })
+                return { ...ref, get: async () => read(ref), limit: limited }
             },
         }),
         runTransaction: async callback => {

@@ -33,6 +33,7 @@ import {
     useKnowledgeRuns,
 } from '../../WikiView/useKnowledgeBase'
 import { openProjectWiki } from '../../WikiView/wikiLinks'
+import NewsScreeningSettings from './NewsScreeningSettings'
 
 const RUN_STATUS_LABELS = {
     running: 'Running',
@@ -320,6 +321,13 @@ export default function ProjectWikiSettings({ project }) {
                 onSave={save}
             />
 
+            <NewsScreeningSettings
+                settings={settings.newsScreening}
+                wikiEnabled={settings.enabled}
+                disabled={disabled}
+                onSave={save}
+            />
+
             <View style={localStyles.row}>
                 <Icon name="cpu" size={24} color={colors.Text03} />
                 <Text style={localStyles.label}>{translate('Model')}</Text>
@@ -453,6 +461,11 @@ export default function ProjectWikiSettings({ project }) {
                                     }),
                                     run.descriptionUpdate?.result === 'changed'
                                         ? translate('Project description updated')
+                                        : null,
+                                    Number(run.newsScreening?.created) > 0
+                                        ? translate('News screening run summary', {
+                                              amount: Number(run.newsScreening.created),
+                                          })
                                         : null,
                                 ]
                                     .filter(Boolean)

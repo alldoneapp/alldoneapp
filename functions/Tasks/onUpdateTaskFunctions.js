@@ -369,10 +369,16 @@ const onUpdateTask = async (taskId, projectId, change, eventId) => {
         promises.push(deleteTaskMetaData(projectId, taskId))
     }
 
-    if (newTask.userId !== oldTask.userId || (newTask.isSubtask && !oldTask.isSubtask)) {
+    // A task that became a subtask is no longer a list entry anybody can focus. An owner change of a
+    // top-level task is handled by the handoff below, which picks the old owner a new focus task
+    // instead of only clearing it (AT-3124); running both would race, because the clear makes the
+    // handoff see "focus is no longer this task" and skip the replacement. Subtasks are skipped by
+    // the handoff, so their owner change still clears here.
+    if ((newTask.isSubtask && !oldTask.isSubtask) || (newTask.userId !== oldTask.userId && newTask.parentId)) {
         promises.push(clearUserTaskInFocusIfMatch(oldTask.userId, taskId))
     }
-    // AT-2193: a task that moved to another workflow step is no longer what its previous holders
+    // AT-2193 / AT-3124: a task that moved to another workflow step, to another reviewer (including
+    // a VM question hold starting or ending) or to another owner is no longer what the users it left
     // should be working on. Same handoff as a postpone, and the only place that can reach a focus
     // holder who is not the user that performed the move (firestore.rules blocks cross-user writes).
     promises.push(
