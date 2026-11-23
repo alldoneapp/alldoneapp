@@ -19,6 +19,11 @@ const {
     resolveProjectDescriptionUpdateSettings,
     toKnowledgeBaseSettingsView,
 } = require('./knowledgeBaseModel')
+const {
+    getNewsScreeningPausedSince,
+    isNewsScreeningActive,
+    resolveNewsScreeningSettings,
+} = require('./knowledgeNewsModel')
 
 async function assertProjectMember(db, projectId, userId) {
     const snapshot = await db.doc(`projects/${projectId}`).get()
@@ -66,6 +71,16 @@ function defaultEnqueue(args) {
     return enqueueKnowledgeBaseIngest(args)
 }
 
+function defaultSyncNewsPagePauseState(args) {
+    const { syncNewsPagePauseState } = require('./knowledgeNewsScreening')
+    return syncNewsPagePauseState(args)
+}
+
+function defaultNewsDescriptionFingerprint(description) {
+    const { buildNewsDescriptionFingerprint } = require('./knowledgeNewsScreening')
+    return buildNewsDescriptionFingerprint(description)
+}
+
 async function setKnowledgeBaseSettings({
     userId,
     projectId,
@@ -73,6 +88,8 @@ async function setKnowledgeBaseSettings({
     db = admin.firestore(),
     now = Date.now(),
     enqueue = defaultEnqueue,
+    syncNewsPage = defaultSyncNewsPagePauseState,
+    newsDescriptionFingerprint = defaultNewsDescriptionFingerprint,
 }) {
     validateCaller(userId, projectId)
 
@@ -120,6 +137,15 @@ async function setKnowledgeBaseSettings({
         }
 
         if (!current) next.createdAt = now
+        // A cap a member chose is theirs: the raise of the old default (knowledgeBaseDefaults.js) leaves
+        // it alone. Saving the value already stored is not a choice (the settings resave it on resume).
+        if (
+            patch.monthlyGoldCap !== undefined &&
+            patch.monthlyGoldCap !== resolveKnowledgeBaseMonthlyGoldCap(current?.monthlyGoldCap)
+        ) {
+            next.monthlyGoldCapSetBy = userId
+            next.monthlyGoldCapSetAt = now
+        }
 
         // The automatic project description update (AT-3095) is billed to the wiki's payer, so it
         // is changed by whoever may change the wiki. Only written when the save names it: the
@@ -135,6 +161,43 @@ async function setKnowledgeBaseSettings({
                 updatedAt: now,
                 updatedBy: userId,
             }
+        }
+
+        // The daily news screening (AT-3126) is billed to the wiki's payer into the same cap, so it is
+        // changed by whoever may change the wiki (canManageKnowledgeBase above), never by an owner or
+        // admin rule of its own. Only written when the save names it: the missing field IS the
+        // default (on, automatic topics).
+        const newsPatched =
+            patch.newsScreeningEnabled !== undefined ||
+            patch.newsScreeningTopics !== undefined ||
+            patch.newsScreeningDisabledReason !== undefined
+        if (newsPatched) {
+            const storedNews = { ...((current && current.newsScreening) || {}) }
+            const wasNewsEnabled = resolveNewsScreeningSettings(current || {}).enabled
+            const newsEnabled = patch.newsScreeningEnabled !== undefined ? patch.newsScreeningEnabled : wasNewsEnabled
+            const newsScreening = { ...storedNews, enabled: newsEnabled, updatedAt: now, updatedBy: userId }
+            if (wasNewsEnabled && !newsEnabled) {
+                newsScreening.disabledAt = now
+                newsScreening.disabledBy = userId
+            }
+            if (!wasNewsEnabled && newsEnabled) {
+                newsScreening.disabledAt = null
+                newsScreening.disabledReason = null
+            }
+            if (patch.newsScreeningDisabledReason !== undefined) {
+                newsScreening.disabledReason = patch.newsScreeningDisabledReason
+            }
+            if (patch.newsScreeningTopics !== undefined) {
+                newsScreening.topics = patch.newsScreeningTopics
+                newsScreening.topicsUpdatedAt = now
+                newsScreening.topicsUpdatedBy = userId
+                // What the description was when the member chose the topics: the settings say when
+                // it has changed since (the run compares the fingerprints).
+                newsScreening.topicsDescriptionFingerprint = patch.newsScreeningTopics
+                    ? newsDescriptionFingerprint(project.description)
+                    : null
+            }
+            next.newsScreening = newsScreening
         }
 
         let resumedFromCap = false
@@ -172,17 +235,36 @@ async function setKnowledgeBaseSettings({
             next.nextRunAt = null
         }
 
+        const merged = { ...(current || {}), ...next }
+        const wasNewsActive = isNewsScreeningActive(current || {})
+        const newsActive = isNewsScreeningActive(merged)
+        // Switching the screening on while the wiki runs: the first screening should not wait for
+        // the night (a wiki that is switched on right now builds at once anyway).
+        let newsJustEnabled = false
+        if (enabled && wasEnabled && newsActive && !wasNewsActive) {
+            next.nextRunAt = now
+            newsJustEnabled = true
+        }
         transaction.set(knowledgeBaseRef, next, { merge: true })
         return {
-            ...toKnowledgeBaseSettingsView(projectId, { ...(current || {}), ...next }, now),
+            ...toKnowledgeBaseSettingsView(projectId, { ...merged, ...next }, now),
             justEnabled: enabled && !wasEnabled,
             resumedFromCap,
+            newsJustEnabled,
+            // The page says "paused" from the moment the screening (or the whole wiki) is switched
+            // off, and stops saying it when it is switched back on.
+            newsPauseChanged:
+                (getNewsScreeningPausedSince(current || {}) === null) !==
+                (getNewsScreeningPausedSince({ ...merged, ...next }) === null),
+            knowledgeBaseAfter: { ...merged, ...next },
         }
     })
 
-    const { justEnabled, resumedFromCap, ...settingsView } = view
+    const { justEnabled, resumedFromCap, newsJustEnabled, newsPauseChanged, knowledgeBaseAfter, ...settingsView } = view
     if (justEnabled) await enqueueSoon(enqueue, projectId, now, 'enabled')
     else if (resumedFromCap) await enqueueSoon(enqueue, projectId, now, 'cap_raised')
+    else if (newsJustEnabled) await enqueueSoon(enqueue, projectId, now, 'news_enabled')
+    if (newsPauseChanged) await syncNewsPage({ db, projectId, knowledgeBase: knowledgeBaseAfter, now })
     return settingsView
 }
 

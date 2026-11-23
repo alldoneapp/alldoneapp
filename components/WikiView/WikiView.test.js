@@ -38,6 +38,11 @@ jest.mock('../../utils/backends/KnowledgeBase/knowledgeBaseFirestore', () => ({
     getKnowledgePageRange: jest.fn(),
     getKnowledgeRevisionNumberBefore: jest.fn(),
     undoKnowledgeCorrection: jest.fn(),
+    watchKnowledgeNewsItems: jest.fn((projectId, onChange) => {
+        mockWatchers.news = onChange
+        return () => {}
+    }),
+    dismissKnowledgeNewsItem: jest.fn(async () => ({ success: true })),
 }))
 jest.mock('../TaskListView/ProjectSection', () => {
     const passThrough = ({ children }) => children
@@ -119,6 +124,7 @@ import {
     getKnowledgePageRevisions,
     getKnowledgeRevisionNumberBefore,
     undoKnowledgeCorrection,
+    dismissKnowledgeNewsItem,
 } from '../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
 import WikiView from './WikiView'
 import { openProjectWiki, openProjectWikiSettings, openWikiSource } from './wikiLinks'
@@ -885,5 +891,51 @@ describe('WikiView', () => {
                 'Could not load the changes.'
             )
         })
+    })
+})
+
+// AT-3126: the news page is external content written by the screening.
+describe('the external news page', () => {
+    const newsPage = page('external-news', 'Was ist los? – Externes Umfeld', { body: '### [hoch] Preissenkung' })
+
+    it('says it is external, when it was last checked, and lets a member mark an entry not relevant', async () => {
+        const component = mount()
+        deliver({
+            knowledgeBase: { enabled: true, newsScreeningState: { lastRunAt: Date.UTC(2026, 10, 23, 2) } },
+            pages: [...PAGES, newsPage],
+        })
+        act(() => setWikiSelectedSlug('p1', 'external-news'))
+
+        const notice = textOf(component.root.findByProps({ testID: 'wiki-news-notice' }))
+        expect(notice).toContain('External content from public sources')
+        expect(notice).toContain('Last checked: 23.11.2026')
+        // Feedback on the news page is "Not relevant" per entry, not a correction.
+        expect(textOf(component.toJSON())).not.toContain('Give feedback')
+
+        act(() =>
+            mockWatchers.news([
+                { id: 'n1', title: 'Preissenkung', status: 'active', publishedAt: Date.now() - 1000 },
+                { id: 'old', title: 'Uralt', status: 'active', publishedAt: Date.now() - 40 * 24 * 60 * 60 * 1000 },
+            ])
+        )
+        const panel = textOf(component.root.findByProps({ testID: 'wiki-news-panel' }))
+        expect(panel).toContain('Preissenkung')
+        expect(panel).not.toContain('Uralt')
+        await act(async () => pressText(component, 'Not relevant'))
+        expect(dismissKnowledgeNewsItem).toHaveBeenCalledWith('p1', 'n1')
+    })
+
+    it('says the screening is paused', () => {
+        const component = mount()
+        deliver({
+            knowledgeBase: {
+                enabled: true,
+                newsScreening: { enabled: false, disabledAt: Date.UTC(2026, 10, 20, 9) },
+                newsScreeningState: { lastRunAt: Date.UTC(2026, 10, 20, 2) },
+            },
+            pages: [newsPage],
+        })
+        act(() => setWikiSelectedSlug('p1', 'external-news'))
+        expect(textOf(component.root.findByProps({ testID: 'wiki-news-notice' }))).toContain('Paused since 20.11.2026')
     })
 })

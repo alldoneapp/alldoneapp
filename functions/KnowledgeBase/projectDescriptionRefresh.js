@@ -21,9 +21,8 @@
 //
 // When it runs: once the wiki run has caught up (no continuation pending), the interval since the
 // last decision has passed, the wiki has at least one visible page, the project is active
-// (`project.active !== false`), is no template, and the payer has not archived it. It only spends
-// below the same share of the monthly cap as the weekly health check, so the ingest keeps its
-// reserve. `lastRunAt` moves on only when the model DECIDED (saved, kept, or a conflict); a run that
+// (`project.active !== false`), is no template, and the payer has not archived it. It may spend up to
+// the wiki's whole monthly cap, like the health check (no reserve share since 2026-11-23). `lastRunAt` moves on only when the model DECIDED (saved, kept, or a conflict); a run that
 // stopped or failed before that tries again on the next run, which is at most one conversation a
 // night.
 //

@@ -2649,6 +2649,27 @@ async function spentGold(userId, goldToReduce, linkContext = {}, model = '') {
     })
 }
 
+// One executed web_search, billed to the member the run acts for. Runs without a requesting member
+// (none today reach web_search) are not charged. Never throws: billing must not lose a result the
+// model is about to use; a failure is logged.
+async function chargeWebSearchGold({ requestUserId, projectId, toolRuntimeContext }) {
+    const { WEB_SEARCH_GOLD, WEB_SEARCH_GOLD_SOURCE } = require('./webSearchPricing')
+    if (!requestUserId || WEB_SEARCH_GOLD <= 0) return null
+    try {
+        const { settleUsageGold } = require('../Gold/goldHelper')
+        return await settleUsageGold(requestUserId, WEB_SEARCH_GOLD, {
+            source: WEB_SEARCH_GOLD_SOURCE,
+            channel: toolRuntimeContext?.sourceChannel === 'mcp' ? 'mcp' : 'assistant',
+            projectId: toolRuntimeContext?.projectId || projectId || '',
+            objectId: toolRuntimeContext?.objectId || '',
+            objectType: toolRuntimeContext?.objectType || '',
+        })
+    } catch (error) {
+        console.error('🌐 WEB_SEARCH TOOL: could not charge the search', { requestUserId, error: error.message })
+        return null
+    }
+}
+
 // Flat gold cost per MCP tool invocation. The expensive part of an MCP call is
 // the remote server's own compute, which we don't meter; this is a small, fixed
 // platform charge so usage is visible in the user's Gold history.
@@ -9520,6 +9541,11 @@ async function executeToolNativelyImpl(
                     url: r.url,
                     content: r.content,
                 }))
+
+                // An executed search costs Gold at cost (webSearchPricing.js, AT-3126). The search has
+                // already happened, so it is settled in full like the answer it feeds; a failed
+                // search above never reaches this line and costs nothing.
+                await chargeWebSearchGold({ requestUserId, projectId, toolRuntimeContext })
 
                 return {
                     success: true,

@@ -35,6 +35,12 @@
 // The first run waits for the payer's next nightly slot instead of starting at once: the default
 // reaches every project of a user in the same pass, and the worker runs three wikis at a time.
 //
+// The default monthly Gold cap went from 500 to 3,000 with the news screening (AT-3126, Karsten
+// 2026-11-23). A wiki the default switched on that still holds the untouched old default (500, never
+// saved by a member: no `monthlyGoldCapSetBy`) is raised to the new default by the same passes, once:
+// afterwards its cap is no longer the old default, so a second pass changes nothing. A wiki a member
+// switched on, or whose cap a member set, keeps its cap. A wiki paused at the old cap resumes.
+//
 // Three callers, from cheapest to most complete: onCreateProject (a new project, right away), the
 // user trigger when somebody comes back after 30 days (their projects, and their paused wikis), and
 // the daily sweep over every active user, which is also what reaches the existing projects of users
@@ -48,6 +54,8 @@ const {
     DEFAULT_KNOWLEDGE_BASE_MODEL,
     DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
+    LEGACY_DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
+    isKnowledgeBasePausedAtMonthlyCap,
     getKnowledgeBasePath,
     hasKnowledgeBaseCaughtUp,
     isKnowledgeBasePausedForArchivedProject,
@@ -134,6 +142,36 @@ async function isPayerGone(current, projectId, project, loadUser, now) {
     return isProjectArchivedForUser(payer, projectId) && hasKnowledgeBaseCaughtUp(current)
 }
 
+function hasLegacyDefaultCap(data = {}) {
+    return (
+        data.enabled === true &&
+        data.enabledBy === KNOWLEDGE_BASE_ENABLED_BY_DEFAULT &&
+        Number(data.monthlyGoldCap) === LEGACY_DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP &&
+        !data.monthlyGoldCapSetBy
+    )
+}
+
+// Raises an untouched old default cap to the current default (AT-3126). Idempotent; true when it wrote.
+async function upgradeLegacyDefaultCap({ db, ref, now }) {
+    return db.runTransaction(async transaction => {
+        const snapshot = await transaction.get(ref)
+        const latest = snapshot.exists ? snapshot.data() || {} : {}
+        if (!hasLegacyDefaultCap(latest)) return false
+        const update = {
+            monthlyGoldCap: DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
+            monthlyGoldCapDefaultRaisedAt: now,
+            updatedAt: now,
+        }
+        // Paused at the old cap this month: the new cap is far above what it spent, so it runs again.
+        if (isKnowledgeBasePausedAtMonthlyCap(latest, now)) {
+            update.nextRunAt = now
+            update.lastRunStopReason = null
+        }
+        transaction.update(ref, update)
+        return true
+    })
+}
+
 // Applies the default to one project for one member: 'enabled', 'resumed', 'taken_over' or why not.
 async function applyKnowledgeBaseDefault({ db, projectId, project, userId, userData, loadUser, now }) {
     if (!isKnowledgeBaseProjectEligible(project)) return 'ineligible'
@@ -157,6 +195,16 @@ async function applyKnowledgeBaseDefault({ db, projectId, project, userId, userD
 
     const current = existing.data() || {}
     if (current.enabled !== true) return 'unchanged'
+
+    if (hasLegacyDefaultCap(current)) {
+        try {
+            if (await upgradeLegacyDefaultCap({ db, ref, now })) {
+                console.log('[knowledge base] Raised a default wiki to the new default cap', { projectId })
+            }
+        } catch (error) {
+            console.warn('[knowledge base] Could not raise the default cap', { projectId, error: error.message })
+        }
+    }
 
     const archivedForUser = isProjectArchivedForUser(userData, projectId)
 
@@ -310,6 +358,7 @@ module.exports = {
     MAX_PROJECTS_PER_USER,
     isKnowledgeBaseProjectEligible,
     buildDefaultKnowledgeBase,
+    hasLegacyDefaultCap,
     applyKnowledgeBaseDefault,
     applyKnowledgeBaseDefaultsForUser,
     applyKnowledgeBaseDefaultForNewProject,

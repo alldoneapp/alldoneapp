@@ -71,7 +71,7 @@ describe('shouldCenterProjectHeaderTitle', () => {
 describe('AllProjectsLine centres its title block on mobile (AT-3132)', () => {
     beforeEach(() => {
         mockState({
-            loggedUser: { uid: 'user-1', photoURL: '', sidebarNavigationMode: 'simple' },
+            loggedUser: { uid: 'user-1', photoURL: '' },
             taskViewToggleSection: 'Open',
             smallScreenNavigation: true,
         })
@@ -188,7 +188,7 @@ describe('ProjectHeader centres only the selected project line on mobile (AT-313
 describe('AllProjectsLine stays left aligned on desktop (AT-3132)', () => {
     beforeEach(() => {
         mockState({
-            loggedUser: { uid: 'user-1', photoURL: '', sidebarNavigationMode: 'simple' },
+            loggedUser: { uid: 'user-1', photoURL: '' },
             taskViewToggleSection: 'Open',
             smallScreenNavigation: false,
         })

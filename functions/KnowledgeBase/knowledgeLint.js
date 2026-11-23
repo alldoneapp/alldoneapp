@@ -15,9 +15,10 @@
 //      whatever the rule-based checks found. It has the ingest's tools and the store's guards,
 //      with three more: it may not touch a page a member corrected in the last
 //      PROTECTED_AFTER_CORRECTION_MS, it may change at most MAX_LINT_EDITS pages, and every change
-//      carries a reason beginning with "lint:" in the page history. It only spends while the month
-//      has used less than (1 - LINT_BUDGET_RESERVE_SHARE) of the wiki's Gold cap, so the last part of
-//      the cap always stays for the ingest itself.
+//      carries a reason beginning with "lint:" in the page history. It may spend up to the wiki's whole
+//      monthly Gold cap, like every other step of the run (Karsten, 2026-11-23: no reserve share;
+//      LINT_BUDGET_RESERVE_SHARE is 0, the description update and the news screening follow the same
+//      rule).
 //
 // A model that sees only pages cannot know which of two disagreeing statements is true, and a later
 // date is not proof (WIKI_RULES' "a later card wins" holds for SOURCE cards, not for pages). So the
@@ -36,7 +37,7 @@ const {
 const DAY_MS = 24 * 60 * 60 * 1000
 const LLM_LINT_INTERVAL_MS = 7 * DAY_MS
 const PROTECTED_AFTER_CORRECTION_MS = 14 * DAY_MS
-const LINT_BUDGET_RESERVE_SHARE = 0.2
+const LINT_BUDGET_RESERVE_SHARE = 0
 const MAX_LINT_EDITS = 10
 const MAX_LINT_CONVERSATIONS = 3
 const LINT_BATCH_MAX_TOKENS = 14000
@@ -139,7 +140,7 @@ function isLlmLintDue(lintState = {}, pages, now = Date.now()) {
     return !last || latestPageChange(pages) > last
 }
 
-/** The highest monthly spending at which the lint pass may still start a model round. */
+/** The highest monthly spending at which the lint pass may still start a model round: the whole cap. */
 function getLintSpendLimit(goldCap) {
     return Math.floor(goldCap * (1 - LINT_BUDGET_RESERVE_SHARE))
 }

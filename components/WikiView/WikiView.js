@@ -27,6 +27,7 @@ import WikiPageHistory from './WikiPageHistory'
 import WikiPageChange from './WikiPageChange'
 import WikiPageRecentChanges from './WikiPageRecentChanges'
 import WikiFeedbackButton from './WikiFeedbackButton'
+import WikiNewsPanel, { WikiNewsNotice } from './WikiNewsPanel'
 import WikiIndex from './WikiIndex'
 import { formatWikiDate, isKnowledgeBaseRunning, useKnowledgeBaseDoc, useKnowledgePages } from './useKnowledgeBase'
 import {
@@ -46,6 +47,7 @@ import {
     parseKnowledgeSourceKey,
     splitKnowledgePageSources,
 } from '../../functions/KnowledgeBase/knowledgeBaseModel'
+import { NEWS_PAGE_SLUG, isManagedNewsSlug } from '../../functions/KnowledgeBase/knowledgeNewsModel'
 
 import { themed } from '../../Themes/colorMode'
 
@@ -209,8 +211,11 @@ function WikiPageSources({ projectId, page }) {
     )
 }
 
-function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
+function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack, knowledgeBase }) {
     const [showHistory, setShowHistory] = useState(false)
+    // The news pages (AT-3126) are written by the screening from stored entries: feedback on them is
+    // "Not relevant" per entry, not a correction of the text.
+    const managedNews = isManagedNewsSlug(page.slug)
 
     useEffect(() => {
         setShowHistory(false)
@@ -246,10 +251,11 @@ function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
                             buttonStyle={localStyles.compactButton}
                         />
                     )}
-                    <WikiFeedbackButton projectId={projectId} page={page} />
+                    {!managedNews && <WikiFeedbackButton projectId={projectId} page={page} />}
                 </View>
             </View>
             {!!page.summary && <Text style={localStyles.pageSummary}>{page.summary}</Text>}
+            {managedNews && <WikiNewsNotice knowledgeBase={knowledgeBase} />}
 
             <WikiMarkdown
                 body={page.body}
@@ -258,6 +264,8 @@ function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
                 onPressPage={onSelectPage}
                 onPressSource={source => openWikiSource(projectId, source)}
             />
+
+            {page.slug === NEWS_PAGE_SLUG && <WikiNewsPanel projectId={projectId} />}
 
             <WikiPageSources projectId={projectId} page={page} />
 
@@ -401,6 +409,7 @@ export function ProjectWiki({ project }) {
                                 pageSlugs={pageSlugs}
                                 onSelectPage={setSelectedSlug}
                                 onBack={() => setSelectedSlug(null)}
+                                knowledgeBase={knowledgeBase}
                             />
                         ) : (
                             <WikiIndex pages={indexPages} selectedSlug={null} onSelect={setSelectedSlug} />
