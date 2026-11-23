@@ -27,6 +27,17 @@ const textOf = tree =>
         .map(node => [].concat(node.props.children).join(''))
         .join('|')
 
+const textIn = (tree, testID) => {
+    const nodes = tree.root.findAll(node => node.props.testID === testID && typeof node.type !== 'string')
+    if (!nodes.length) return null
+    return nodes[0]
+        .findAllByType(Text)
+        .map(node => [].concat(node.props.children).join(''))
+        .join('|')
+}
+
+const flatStyle = node => Object.assign({}, ...[].concat(node.props.style).flat(Infinity).filter(Boolean))
+
 const render = view => {
     let tree
     act(() => {
@@ -49,7 +60,7 @@ describe('MeetingTimeToday (AT-3136)', () => {
         expect(render(null).toJSON()).toBeNull()
     })
 
-    it('shows meeting time and calendar-free time with the saved working hours', () => {
+    it('shows the time to work as the one large figure, meetings and hours as small secondary text', () => {
         const tree = render({
             status: 'ready',
             workingHours: SAVED_HOURS,
@@ -61,8 +72,24 @@ describe('MeetingTimeToday (AT-3136)', () => {
         const text = textOf(tree)
         expect(text).toContain('9–18')
         expect(text).toContain('meetingTime meetings 2h 30m')
-        expect(text).toContain('meetingTime calendar free 6h 30m')
         expect(text).not.toContain('meetingTime sync failed')
+
+        // AT-3136 follow-up: "6h 30m Time to work" is the primary figure ...
+        expect(textIn(tree, 'meeting-time-primary')).toBe('6h 30m|meetingTime time to work')
+        // ... the working hours and the meeting time are the secondary text.
+        expect(textIn(tree, 'meeting-time-secondary')).toBe('9–18| · |meetingTime meetings 2h 30m')
+
+        const value = tree.root.findByProps({ testID: 'meeting-time-primary-value' })
+        const valueSize = flatStyle(value).fontSize
+        const secondarySizes = tree.root
+            .findByProps({ testID: 'meeting-time-secondary' })
+            .findAllByType(Text)
+            .map(node => flatStyle(node).fontSize)
+        expect(secondarySizes.length).toBeGreaterThan(0)
+        secondarySizes.forEach(size => expect(size).toBeLessThan(valueSize))
+        const label = tree.root.findByProps({ testID: 'meeting-time-primary' }).findAllByType(Text)[1]
+        expect(flatStyle(label).fontSize).toBeLessThan(valueSize)
+
         expect(tree.root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel).toContain(
             'meetingTime summary'
         )
@@ -93,7 +120,9 @@ describe('MeetingTimeToday (AT-3136)', () => {
         expect(text).toContain('meetingTime working time 8h')
         expect(text).toContain('meetingTime connect calendar')
         expect(text).not.toContain('meetingTime meetings')
-        expect(text).not.toContain('meetingTime calendar free')
+        expect(text).not.toContain('meetingTime time to work')
+        // Unknown free time is never the large figure.
+        expect(textIn(tree, 'meeting-time-primary')).toBeNull()
 
         // Calendars are connected in Settings > Integrations; the project properties have no
         // calendar section any more.
@@ -105,16 +134,17 @@ describe('MeetingTimeToday (AT-3136)', () => {
     })
 
     it('shows placeholders, not numbers, while the meetings load', () => {
-        const text = textOf(render({ status: 'calendarLoading', workingHours: SAVED_HOURS, windowMinutes: 540 }))
+        const tree = render({ status: 'calendarLoading', workingHours: SAVED_HOURS, windowMinutes: 540 })
+        const text = textOf(tree)
         expect(text).toContain('meetingTime meetings …')
-        expect(text).toContain('meetingTime calendar free …')
+        expect(textIn(tree, 'meeting-time-primary')).toBe('…|meetingTime time to work')
         expect(text).not.toMatch(/\dh/)
     })
 
     it('says so when calendar data could not be loaded', () => {
         const text = textOf(render({ status: 'calendarUnavailable', workingHours: SAVED_HOURS, windowMinutes: 540 }))
         expect(text).toContain('meetingTime calendar unavailable')
-        expect(text).not.toContain('meetingTime calendar free')
+        expect(text).not.toContain('meetingTime time to work')
     })
 
     it('flags figures from a failed calendar sync', () => {
@@ -127,12 +157,29 @@ describe('MeetingTimeToday (AT-3136)', () => {
             syncStatus: 'failed',
         })
         expect(tree.root.findAllByProps({ testID: 'meeting-time-failed' }).length).toBeGreaterThan(0)
+        // The warning is secondary; the figure itself stays the large one.
+        expect(textIn(tree, 'meeting-time-secondary')).toContain('meetingTime sync failed')
+        expect(textIn(tree, 'meeting-time-primary')).toBe('8h|meetingTime time to work')
         expect(tree.root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel).toContain(
             'meetingTime sync failed hint'
         )
     })
 
-    it('on mobile shows the same single line, allowed to wrap, with the default range (AT-3136)', () => {
+    it('dims the large figure while the calendar is still syncing', () => {
+        const tree = render({
+            status: 'ready',
+            workingHours: SAVED_HOURS,
+            meetingMinutes: 60,
+            freeMinutes: 480,
+            windowMinutes: 540,
+            syncStatus: 'syncing',
+        })
+        expect(flatStyle(tree.root.findByProps({ testID: 'meeting-time-primary' }))).toEqual(
+            expect.objectContaining({ opacity: 0.6 })
+        )
+    })
+
+    it('on mobile shows the same hierarchy, allowed to wrap, with the default range (AT-3136)', () => {
         mobile = true
         const tree = render({
             status: 'ready',
@@ -143,9 +190,9 @@ describe('MeetingTimeToday (AT-3136)', () => {
             syncStatus: 'synced',
         })
         expect(textOf(tree)).toBe(
-            'meetingTime default hours {"range":"9–17"}| · |meetingTime meetings 30m| · |meetingTime calendar free 7h 30m'
+            'meetingTime default hours {"range":"9–17"}| · |meetingTime meetings 30m|7h 30m|meetingTime time to work'
         )
         const style = [].concat(tree.root.findByProps({ testID: 'meeting-time-today' }).props.style)
-        expect(style).toContainEqual(expect.objectContaining({ flexWrap: 'wrap' }))
+        expect(style).toContainEqual(expect.objectContaining({ flexWrap: 'wrap-reverse' }))
     })
 })

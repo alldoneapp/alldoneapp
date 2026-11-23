@@ -18,12 +18,14 @@ import {
 import { CALENDAR_SYNC_FAILED, CALENDAR_SYNC_SYNCING } from '../../../../utils/calendarSyncStatus'
 
 /**
- * AT-3136 — compact "Meetings 2h 30m · Calendar-free 5h 30m" in the All projects line.
+ * AT-3136 — today's "time to work" in the All projects line: the free time inside the working
+ * hours is the one large figure ("6h 30m Time to work"); the working hours, the meeting time and
+ * any sync/connect note sit before it as small secondary text ("9–18 · Meetings 2h 30m").
  *
  * Presentational only; `view` comes from `useMeetingTimeToday` (see utils/meetingTimeToday.js for
- * the rules). The second figure is calendar availability inside the working hours, not measured
- * work, and is labelled so. Unknown values never render as numbers: without a connected calendar
- * only the working time and a "Connect calendar" link are shown.
+ * the rules). The large figure is calendar availability inside the working hours, not measured
+ * work; the tooltip says so. Unknown values never render as numbers: without a connected calendar
+ * there is no large figure at all, only the working time and a "Connect calendar" link.
  */
 
 const buildTooltip = view => {
@@ -80,19 +82,20 @@ export default function MeetingTimeToday({ view }) {
 
     const hoursSegment = (
         <TouchableOpacity onPress={openWorkingHoursSettings} accessibilityRole="link" testID="meeting-time-hours">
-            <Text style={[localStyles.text, localStyles.hours]} numberOfLines={1}>
+            <Text style={localStyles.text} numberOfLines={1}>
                 {hoursLabel}
             </Text>
         </TouchableOpacity>
     )
 
     let meetingsText = null
-    let freeText = null
+    // The large figure: the free working time, "…" while the meetings load, absent when unknown.
+    let primaryValue = null
     let extra = null
 
     if (isReady) {
         meetingsText = `${translate('meetingTime meetings')} ${formatDurationCompact(view.meetingMinutes)}`
-        freeText = `${translate('meetingTime calendar free')} ${formatDurationCompact(view.freeMinutes)}`
+        primaryValue = formatDurationCompact(view.freeMinutes)
         if (syncFailed) {
             extra = (
                 <Text style={[localStyles.text, localStyles.warning]} numberOfLines={1} testID="meeting-time-failed">
@@ -102,7 +105,7 @@ export default function MeetingTimeToday({ view }) {
         }
     } else if (status === MEETING_TIME_CALENDAR_LOADING) {
         meetingsText = `${translate('meetingTime meetings')} …`
-        freeText = `${translate('meetingTime calendar free')} …`
+        primaryValue = '…'
     } else if (status === MEETING_TIME_CALENDAR_UNAVAILABLE) {
         meetingsText = translate('meetingTime calendar unavailable')
     } else if (status === MEETING_TIME_NO_CALENDAR) {
@@ -118,11 +121,11 @@ export default function MeetingTimeToday({ view }) {
         return null
     }
 
-    const valueStyle = [localStyles.text, syncing && localStyles.pending]
+    const pending = (syncing || status === MEETING_TIME_CALENDAR_LOADING) && localStyles.pending
 
     // On mobile sizes AllProjectsLine puts this in its own row under the line (there is no room
-    // beside the centred title), so the same single line is used and may wrap on very narrow
-    // screens instead of overflowing.
+    // beside the centred title). On narrow screens the secondary text wraps onto its own line under
+    // the large figure (see mobileContainer); the figure and its label stay together.
     return (
         <View
             ref={setTooltip}
@@ -130,51 +133,82 @@ export default function MeetingTimeToday({ view }) {
             accessibilityLabel={tooltip}
             testID="meeting-time-today"
         >
-            {hoursSegment}
-            <Separator />
-            <Text style={valueStyle} numberOfLines={1}>
-                {meetingsText}
-            </Text>
-            {freeText && (
-                <>
-                    <Separator />
-                    <Text style={valueStyle} numberOfLines={1}>
-                        {freeText}
+            <View
+                style={[localStyles.secondary, mobile && localStyles.mobileSecondary]}
+                testID="meeting-time-secondary"
+            >
+                {hoursSegment}
+                <Separator />
+                <Text style={[localStyles.text, pending]} numberOfLines={1}>
+                    {meetingsText}
+                </Text>
+                {extra && (
+                    <>
+                        <Separator />
+                        {extra}
+                    </>
+                )}
+            </View>
+            {primaryValue && (
+                <View style={[localStyles.primary, pending]} testID="meeting-time-primary">
+                    <Text style={localStyles.primaryValue} numberOfLines={1} testID="meeting-time-primary-value">
+                        {primaryValue}
                     </Text>
-                </>
-            )}
-            {extra && (
-                <>
-                    <Separator />
-                    {extra}
-                </>
+                    <Text style={localStyles.primaryLabel} numberOfLines={1}>
+                        {translate('meetingTime time to work')}
+                    </Text>
+                </View>
             )}
         </View>
     )
 }
 
 const localStyles = StyleSheet.create({
+    // Baseline aligned, so the small secondary text sits on the large figure's baseline.
     container: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'baseline',
         flexShrink: 0,
         marginRight: 4,
     },
+    // When the line has to wrap on a narrow screen, `wrap-reverse` stacks the large figure on top
+    // and the secondary text under it, instead of leaving the figure below the small print.
     mobileContainer: {
-        flexWrap: 'wrap',
+        flexWrap: 'wrap-reverse',
         justifyContent: 'flex-end',
         flexShrink: 1,
         marginRight: 0,
     },
-    text: {
+    secondary: {
+        flexDirection: 'row',
+        alignItems: 'baseline',
+    },
+    mobileSecondary: {
+        flexWrap: 'wrap',
+        justifyContent: 'flex-end',
+        flexShrink: 1,
+    },
+    primary: {
+        flexDirection: 'row',
+        alignItems: 'baseline',
+        marginLeft: 12,
+    },
+    primaryValue: {
+        ...styles.title6,
+        lineHeight: 24,
+        color: colors.Text01,
+    },
+    primaryLabel: {
         ...styles.caption2,
         color: colors.Text02,
+        marginLeft: 6,
     },
-    hours: {
+    text: {
+        ...styles.body3,
         color: colors.Text03,
     },
     separator: {
-        ...styles.caption2,
+        ...styles.body3,
         color: colors.Text03,
     },
     pending: {

@@ -72,9 +72,9 @@ slow (32s for 7 events on the reporting account), so the meetings land a beat af
 paints. Deploying this adds a Cloud Scheduler job; per the runtime note above, confirm the
 function actually exists after the deploy rather than trusting the deploy summary.
 
-## Meeting time and calendar-free time in the All projects line (AT-3136)
+## Meeting time and time to work in the All projects line (AT-3136)
 
-The task boards and My Day show "Meetings 2h 30m · Calendar-free 5h 30m" on the right of the All
+The task boards and My Day show "9–18 · Meetings 2h 30m **5h 30m** Time to work" on the right of the All
 projects line (`AllProjectsLine showMeetingTime` → `AllProjectsMeetingTime`, required on use so
 Notes/Chats/Contacts/Goals never load it). On mobile sizes (`smallScreenNavigation`) it is NOT in
 the actions cluster but in its own right-aligned row under the line (`meeting-time-row`): the
@@ -105,6 +105,13 @@ by `utils/meetingTimeToday.test.js`:
   Listeners not answered → "…". A listener error →
   "Calendar data unavailable". `checkIfCalendarConnected` now reports `syncing/synced/failed` to
   `utils/calendarSyncStatus.js`; a failed pull flags the figures, a running one dims them.
+- **Hierarchy (user request after the first release, 2026-11-23).** The free time inside the
+  working hours is the one large figure, labelled "Time to work" ("Zeit zum Arbeiten"; it was
+  "Calendar-free"/"Kalenderfrei" before); working hours, meeting time and sync/connect notes are
+  small secondary text before it (`meeting-time-secondary` / `meeting-time-primary`). Unknown free
+  time (no calendar, calendar unavailable) gets no large figure at all; loading shows a large "…".
+  On mobile the row uses `flexWrap: 'wrap-reverse'`, so when it wraps the figure is on top and the
+  small print under it. Styling only: `utils/meetingTimeToday.js` was not touched.
 - Known gap: a Google event marked "free" (`transparency: transparent`) still counts, because the
   sync does not store `transparency` on `calendarData`.
 
