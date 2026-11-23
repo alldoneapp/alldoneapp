@@ -202,6 +202,52 @@ describe('calendarTasks routing', () => {
         expect(JSON.stringify(written.calendarData)).not.toMatch(/colleague|client@|customer\.com/)
     })
 
+    test('AT-3136: stores the routing model work block verdict and keeps it on later syncs', async () => {
+        const ownBlock = { ...event, organizer: { email: 'me@company.com', self: true } }
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            null,
+            ownBlock,
+            'user-1',
+            'me@company.com',
+            0,
+            { matched: false, targetProjectId: null, reasoning: 'Focus.', confidence: 0.2, workBlock: true }
+        )
+        const written = admin.__mock.refs.get('items/target-project/tasks/event-1').set.mock.calls[0][0]
+        expect(written.calendarData).toMatchObject({ soloEvent: true, workBlock: true, workBlockSource: 'ai' })
+
+        // The next sync does not ask the model again (already routed): nothing changes, nothing is lost.
+        const existingTask = { id: 'event-1', projectId: 'target-project', ...written }
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            existingTask,
+            ownBlock,
+            'user-1',
+            'me@company.com',
+            0
+        )
+        const ref = admin.__mock.refs.get('items/target-project/tasks/event-1')
+        expect(ref.update).not.toHaveBeenCalled()
+
+        // A guest added later turns it into a meeting; the verdict stays but soloEvent flips.
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            existingTask,
+            { ...ownBlock, attendees: [{ email: 'colleague@company.com' }] },
+            'user-1',
+            'me@company.com',
+            0
+        )
+        expect(ref.update.mock.calls[0][0].calendarData).toMatchObject({
+            soloEvent: false,
+            attendeeCount: 1,
+            workBlock: true,
+        })
+    })
+
     test('moves unpinned existing tasks to the routed target project', async () => {
         const existingTask = {
             id: 'event-1',
@@ -963,6 +1009,119 @@ describe('getCalendarMeetingFields (AT-3137)', () => {
         )
         expect(fields.attendeeCount).toBe(1)
         expect(fields).not.toHaveProperty('externalAttendeeCount')
+    })
+})
+
+describe('solo events and work blocks (AT-3136)', () => {
+    const moment = require('moment')
+    const { getCalendarMeetingFields, applyWorkBlockVerdict } = require('./calendarTasks')
+    const start = moment('2026-11-24T09:00:00Z')
+    const end = moment('2026-11-24T10:00:00Z')
+    const fieldsOf = event => getCalendarMeetingFields(event, 'me@company.com', start, end, false)
+
+    test('Google: the user as the sole (self) attendee of their own event is solo', () => {
+        const fields = fieldsOf({
+            attendees: [{ email: 'me@company.com', self: true, organizer: true, responseStatus: 'accepted' }],
+            organizer: { email: 'me@company.com', self: true },
+        })
+        expect(fields).toMatchObject({ attendeeCount: 0, soloEvent: true })
+    })
+
+    test('Google: an own event without guests (organizer only) is solo; rooms are no people', () => {
+        expect(fieldsOf({ organizer: { email: 'me@company.com', self: true } }).soloEvent).toBe(true)
+        expect(
+            fieldsOf({
+                organizer: { email: 'ME@company.com' },
+                attendees: [{ email: 'room-1@resource.calendar.google.com', resource: true }],
+            }).soloEvent
+        ).toBe(true)
+    })
+
+    test('anybody else makes it a meeting, whatever their answer', () => {
+        for (const responseStatus of ['needsAction', 'tentative', 'declined', 'accepted', undefined]) {
+            const fields = fieldsOf({
+                organizer: { email: 'me@company.com', self: true },
+                attendees: [
+                    { email: 'me@company.com', self: true, responseStatus: 'accepted' },
+                    { email: 'colleague@company.com', responseStatus },
+                ],
+            })
+            expect(fields).toMatchObject({ attendeeCount: 1, soloEvent: false })
+        }
+        // invited by someone else, even if the guest list shows only the user
+        expect(
+            fieldsOf({
+                organizer: { email: 'boss@company.com' },
+                attendees: [{ email: 'me@company.com', self: true }],
+            }).soloEvent
+        ).toBe(false)
+    })
+
+    test('stores nothing when the participant data does not say', () => {
+        // a group/shared calendar organizes it: its guest list may be hidden from the user
+        expect(
+            fieldsOf({
+                organizer: { email: 'team@group.calendar.google.com' },
+                attendees: [{ email: 'me@company.com', self: true }],
+            })
+        ).not.toHaveProperty('soloEvent')
+        // no organizer at all
+        expect(fieldsOf({})).not.toHaveProperty('soloEvent')
+        // Google truncated the guest list
+        expect(
+            fieldsOf({ organizer: { email: 'me@company.com', self: true }, attendeesOmitted: true })
+        ).not.toHaveProperty('soloEvent')
+    })
+
+    test('Microsoft: isOrganizer (mapped to organizer.self) makes an alias address reliable', () => {
+        const { graphEventToGoogleEvent } = require('../GoogleCalendar/serverSideCalendarSync')
+        const graphEvent = {
+            id: 'ms-1',
+            subject: 'Deep work',
+            start: { dateTime: '2026-11-24T09:00:00.0000000', timeZone: 'UTC' },
+            end: { dateTime: '2026-11-24T10:00:00.0000000', timeZone: 'UTC' },
+            attendees: [],
+            organizer: { emailAddress: { address: 'karsten@company.onmicrosoft.com', name: 'Karsten' } },
+        }
+        // Without isOrganizer the alias looks like somebody else: a meeting (safe direction).
+        expect(fieldsOf(graphEventToGoogleEvent(graphEvent)).soloEvent).toBe(false)
+        expect(fieldsOf(graphEventToGoogleEvent({ ...graphEvent, isOrganizer: true }))).toMatchObject({
+            attendeeCount: 0,
+            soloEvent: true,
+        })
+        // Graph lists the organizer outside attendees: invited by somebody else is a meeting.
+        expect(
+            fieldsOf(
+                graphEventToGoogleEvent({
+                    ...graphEvent,
+                    isOrganizer: false,
+                    organizer: { emailAddress: { address: 'boss@company.com' } },
+                    attendees: [{ emailAddress: { address: 'me@company.com' }, status: { response: 'none' } }],
+                })
+            ).soloEvent
+        ).toBe(false)
+    })
+
+    test('Google focus time is a work block by itself; a model verdict never overrides it', () => {
+        const fields = fieldsOf({ eventType: 'focusTime', organizer: { email: 'me@company.com', self: true } })
+        expect(fields).toMatchObject({ soloEvent: true, workBlock: true, workBlockSource: 'calendar' })
+        applyWorkBlockVerdict(fields, { workBlock: false }, null)
+        expect(fields).toMatchObject({ workBlock: true, workBlockSource: 'calendar' })
+    })
+
+    test('the model verdict of this sync wins, else the stored one is kept', () => {
+        const fresh = {}
+        applyWorkBlockVerdict(fresh, { workBlock: true }, { workBlock: false, workBlockSource: 'ai' })
+        expect(fresh).toEqual({ workBlock: true, workBlockSource: 'ai' })
+
+        const later = {}
+        applyWorkBlockVerdict(later, null, { workBlock: true, workBlockSource: 'ai' })
+        expect(later).toEqual({ workBlock: true, workBlockSource: 'ai' })
+
+        // a stale provider verdict (focus time turned into a normal event) is not carried over
+        const changed = {}
+        applyWorkBlockVerdict(changed, null, { workBlock: true, workBlockSource: 'calendar' })
+        expect(changed).toEqual({})
     })
 })
 

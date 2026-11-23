@@ -56,7 +56,10 @@ the largest-remainder method so they sum to exactly 100 %. Day boundaries come f
 
 AT-3136 (meetings in working time, All Projects line) was not started in the repo when this was
 built; it should reuse these helpers instead of defining its own, and label its number
-differently ("Meetings in working time" vs "Recorded calendar time").
+differently ("Meetings in working time" vs "Recorded calendar time"). Since then AT-3136 was built with its own
+union-based maths in `utils/meetingTimeToday.js` and leaves reliably solo work blocks out
+(`calendarData.soloEvent`/`workBlock`, see `calendar-reminders-whatsapp.md`); the statistics here do
+not use those fields.
 
 ## Flow
 

@@ -256,6 +256,10 @@ const getEmailDomain = value => {
  *   - externalAttendeeCount: of those, how many are outside the account's own mail domain (not
  *     stored for webmail accounts, where the domain says nothing)
  *   - selfResponseStatus: the user's own answer (accepted, tentative, declined, ...)
+ *   - soloEvent (AT-3136): true only when the user is RELIABLY alone (see getSoloEventFlag), false
+ *     when anybody else is in it, absent when the data does not say
+ *   - workBlock / workBlockSource (AT-3136): Google focus time here; the routing model's verdict is
+ *     added by applyWorkBlockVerdict
  *
  * Counts only: no addresses or names are stored, because calendar tasks are readable by the
  * project's members.
@@ -302,7 +306,61 @@ const getCalendarMeetingFields = (event, email, startDate, endDate, isAllDayByDa
     if (typeof selfResponseStatus === 'string' && selfResponseStatus) {
         fields.selfResponseStatus = selfResponseStatus.slice(0, 40)
     }
+
+    const soloEvent = getSoloEventFlag(event, selfEmail, uniqueOthers.length)
+    if (soloEvent !== null) fields.soloEvent = soloEvent
+    // Google's own "Focus time" event type is a work block by definition; no model needed.
+    if (event.eventType === 'focusTime') {
+        fields.workBlock = true
+        fields.workBlockSource = WORK_BLOCK_SOURCE_CALENDAR
+    }
     return fields
+}
+
+const WORK_BLOCK_SOURCE_CALENDAR = 'calendar'
+const WORK_BLOCK_SOURCE_AI = 'ai'
+
+/**
+ * AT-3136 — is the user RELIABLY the only person in this event? `true` / `false`, or `null` when the
+ * calendar data does not say (the field is then not stored and the event counts as a meeting).
+ *
+ *   - false: anybody else is in it (attendee or organizer, whatever their answer: an invitee who
+ *     has not answered or declined is still a meeting participant; rooms/resources are not people).
+ *   - true: nobody else AND the user is verifiably the organizer: Google `organizer.self`, Microsoft
+ *     `isOrganizer` (mapped to `organizer.self` by the sync), or the organizer address equals the
+ *     connected account. Only the organizer is guaranteed to see the full guest list.
+ *   - null: nobody else is listed but the organizer is not the user (a group/shared calendar, a
+ *     guest list hidden from guests) or missing, or Google reports `attendeesOmitted`.
+ */
+const getSoloEventFlag = (event, selfEmail, othersCount) => {
+    if (othersCount > 0) return false
+    if (event.attendeesOmitted === true) return null
+    const organizer = event.organizer
+    if (!organizer) return null
+    const organizerEmail = normalizeEmail(organizer.email)
+    const selfIsOrganizer = organizer.self === true || (!!organizerEmail && organizerEmail === selfEmail)
+    return selfIsOrganizer ? true : null
+}
+
+/**
+ * AT-3136 — the "own work block" verdict on the calendar task. A verdict of the provider itself
+ * (Google focus time) wins; otherwise the routing model's verdict from THIS sync; otherwise the one
+ * stored earlier (the model looks at an event only once, so later syncs must keep it).
+ */
+const applyWorkBlockVerdict = (calendarData, routingDecision, existingCalendarData) => {
+    if (calendarData.workBlockSource === WORK_BLOCK_SOURCE_CALENDAR) return
+    if (typeof routingDecision?.workBlock === 'boolean') {
+        calendarData.workBlock = routingDecision.workBlock
+        calendarData.workBlockSource = WORK_BLOCK_SOURCE_AI
+        return
+    }
+    if (
+        typeof existingCalendarData?.workBlock === 'boolean' &&
+        existingCalendarData.workBlockSource === WORK_BLOCK_SOURCE_AI
+    ) {
+        calendarData.workBlock = existingCalendarData.workBlock
+        calendarData.workBlockSource = WORK_BLOCK_SOURCE_AI
+    }
 }
 
 const normalizeRoutingDecision = decision => {
@@ -328,6 +386,8 @@ const normalizeRoutingDecision = decision => {
         projectName: typeof decision.projectName === 'string' ? decision.projectName.trim() : '',
         goldSpent: Number.isFinite(decision.goldSpent) ? Number(decision.goldSpent) : 0,
         tokenUsage: decision.tokenUsage || null,
+        // AT-3136: the routing model's "own work block" verdict, only a real boolean.
+        ...(typeof decision.workBlock === 'boolean' ? { workBlock: decision.workBlock } : {}),
         secondPassUsed: !!decision.tokenUsage?.auditModel,
         secondPassModel:
             typeof decision.tokenUsage?.auditModel === 'string' ? decision.tokenUsage.auditModel.trim() : '',
@@ -434,6 +494,7 @@ const addOrUpdateCalendarTask = async (
             dataToUpdate.calendarData.projectRouting = task.calendarData.projectRouting
         }
     }
+    applyWorkBlockVerdict(dataToUpdate.calendarData, normalizedRoutingDecision, task?.calendarData)
 
     const reopenData = shouldReopenCompletedCalendarTask(task, dataToUpdate.calendarData)
         ? buildCalendarTaskReopenData(task, userId, dataToUpdate.calendarData)
@@ -884,6 +945,7 @@ const removeCalendarTasks = async (
 
 module.exports = {
     getCalendarMeetingFields,
+    applyWorkBlockVerdict,
     writeMeetingCategorySuggestion,
     writeNewCalendarTask,
     removeCalendarTasks,
