@@ -139,4 +139,17 @@ describe('Required Firestore indexes', () => {
             indexes: [],
         })
     })
+
+    it('AT-3137: meeting time statistics can query a period and the legacy fallback (meetingStatsData.js)', () => {
+        const asc = fieldPath => ({ fieldPath, order: 'ASCENDING' })
+        expect(hasExactIndex('tasks', [asc('userId'), asc('calendarData.startMs')])).toBe(true)
+        expect(
+            hasExactIndex('tasks', [
+                { fieldPath: 'isPublicFor', arrayConfig: 'CONTAINS' },
+                asc('inDone'),
+                asc('userId'),
+                asc('dueDate'),
+            ])
+        ).toBe(true)
+    })
 })

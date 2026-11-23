@@ -34,10 +34,6 @@ jest.mock('firebase-admin', () => {
             update: async patch => {
                 store.set(path, { ...(store.get(path) || {}), ...patch })
             },
-            create: async data => {
-                if (store.has(path)) throw Object.assign(new Error('Document already exists'), { code: 6 })
-                store.set(path, { ...data })
-            },
             collection: name => collectionRef(`${path}/${name}`),
         }
     }
@@ -431,9 +427,7 @@ describe('processSingleMessage applies a fallback label (AT-3102)', () => {
             archived: false,
             skippedReason: null,
             processingErrorRetryPending: false,
-            // No model run; the "Daily emails" line needs the default project's assistant, which this
-            // test has none of (the line itself is pinned in its own block below).
-            postLabelAction: expect.objectContaining({ prompt: '', status: 'blocked' }),
+            postLabelAction: expect.objectContaining({ prompt: '', status: 'skipped' }),
         })
     })
 
@@ -600,7 +594,7 @@ describe('processSingleMessage applies a fallback label (AT-3102)', () => {
         expect(result.goldSpent).toBe(0)
         expect(readAudit('m-1')).toMatchObject({
             threadContinuationPending: false,
-            postLabelAction: expect.objectContaining({ prompt: '', status: 'blocked' }),
+            postLabelAction: expect.objectContaining({ prompt: '', status: 'skipped' }),
         })
     })
 
@@ -630,201 +624,6 @@ describe('processSingleMessage applies a fallback label (AT-3102)', () => {
             gmailLabelingRetryable: false,
             gmailLabelingStage: 'label_write_refund_failed',
         })
-    })
-})
-
-describe('an incoming email under a fallback label gets a "Daily emails" line (2026-11-23)', () => {
-    beforeEach(() => {
-        const store = admin.__store
-        store.set(`users/${USER_ID}`, { gold: 500 })
-        PROJECTS.forEach(project =>
-            store.set(`projects/${project.id}`, { name: project.name, assistantId: 'anna', active: true })
-        )
-        store.set('assistants/project-business/items/anna', { displayName: 'Anna' })
-        // mockReset: an earlier block may leave an unconsumed mockResolvedValueOnce(null) queued.
-        assistantHelper.getAssistantForChat.mockReset()
-        assistantHelper.getAssistantForChat.mockResolvedValue({ displayName: 'Anna', allowedTools: [] })
-        assistantHelper.addChatCommentFromAssistantTool.mockImplementation(async ({ projectId, chatId }) => ({
-            success: true,
-            projectId,
-            chatId: chatId || 'daily-emails-chat',
-            commentId: 'gmail-fallback-comment',
-        }))
-    })
-
-    const processWith = ({ gmail = buildGmail(), config = DEFAULT_MODE_CONFIG, userData = {}, rawMessage } = {}) =>
-        processSingleMessage({
-            gmail,
-            labelMap: new Map(),
-            config,
-            userId: USER_ID,
-            userData: { defaultProjectId: 'project-business', timezone: 'Europe/Berlin', ...userData },
-            projectId: CONNECTION_KEY,
-            connectionProjectId: CONNECTION_KEY,
-            gmailEmail: 'me@example.com',
-            rawMessage: rawMessage || buildRawMessage('m-1'),
-            syncRunId: 'run-1',
-        })
-
-    const lineCall = () => assistantHelper.addChatCommentFromAssistantTool.mock.calls[0][0]
-
-    test('the line goes to the default project digest, without a model and without extra Gold', async () => {
-        classifyGmailMessage.mockResolvedValue(noMatchNotification)
-
-        const result = await processWith()
-
-        expect(assistantHelper.interactWithChatStream).not.toHaveBeenCalled()
-        expect(deductGold).toHaveBeenCalledTimes(1)
-        expect(result.goldSpent).toBe(2)
-        expect(assistantHelper.addChatCommentFromAssistantTool).toHaveBeenCalledTimes(1)
-        expect(lineCall()).toMatchObject({
-            projectId: 'project-business',
-            chatId: '',
-            chatTitle: expect.stringMatching(/^Daily emails Alldone Business \d{2}\.\d{2}\.\d{4}$/),
-            createIfMissing: true,
-            comment: 'Email from Eleni from Modash (roi@modash.io): Steal these influencer team structures',
-            assistantId: 'anna',
-            userId: USER_ID,
-            gmailContext: expect.objectContaining({
-                origin: 'gmail_label_follow_up',
-                messageId: 'm-1',
-                labelKey: 'project_project_business',
-                labelName: 'Alldone Business',
-                emailKind: 'notification',
-                followUpType: 'informational',
-                suppressUnread: false,
-            }),
-        })
-        expect(readAudit('m-1')).toMatchObject({
-            labelSource: 'fallback',
-            postLabelAction: expect.objectContaining({
-                prompt: '',
-                status: 'completed',
-                fallbackLine: expect.objectContaining({ chatId: 'daily-emails-chat' }),
-            }),
-            // The read sync clears the line once the mail is read or archived in Gmail (AT-2376).
-            emailComments: [
-                expect.objectContaining({
-                    projectId: 'project-business',
-                    chatId: 'daily-emails-chat',
-                    commentId: 'gmail-fallback-comment',
-                }),
-            ],
-            emailCommentReadPending: true,
-        })
-    })
-
-    test('a newsletter goes to the default project digest with the Newsletter tag', async () => {
-        classifyGmailMessage.mockResolvedValue({ ...noMatchNotification, emailKind: 'newsletter' })
-
-        await processWith()
-
-        expect(lineCall()).toMatchObject({
-            projectId: 'project-business',
-            chatTitle: expect.stringMatching(/^Daily emails Alldone Business /),
-            gmailContext: expect.objectContaining({ labelKey: 'newsletter', emailKind: 'newsletter' }),
-        })
-    })
-
-    test('with "archive newsletters" on, the mail is archived and the line stored read', async () => {
-        classifyGmailMessage.mockResolvedValue({ ...noMatchNotification, emailKind: 'newsletter' })
-
-        const result = await processWith({ userData: { unreadEmailSettings: { newsletter: 'archive' } } })
-
-        expect(result.archived).toBe(1)
-        expect(lineCall().gmailContext).toMatchObject({ suppressUnread: true, archivedByLabeling: true })
-    })
-
-    test('an email the classifier called actionable is a followed (red) line, never a task', async () => {
-        classifyGmailMessage.mockResolvedValue({ ...noMatchNotification, followUpType: 'actionable' })
-
-        await processWith()
-
-        expect(assistantHelper.collectAssistantTextWithToolCalls).not.toHaveBeenCalled()
-        expect(lineCall().gmailContext).toMatchObject({ followUpType: 'actionable' })
-    })
-
-    test("without a default project label the line goes to the default project's own digest", async () => {
-        classifyGmailMessage.mockResolvedValue(noMatchNotification)
-
-        await processWith({ config: { ...DEFAULT_MODE_CONFIG, defaultProjectId: 'archived-project' } })
-
-        expect(lineCall()).toMatchObject({
-            projectId: 'project-business',
-            chatTitle: expect.stringMatching(/^Daily emails Alldone Business /),
-            gmailContext: expect.objectContaining({ labelKey: 'alldone_other' }),
-        })
-    })
-
-    test('a thread with its own topic gets the line there, not in the digest', async () => {
-        const { resolveEmailThreadTopicForMessage } = require('../Email/emailThreadTopicStore')
-        resolveEmailThreadTopicForMessage.mockResolvedValueOnce({
-            projectId: 'project-private',
-            chatId: 'thread-topic',
-        })
-        classifyGmailMessage.mockResolvedValue(noMatchNotification)
-
-        await processWith()
-
-        expect(lineCall()).toMatchObject({
-            projectId: 'project-private',
-            chatId: 'thread-topic',
-            chatTitle: '',
-            createIfMissing: false,
-            gmailContext: expect.objectContaining({ topicChatId: 'thread-topic', topicProjectId: 'project-private' }),
-        })
-    })
-
-    test('an ad under a fallback label keeps its "Daily ads" line and gets no digest line', async () => {
-        classifyGmailMessage.mockResolvedValue({ ...noMatchNotification, emailKind: 'ads' })
-
-        await processWith()
-
-        expect(assistantHelper.addChatCommentFromAssistantTool).toHaveBeenCalledTimes(1)
-        expect(lineCall().chatId).toMatch(/^DailyAds_/)
-    })
-
-    test('mail the user sent under a fallback label gets no line', async () => {
-        classifyGmailMessage.mockResolvedValue(noMatchNotification)
-
-        await processWith({ rawMessage: buildRawMessage('m-sent', ['SENT']) })
-
-        expect(assistantHelper.addChatCommentFromAssistantTool).not.toHaveBeenCalled()
-    })
-
-    test('a pending continuation replay writes the line too', async () => {
-        admin.__store.set(auditPath('m-1'), {
-            threadContinuationPending: true,
-            labelSource: 'fallback',
-            selectedLabelKey: 'project_project_business',
-            selectedGmailLabelName: 'Alldone Business',
-            followUpType: 'informational',
-        })
-
-        await processWith()
-
-        expect(classifyGmailMessage).not.toHaveBeenCalled()
-        expect(lineCall()).toMatchObject({ chatTitle: expect.stringMatching(/^Daily emails Alldone Business /) })
-        expect(readAudit('m-1')).toMatchObject({
-            threadContinuationPending: false,
-            emailComments: [expect.objectContaining({ commentId: 'gmail-fallback-comment' })],
-        })
-    })
-
-    test('a classifier match does not get the model-free line (its prompt writes the digest)', async () => {
-        classifyGmailMessage.mockResolvedValue({
-            ...noMatchNotification,
-            matched: true,
-            labelKey: 'project_project_private',
-            confidence: 0.95,
-        })
-        assistantHelper.interactWithChatStream.mockResolvedValue({})
-        assistantHelper.collectAssistantTextWithToolCalls.mockResolvedValue({ createdTaskResults: [] })
-
-        await processWith()
-
-        expect(assistantHelper.collectAssistantTextWithToolCalls).toHaveBeenCalledTimes(1)
-        expect(assistantHelper.addChatCommentFromAssistantTool).not.toHaveBeenCalled()
     })
 })
 

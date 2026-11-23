@@ -317,6 +317,30 @@ exports.setDefaultProjectSecondGen = onCall(
     }
 )
 
+// AT-3137: the caller's own calendar tasks in a period, for the private meeting time statistics.
+exports.getMeetingTimeStatsDataSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated')
+
+        const { getMeetingStatsData, MeetingStatsDataError } = require('./MeetingReview/meetingStatsData')
+        try {
+            return await getMeetingStatsData(admin.firestore(), request.auth.uid, {
+                fromMs: Number(request.data?.fromMs),
+                toMs: Number(request.data?.toMs),
+            })
+        } catch (error) {
+            if (error instanceof MeetingStatsDataError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
 exports.copyProjectMoveChatSecondGen = onCall(
     {
         timeoutSeconds: 120,

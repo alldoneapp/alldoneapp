@@ -107,6 +107,33 @@ describe('calendarProjectRouting', () => {
         )
     })
 
+    test('AT-3137: passes the meeting category from the same call through, charging gold only once', async () => {
+        classifyCalendarEventProject.mockResolvedValue({
+            matched: false,
+            projectId: null,
+            confidence: 0.2,
+            reasoning: 'No clear project.',
+            usage: { totalTokens: 100 },
+            meetingCategory: { category: 'status', confidence: 'medium', signals: ['Weekly'] },
+        })
+
+        const result = await routeCalendarEventsToProjects({
+            userId: 'user-1',
+            syncProjectId: 'connected-project',
+            userData: premiumUser,
+            events: [event],
+            calendarEmail: 'me@example.com',
+        })
+
+        expect(result['event-1'].meetingCategory).toEqual({
+            category: 'status',
+            confidence: 'medium',
+            signals: ['Weekly'],
+        })
+        expect(classifyCalendarEventProject).toHaveBeenCalledTimes(1)
+        expect(deductGold).toHaveBeenCalledTimes(1)
+    })
+
     test('falls back to the connected project when there is no confident match', async () => {
         classifyCalendarEventProject.mockResolvedValue({
             matched: false,
