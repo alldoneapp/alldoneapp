@@ -82,21 +82,29 @@ export const startMeetingReviewSubscriptions = (uid, nowMs = Date.now()) => {
     const toMs = nowMs + MEETING_REVIEW_LIVE_FUTURE_MS
     const isInLiveWindow = review =>
         typeof review?.startMs === 'number' && review.startMs >= fromMs && review.startMs < toMs
-    unsubscribers = [
-        // The snapshot is authoritative inside its window (so an undo that deletes a review shows);
-        // reviews of older appointments, opened from the Done list, are kept from local patches.
-        watchMeetingReviewsInRange(uid, fromMs, toMs, reviews =>
-            setMeetingReviewState(current => {
-                const outside = {}
-                Object.entries(current.reviews).forEach(([docId, review]) => {
-                    if (!isInLiveWindow(review)) outside[docId] = review
+    // A failing listener (no Firestore client yet, permission error) must never take the app shell
+    // down: without it the chip and sheet simply have no stored data.
+    try {
+        const started = [
+            // The snapshot is authoritative inside its window (so an undo that deletes a review shows);
+            // reviews of older appointments, opened from the Done list, are kept from local patches.
+            watchMeetingReviewsInRange(uid, fromMs, toMs, reviews =>
+                setMeetingReviewState(current => {
+                    const outside = {}
+                    Object.entries(current.reviews).forEach(([docId, review]) => {
+                        if (!isInLiveWindow(review)) outside[docId] = review
+                    })
+                    return { reviews: { ...outside, ...reviews } }
                 })
-                return { reviews: { ...outside, ...reviews } }
-            })
-        ),
-        watchMeetingSeriesCategories(uid, seriesCategories => setMeetingReviewState({ seriesCategories })),
-        watchMeetingCategoryRules(uid, rules => setMeetingReviewState({ rules })),
-    ]
+            ),
+            watchMeetingSeriesCategories(uid, seriesCategories => setMeetingReviewState({ seriesCategories })),
+            watchMeetingCategoryRules(uid, rules => setMeetingReviewState({ rules })),
+        ]
+        unsubscribers = started
+    } catch (error) {
+        console.error('[meetingReview] could not attach the review listeners', error)
+        unsubscribers = []
+    }
     emit()
 }
 
