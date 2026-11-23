@@ -60,7 +60,7 @@ describe('AllProjectsLine task actions', () => {
         expect(tree.root.findAllByType('More')).toHaveLength(1)
     })
 
-    it('on mobile puts the meeting time in its own row under the line, not beside the centred title (AT-3136)', () => {
+    it('on mobile keeps the meeting time in the same row, right aligned, with a left aligned title (AT-3136)', () => {
         const state = {
             smallScreenNavigation: true,
             loggedUser: { uid: 'user-1', photoURL: '', sidebarNavigationMode: 'simple' },
@@ -70,9 +70,32 @@ describe('AllProjectsLine task actions', () => {
         const tree = renderer.create(<AllProjectsLine showMeetingTime />)
 
         const actions = tree.root.findByProps({ testID: 'all-projects-line-actions' })
-        expect(actions.findAllByType('AllProjectsMeetingTime')).toHaveLength(0)
-        const row = tree.root.findByProps({ testID: 'meeting-time-row' })
-        expect(row.findAllByType('AllProjectsMeetingTime')).toHaveLength(1)
+        const meetingTime = actions.findByType('AllProjectsMeetingTime')
+        expect(meetingTime.props).toEqual(expect.objectContaining({ mobile: true, lineWidth: 0 }))
+        expect(tree.root.findAllByProps({ testID: 'meeting-time-row' })).toHaveLength(0)
+        // Left aligned: no mirroring spacer, no centring.
+        expect(tree.root.findAllByProps({ testID: 'all-projects-line-mirror' })).toHaveLength(0)
+        const title = tree.root.findAllByProps({ testID: 'all-projects-line-title' })[0]
+        const titleStyle = Object.assign({}, ...[].concat(title.props.style).flat(Infinity).filter(Boolean))
+        expect(titleStyle.justifyContent).not.toBe('center')
+
+        // The measured width of the line decides how much of the display fits.
+        const line = tree.root.findAll(
+            node => typeof node.props.onLayout === 'function' && node.findAll(n => n === actions).length
+        )[0]
+        renderer.act(() => line.props.onLayout({ nativeEvent: { layout: { width: 358.4 } } }))
+        expect(actions.findByType('AllProjectsMeetingTime').props.lineWidth).toBe(358)
+    })
+
+    it('on mobile keeps the centred title where the meeting time is not shown (AT-3132)', () => {
+        const state = {
+            smallScreenNavigation: true,
+            loggedUser: { uid: 'user-1', photoURL: '', sidebarNavigationMode: 'simple' },
+            taskViewToggleSection: 'Open',
+        }
+        useSelector.mockImplementation(selector => selector(state))
+        const tree = renderer.create(<AllProjectsLine />)
+        expect(tree.root.findAllByProps({ testID: 'all-projects-line-mirror' }).length).toBeGreaterThan(0)
     })
 
     it('on desktop keeps the meeting time in the actions on the right (AT-3136)', () => {
