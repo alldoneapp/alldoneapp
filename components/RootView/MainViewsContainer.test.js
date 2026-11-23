@@ -113,10 +113,7 @@ describe('the section card in All projects', () => {
         ).length > 0
 
     it.each([
-        [DV_TAB_ROOT_TASKS, 'simple', true],
-        [DV_TAB_ROOT_TASKS, 'advanced', true],
-        // AT-3122: a user who never picked a sidebar gets "Anna on top".
-        [DV_TAB_ROOT_TASKS, undefined, false],
+        [DV_TAB_ROOT_TASKS, undefined, true],
         [DV_TAB_ROOT_TASKS, 'sectionsTop', false],
         [DV_TAB_ROOT_CONTACTS, 'sectionsTop', false],
         ['ROOT_ARTIFACTS', 'sectionsTop', true],

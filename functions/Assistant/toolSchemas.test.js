@@ -210,15 +210,6 @@ describe('User memory assistant tool schemas', () => {
         })
     })
 
-    // AT-3135: the Gmail labeling run names a handling context; the server ignores it elsewhere.
-    test('create_task can name an email collection context with a key and a label', () => {
-        const emailBundle = toolSchemas.create_task.function.parameters.properties.emailBundle
-        expect(emailBundle.type).toBe('object')
-        expect(emailBundle.required).toEqual(['key', 'label'])
-        expect(emailBundle.description).toContain('ignored everywhere else')
-        expect(toolSchemas.create_task.function.parameters.required || []).not.toContain('emailBundle')
-    })
-
     test('records task origin while assigning assistant-created tasks directly to the user', () => {
         const properties = toolSchemas.create_task.function.parameters.properties
 

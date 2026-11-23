@@ -95,10 +95,9 @@ describe('when the model pass runs and what it may touch', () => {
         expect(isLlmLintDue({}, [page('a')], NOW)).toBe(false)
     })
 
-    // Karsten, 2026-11-23 (AT-3126): no reserve share; every step may use the whole cap.
-    it('may use the whole monthly cap', () => {
-        expect(LINT_BUDGET_RESERVE_SHARE).toBe(0)
-        expect(getLintSpendLimit(500)).toBe(500)
+    it('leaves the last fifth of the monthly cap to the ingest', () => {
+        expect(LINT_BUDGET_RESERVE_SHARE).toBe(0.2)
+        expect(getLintSpendLimit(500)).toBe(400)
     })
 
     it('protects pages a member corrected in the last two weeks', () => {

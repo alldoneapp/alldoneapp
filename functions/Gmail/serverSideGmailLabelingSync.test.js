@@ -1506,7 +1506,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 )
             })
 
-            test('a newsletter under the fallback label gets no line', async () => {
+            test('a newsletter under the fallback label gets no "Daily ads" line, only its "Daily emails" line', async () => {
                 classifyGmailMessage.mockResolvedValue({
                     ...adClassification,
                     matched: false,
@@ -1516,7 +1516,15 @@ describe('serverSideGmailLabelingSync helpers', () => {
 
                 await processWith(buildGmail(), {})
 
-                expect(assistantHelper.addChatCommentFromAssistantTool).not.toHaveBeenCalled()
+                expect(chatCreate).not.toHaveBeenCalled()
+                expect(assistantHelper.addChatCommentFromAssistantTool).toHaveBeenCalledTimes(1)
+                expect(assistantHelper.addChatCommentFromAssistantTool).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        chatId: '',
+                        chatTitle: expect.stringMatching(/^Daily emails /),
+                        gmailContext: expect.objectContaining({ labelKey: 'newsletter', emailKind: 'newsletter' }),
+                    })
+                )
             })
 
             test('without a default project assistant the line is reported as blocked', async () => {
@@ -2177,71 +2185,6 @@ describe('email conversations get their own topic', () => {
             continueEmailThread.mockResolvedValue({ ambiguous: true })
             await run(outgoing)
             expect(assistantHelper.interactWithChatStream).not.toHaveBeenCalled()
-        })
-    })
-
-    // AT-3135: an actionable incoming email may join a collection to-do; the run tells the model
-    // which ones exist for this sender, and create_task reads the offer from gmailContext.
-    describe('collection to-dos', () => {
-        const emailTaskBundle = require('../Email/emailTaskBundle')
-        const kleinanzeigen = {
-            messageId: 'm1',
-            threadId: 'thread-k',
-            subject: 'Nutzer-Anfrage zu deiner Anzeige',
-            from: '"Layla über Kleinanzeigen" <noreply@mail.kleinanzeigen.de>',
-        }
-        const userMessage = () => {
-            const messages = assistantHelper.interactWithChatStream.mock.calls[0][0]
-            return messages[messages.length - 1][1]
-        }
-
-        beforeEach(() => {
-            jest.spyOn(emailTaskBundle, 'listEmailBundlesForSender').mockResolvedValue([
-                { key: 'buyer-inquiries', label: 'Kleinanzeigen' },
-            ])
-        })
-        afterEach(() => jest.restoreAllMocks())
-
-        test('an actionable email is offered the existing collection to-dos of its sender', async () => {
-            await run({ normalizedMessage: kleinanzeigen, followUpType: 'actionable', needsReply: true })
-            expect(emailTaskBundle.listEmailBundlesForSender).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    from: kleinanzeigen.from,
-                    identity: expect.objectContaining({ ownerId: 'u', email: 'me@example.com' }),
-                })
-            )
-            const { gmailContext } =
-                assistantHelper.collectAssistantTextWithToolCalls.mock.calls[0][0].toolRuntimeContext
-            expect(gmailContext.emailBundles).toEqual({
-                enabled: true,
-                existing: [{ key: 'buyer-inquiries', label: 'Kleinanzeigen' }],
-            })
-            expect(userMessage()).toContain('create_task.emailBundle')
-            expect(userMessage()).toContain('key "buyer-inquiries" = "Kleinanzeigen"')
-            expect(userMessage()).toContain('Sharing a sender domain alone is not a reason to collect')
-        })
-
-        test('a failed lookup still offers collecting, without existing ones', async () => {
-            emailTaskBundle.listEmailBundlesForSender.mockRejectedValue(new Error('unavailable'))
-            await run({ normalizedMessage: kleinanzeigen, followUpType: 'actionable' })
-            const { gmailContext } =
-                assistantHelper.collectAssistantTextWithToolCalls.mock.calls[0][0].toolRuntimeContext
-            expect(gmailContext.emailBundles).toEqual({ enabled: true, existing: [] })
-            expect(userMessage()).toContain('Existing collection to-dos for this sender: none.')
-        })
-
-        test('informational mail and a thread with several matching tasks are never collected', async () => {
-            await run({ normalizedMessage: kleinanzeigen, followUpType: 'informational' })
-            let { gmailContext } = assistantHelper.collectAssistantTextWithToolCalls.mock.calls[0][0].toolRuntimeContext
-            expect(gmailContext.emailBundles).toBeUndefined()
-            expect(userMessage()).not.toContain('Collection to-dos')
-
-            jest.clearAllMocks()
-            continueEmailThread.mockResolvedValue({ ambiguous: true })
-            await run({ normalizedMessage: kleinanzeigen, followUpType: 'actionable' })
-            ;({ gmailContext } = assistantHelper.collectAssistantTextWithToolCalls.mock.calls[0][0].toolRuntimeContext)
-            expect(gmailContext.emailBundles).toBeUndefined()
-            expect(emailTaskBundle.listEmailBundlesForSender).not.toHaveBeenCalled()
         })
     })
 })

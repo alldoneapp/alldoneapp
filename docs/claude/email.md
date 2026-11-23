@@ -344,11 +344,29 @@ eligible definition has), for incoming and sent mail alike.
 **What a fallback label does and does not do.**
 
 - It runs **no follow-up prompt**: the definition is passed with `postLabelPrompt: ''`, so no model
-  run, no Gold beyond the classification, no project task and no "Daily emails" line. What unlabeled
-  mail always got still happens: thread continuation, the thread topic, and the "Daily ads" line for
-  an ad. A pending continuation replay of a fallback record strips the prompt too
-  (`labelSource === 'fallback'`). A user's follow-up-type correction in the feedback UI is explicit
-  and may still run the label's prompt.
+  run, no Gold beyond the classification and no project task. What unlabeled mail always got still
+  happens: thread continuation, the thread topic, and the "Daily ads" line for an ad. A pending
+  continuation replay of a fallback record strips the prompt too (`labelSource === 'fallback'`). A
+  user's follow-up-type correction in the feedback UI is explicit and may still run the label's
+  prompt.
+- **An incoming email under a fallback label still gets one line (decided with Karsten
+  2026-11-23).** Until then such mail was labeled in Gmail but reached neither Chats > Unread nor a
+  task, so clearing Alldone left it in the inbox (the report: DHL, Booking, Facebook Memories,
+  Claude status and a newsletter, all in the fallback labels Privat and Newsletter).
+  `writeFallbackLineForMessage` writes `Email from <name> (<email>): <subject>` without a model
+  (`buildEmailSubjectLineText`, shared with the "Daily ads" line) into the **project-wide** "Daily
+  emails <label> <date>" digest of the default project label's project
+  (`resolveDefaultProjectLabelDefinition`, the topic its prompt writes to), or of the default
+  project when it has no label (custom mode, `Alldone/Other`). Karsten chose the project digest over
+  a private topic. A thread that already has its own topic gets the line there. The comment carries
+  the fallback label as tag and the classification's `followUpType`, so an email called actionable
+  is a followed (red) entry, never a task; the unread settings still archive newsletters and ads
+  and store the line read. Ads keep their "Daily ads" line, sent mail gets none. The line is stamped
+  into `emailComments` for the read sync, also on a continuation replay. Pinned by the "Daily
+  emails line" block of `gmailLabelingFallbackAndRetry.test.js`.
+- Not changed, on purpose (Karsten, 2026-11-23): a row cleared by the Gmail read sync because the
+  mail was **read** in Gmail leaves the mail in the inbox (read is handled), and "Mark as read" on an
+  email row never archives.
 - It **never archives on its own**: neither the label's `autoArchive` nor `autoArchiveAllLabeled`
   applies, so unsure mail does not leave the inbox. Only the user's unread setting for newsletters
   and ads archives it, in the same `messages.modify` call as the label.
@@ -392,81 +410,6 @@ Pinned by `functions/Gmail/gmailLabelingFallbackAndRetry.test.js` (fallback choi
 follow-up suppression, archive and unread settings, the retry/exhaustion cycle across real
 `syncGmailLabeling` runs on an in-memory Firestore) and the updated no-match cases in
 `serverSideGmailLabelingSync.test.js`.
-
-## Relayed person-to-person mail can need a reply; a later reply email upgrades a task (AT-3131, 2026-11-22)
-
-Kleinanzeigen buyer questions arrive from `noreply@mail.kleinanzeigen.de`. The `needsReply`
-guidance used to say "false for … notifications, automated or bulk mail", so most were classified
-"no reply needed": FE-2149 and FE-2150 landed in the regular list, and only FE-2148 got
-`needsReply: true` and went to Messages. Two changes, decided with Karsten:
-
-- **Classifier** (`GMAIL_NEEDS_REPLY_GUIDANCE`, used by both passes): a message a real person wrote
-  and a platform relays (marketplaces such as Kleinanzeigen/eBay, LinkedIn/Xing DMs, Airbnb/Booking
-  guests or hosts, contact forms) is judged by the person's message, not the sender address or
-  `emailKind`. Automated notifications without such a message (alerts, receipts, order/shipping
-  updates, reminders, connection requests, likes, profile views) stay false, as does "uncertain".
-- **Upgrade**: when a newer email in the thread needs a reply and the task has no `messageData`,
-  `buildEmailTaskUpdate` adds it (same shape as `buildReplyTaskMessageData`; sender from the
-  `From` header via `plan.replySender`), so the task moves into Messages. **Visibility is kept**:
-  the upgrade never writes `isPrivate`/`isPublicFor`, so a project-visible task does not vanish
-  for other members. Only a task that belongs to the mailbox owner is upgraded
-  (`gmailData.accountUserId`). New reply tasks are still created private.
-
-Not done: the sender name of a relayed email is still the `From` display name ("… über
-Kleinanzeigen"), not the person. If a send-reply action is built on `messageData` (UNIFIED_INBOX_PLAN
-§7), it must check that the caller owns the mailbox. It cannot rely on `isPrivate`, because an
-upgraded reply task can be visible to the project. Pinned by the AT-3131 blocks in
-`gmailPromptClassifier.test.js`, `emailTaskContentUpdate.test.js`,
-`emailThreadContinuation.test.js` and the "reply task creation" block in `assistantHelper.test.js`.
-
-## Recurring email of one source is collected in one to-do (AT-3135, 2026-11-23)
-
-Kleinanzeigen buyer inquiries each arrive as a new thread, so AT-2709 thread reuse never applied and
-every inquiry became its own (mostly reply) task: 18 tasks from about 45 mails in two days, split over
-"Privat" and "Familie". This is task bundling, not the message grouping of AT-3131. Decided with
-Karsten:
-
-- **Who decides**: the post-label assistant names a handling context on `create_task`
-  (`emailBundle: { key, label }`), only where the sync offers it (`gmailContext.emailBundles`:
-  incoming, actionable, thread not ambiguous). The sync lists the existing contexts of the sender so the
-  key is reused. The **identity is the server's**: owner, provider, mailbox, the sender's registrable
-  domain from the From header (`mail.kleinanzeigen.de` = `kleinanzeigen.de`) and the key
-  (`resolveEmailBundle`). A task with its own `dueDate` or reminder is never collected
-  (`shouldBundleCreateTask`), and the prompt keeps urgent, legal, payment, security and unrelated mail
-  separate. Same domain alone is not a reason.
-- **Reply mail is collected too.** A collection to-do is a normal **private** to-do without
-  `messageData`, so collected buyer inquiries no longer appear one by one in Messages, and a later
-  reply in a collected thread never upgrades it to a reply task.
-- **Sticky project**: the to-do stays where it was created, like thread tasks, even when a later
-  email is routed to another project. It takes new conversations only while it is still the owner's
-  own private to-do in one of their projects (`isOwnerPrivateTask`); shared, reassigned or deleted, the
-  next email starts a new one (threads already in it keep continuing there, like AT-2709).
-- **Done**: the next actionable email of the context, or of a collected thread, reopens it.
-  Informational mail of a collected thread is a silent comment and leaves it done.
-- **Content**: each email is one line at the end of the description (`- <state> <Gmail link>`) and
-  one comment in the task chat (`email_<messageKey>`, so a retry never duplicates it). The title is
-  `<label>: <current state>` ("Kleinanzeigen: Layla möchte ein Foto der Wickelkommode"). It moves with
-  every newer actionable email, including later mail of a collected thread (the continuation summary
-  returns `state` when called with `bundle: true`), but only while it still equals the title the
-  automation wrote last (`gmailData.taskContent.name`). A user's rename and description edits are kept.
-
-Data: `users/{uid}/emailTaskBundles/{bundleId}` → `{ projectId, taskId, key, label, senderDomain,
-gmailEmail, provider }`. The task carries `gmailData.bundle` (`id`, `key`, `label`, `senderDomain`,
-`itemCount`, `lastItemAt`) and `gmailData.threadIds`. A thread that joins after the first email gets
-`users/{uid}/emailThreadTasks/bundleThread_<threadKey>`, which `findEmailThreadTasks` reads (one extra
-doc read per lookup), so AT-2709 continuation finds the to-do for later mail of that thread.
-`TaskCommentService.addComment({ emailBundle })` re-checks account, collection and selection inside
-its transaction. `persistEmailTaskAtomically({ bundle })` serializes creation of the first to-do of a
-context, and only collects a thread that has no task yet. It registers the thread on the to-do in the
-same commit (threadIds, thread registry, pointer), so a concurrent email of that thread cannot
-create a second task. A thread with several tasks gets AT-2709's separate task, without the collection
-marker. Only single-field indexes are used. MCP's `create_task` schema does not offer `emailBundle`.
-
-Not done: existing separate tasks are not merged; the explicit "Create task" of the email line never
-collects; the sender name of a relayed email is still the platform's display name unless the model
-names the person. Pinned by `functions/Email/emailTaskBundle.test.js`, the AT-3135 blocks in
-`assistantHelper.test.js`, `serverSideGmailLabelingSync.test.js`, `toolSchemas.test.js` and
-`mcpServerSimple.test.js`.
 
 ## The email a task was created from opens the task's chat (AT-3022)
 

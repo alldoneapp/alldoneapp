@@ -3,7 +3,6 @@ import moment from 'moment'
 
 import {
     watchKnowledgeBase,
-    watchKnowledgeNewsItems,
     watchKnowledgePages,
     watchKnowledgeRuns,
     watchRecentKnowledgePages,
@@ -67,19 +66,6 @@ export function useKnowledgeRuns(projectId) {
     }, [projectId])
 
     return runs
-}
-
-// The news screening's entries (AT-3126); only watched while the news page is open.
-export function useKnowledgeNewsItems(projectId, enabled = true) {
-    const [items, setItems] = useState([])
-
-    useEffect(() => {
-        setItems([])
-        if (!projectId || !enabled) return undefined
-        return watchKnowledgeNewsItems(projectId, setItems)
-    }, [projectId, enabled])
-
-    return items
 }
 
 export function isKnowledgeBaseRunning(knowledgeBase, now = Date.now()) {

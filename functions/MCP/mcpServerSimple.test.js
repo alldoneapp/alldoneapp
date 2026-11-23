@@ -306,14 +306,6 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
         )
     })
 
-    // AT-3135: emailBundle only works inside the Gmail labeling run; MCP clients never see it.
-    test('does not offer the Gmail-only emailBundle argument of create_task over MCP', async () => {
-        const tool = (await listTools()).find(entry => entry.name === 'create_task')
-        expect(tool.inputSchema.properties.emailBundle).toBeUndefined()
-        const { toolSchemas } = require('../Assistant/toolSchemas')
-        expect(toolSchemas.create_task.function.parameters.properties.emailBundle).toBeDefined()
-    })
-
     test('exposes get_local_recommendations with its coordinate schema over MCP', async () => {
         const tools = await listTools()
         const tool = tools.find(entry => entry.name === 'get_local_recommendations')

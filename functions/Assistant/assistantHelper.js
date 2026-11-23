@@ -986,23 +986,6 @@ function buildReplyTaskMessageData(toolRuntimeContext = null, gmailTaskData = nu
     }
 }
 
-// AT-3135: the email of this run joins a collection to-do. Only where the labeling sync offered it
-// (incoming mail, thread not ambiguous: gmailContext.emailBundles.enabled), only for a task without
-// its own deadline or reminder, and the identity comes from the mailbox and the From header, never
-// from the model; the model only names the handling context.
-function resolveCreateTaskEmailBundle(toolRuntimeContext = null, toolArgs = {}, gmailTaskData = null) {
-    const gmailContext = toolRuntimeContext?.gmailContext
-    if (!gmailTaskData || gmailContext?.emailBundles?.enabled !== true || !toolArgs?.emailBundle) return null
-    const { resolveEmailBundle, shouldBundleCreateTask } = require('../Email/emailTaskBundle')
-    if (!shouldBundleCreateTask(toolArgs)) return null
-    const { getEmailIdentity } = require('../Email/emailThreadIdentity')
-    return resolveEmailBundle({
-        identity: getEmailIdentity(toolRuntimeContext.requestUserId, gmailTaskData),
-        from: gmailContext.emailContext?.from || '',
-        proposal: toolArgs.emailBundle,
-    })
-}
-
 function getGmailLabelFollowUpSelectedProjectId(toolRuntimeContext = null) {
     const gmailContext = toolRuntimeContext?.gmailContext
     if (!gmailContext || gmailContext.origin !== GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN) return ''
@@ -2664,27 +2647,6 @@ async function spentGold(userId, goldToReduce, linkContext = {}, model = '') {
         objectType: linkContext.objectType,
         model,
     })
-}
-
-// One executed web_search, billed to the member the run acts for. Runs without a requesting member
-// (none today reach web_search) are not charged. Never throws: billing must not lose a result the
-// model is about to use; a failure is logged.
-async function chargeWebSearchGold({ requestUserId, projectId, toolRuntimeContext }) {
-    const { WEB_SEARCH_GOLD, WEB_SEARCH_GOLD_SOURCE } = require('./webSearchPricing')
-    if (!requestUserId || WEB_SEARCH_GOLD <= 0) return null
-    try {
-        const { settleUsageGold } = require('../Gold/goldHelper')
-        return await settleUsageGold(requestUserId, WEB_SEARCH_GOLD, {
-            source: WEB_SEARCH_GOLD_SOURCE,
-            channel: toolRuntimeContext?.sourceChannel === 'mcp' ? 'mcp' : 'assistant',
-            projectId: toolRuntimeContext?.projectId || projectId || '',
-            objectId: toolRuntimeContext?.objectId || '',
-            objectType: toolRuntimeContext?.objectType || '',
-        })
-    } catch (error) {
-        console.error('🌐 WEB_SEARCH TOOL: could not charge the search', { requestUserId, error: error.message })
-        return null
-    }
 }
 
 // Flat gold cost per MCP tool invocation. The expensive part of an MCP call is
@@ -6113,31 +6075,9 @@ async function executeToolNativelyImpl(
             }
 
             try {
-                const baseGmailTaskData = buildGmailTaskDataFromRuntimeContext(toolRuntimeContext, targetProjectId)
-                const emailBundle = resolveCreateTaskEmailBundle(toolRuntimeContext, toolArgs, baseGmailTaskData)
-                const emailBundleHelpers = emailBundle ? require('../Email/emailTaskBundle') : null
-                // A collection to-do (AT-3135) is a normal private to-do of the mailbox owner, not one
-                // conversation in Messages: no reply data, and each email is a line of its description.
-                const gmailTaskData = emailBundle
-                    ? {
-                          ...baseGmailTaskData,
-                          threadIds: baseGmailTaskData.threadId ? [baseGmailTaskData.threadId] : [],
-                          bundle: {
-                              id: emailBundle.id,
-                              key: emailBundle.key,
-                              label: emailBundle.label,
-                              senderDomain: emailBundle.senderDomain,
-                              itemCount: 1,
-                              lastItemAt: Date.now(),
-                          },
-                      }
-                    : baseGmailTaskData
-                const replyMessageData = emailBundle
-                    ? null
-                    : buildReplyTaskMessageData(toolRuntimeContext, gmailTaskData)
-                const descriptionWithImages = emailBundle
-                    ? emailBundleHelpers.buildEmailBundleItemLine({ text: toolArgs.name, webUrl: gmailTaskData.webUrl })
-                    : mergeTaskDescriptionWithImages(toolArgs.description, toolArgs.images)
+                const gmailTaskData = buildGmailTaskDataFromRuntimeContext(toolRuntimeContext, targetProjectId)
+                const replyMessageData = buildReplyTaskMessageData(toolRuntimeContext, gmailTaskData)
+                const descriptionWithImages = mergeTaskDescriptionWithImages(toolArgs.description, toolArgs.images)
                 const trackAssistantWork =
                     !!assistantId && toolArgs.trackAssistantWork === true && !isAssistantSuggestion
                 const responsibleAssistant = trackAssistantWork
@@ -6159,9 +6099,7 @@ async function executeToolNativelyImpl(
                 // Create task using unified service
                 const result = await cachedTaskService.createAndPersistTask(
                     {
-                        name: emailBundle
-                            ? emailBundleHelpers.buildEmailBundleTitle(emailBundle.label, toolArgs.name)
-                            : toolArgs.name,
+                        name: toolArgs.name,
                         description: descriptionWithImages,
                         dueDate: processedDueDate,
                         recurrence: toolArgs.recurrence,
@@ -6169,7 +6107,7 @@ async function executeToolNativelyImpl(
                         userId: creatorId,
                         assigneeType: 'USER',
                         projectId: targetProjectId,
-                        isPrivate: !!replyMessageData || !!emailBundle,
+                        isPrivate: !!replyMessageData,
                         ...parentGoalFields,
                         feedUser,
                         gmailData: gmailTaskData,
@@ -6197,39 +6135,11 @@ async function executeToolNativelyImpl(
                                           require('../shared/privacyAccess').getAccessibleProjectIdsFromUserData(
                                               userData
                                           ),
-                                      ...(emailBundle ? { bundle: emailBundle } : {}),
                                   },
                               },
                           ]
                         : [])
                 )
-                if (gmailTaskData && result.existing && result.bundleExisting) {
-                    // The context already has a collection to-do: this email becomes its next line.
-                    const appended = await emailBundleHelpers.appendEmailToBundleTask({
-                        database: db,
-                        userId: creatorId,
-                        projectIds: require('../shared/privacyAccess').getAccessibleProjectIdsFromUserData(userData),
-                        selected: { taskId: result.taskId, projectId: result.projectId, task: result.task },
-                        bundleId: emailBundle.id,
-                        via: 'bundle',
-                        gmailData: baseGmailTaskData,
-                        context: toolRuntimeContext.gmailContext.emailContext || {},
-                        itemText: toolArgs.name,
-                        state: toolArgs.name,
-                        commentText: toolArgs.description || toolArgs.name,
-                        actionable: true,
-                        actor: { uid: assistantId || creatorId, displayName: feedUser.displayName || 'Assistant' },
-                        fromAssistant: !!assistantId,
-                    })
-                    return {
-                        success: true,
-                        ...appended,
-                        task: result.task,
-                        suggested: !!result.task.suggestedBy,
-                        taskOrigin: result.task.suggestedBy ? 'assistant_suggestion' : 'user_request',
-                        message: `Added this email to the existing collection to-do "${emailBundle.label}"`,
-                    }
-                }
                 if (gmailTaskData && result.existing) {
                     const { continueEmailThread } = require('../Email/emailThreadContinuation')
                     const continued = await continueEmailThread({
@@ -9610,11 +9520,6 @@ async function executeToolNativelyImpl(
                     url: r.url,
                     content: r.content,
                 }))
-
-                // An executed search costs Gold at cost (webSearchPricing.js, AT-3126). The search has
-                // already happened, so it is settled in full like the answer it feeds; a failed
-                // search above never reaches this line and costs nothing.
-                await chargeWebSearchGold({ requestUserId, projectId, toolRuntimeContext })
 
                 return {
                     success: true,

@@ -55,9 +55,10 @@ function getDailyAdsChatId(userId = '', formattedDate = '') {
 
 /**
  * The line, in the digest format the unread list already reads ("Email from X (x@y): summary"),
- * with the subject as the summary.
+ * with the subject as the summary. Also the line of a fallback-labeled email in its "Daily emails"
+ * digest (serverSideGmailLabelingSync.js), which is written without a model too.
  */
-function buildDailyAdsLineText(normalizedMessage = {}) {
+function buildEmailSubjectLineText(normalizedMessage = {}) {
     const sender = parseEmailHeaderAddresses(normalizedMessage?.from)[0] || null
     const email = normalizeString(sender?.email).slice(0, 320)
     const name = normalizeString(sender?.displayName).slice(0, 200) || email || 'Unknown sender'
@@ -68,6 +69,8 @@ function buildDailyAdsLineText(normalizedMessage = {}) {
             : rawSubject || '(no subject)'
     return `Email from ${name}${email && email !== name ? ` (${email})` : ''}: ${subject}`
 }
+
+const buildDailyAdsLineText = buildEmailSubjectLineText
 
 function buildDailyAdsChatData({ chatId, title, userId, assistantId, now }) {
     return {
@@ -155,6 +158,7 @@ module.exports = {
     buildDailyAdsChatData,
     buildDailyAdsLineText,
     buildDailyAdsTopicTitle,
+    buildEmailSubjectLineText,
     ensureDailyAdsTopic,
     getDailyAdsChatId,
     shouldWriteDailyAdsLine,

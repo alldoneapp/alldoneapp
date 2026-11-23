@@ -8,13 +8,11 @@ import {
     isKnowledgePageVisible,
 } from '../../../functions/KnowledgeBase/knowledgeBaseModel'
 import { getWikiRevisionDocId } from '../../../functions/KnowledgeBase/knowledgeWikiFeedModel'
-import { getKnowledgeNewsItemsPath } from '../../../functions/KnowledgeBase/knowledgeNewsModel'
 
 // The project wiki is read straight from Firestore (members may read the whole
 // knowledgeBases/{projectId} tree) and written only through callables: no client may write it.
 
 const RECENT_RUNS_LIMIT = 10
-const NEWS_ITEMS_LIMIT = 40
 const REVISIONS_LIMIT = 20
 
 function reportListenerError(scope, projectId, onError) {
@@ -237,29 +235,4 @@ export function requestKnowledgeBaseRefresh(projectId) {
 // Takes a correction back. The same function backs the assistant's undo_knowledge_correction tool.
 export function undoKnowledgeCorrection(projectId, correctionId) {
     return runHttpsCallableFunction('undoKnowledgeCorrection', { projectId, correctionId })
-}
-
-// The entries of the daily news screening (AT-3126), newest first, for "Not relevant" on the news
-// page. One single-field order, so no composite index; dismissed entries are left out here.
-export function watchKnowledgeNewsItems(projectId, onChange, onError) {
-    const db = getDb()
-    if (!db || !projectId) return () => {}
-    return db
-        .collection(getKnowledgeNewsItemsPath(projectId))
-        .orderBy('publishedAt', 'desc')
-        .limit(NEWS_ITEMS_LIMIT)
-        .onSnapshot(
-            snapshot =>
-                onChange(
-                    snapshot.docs
-                        .map(doc => ({ id: doc.id, ...(doc.data() || {}) }))
-                        .filter(item => item.status !== 'dismissed')
-                ),
-            reportListenerError('news items', projectId, onError)
-        )
-}
-
-// "Not relevant" on one news entry: any member may; the server rewrites the page.
-export function dismissKnowledgeNewsItem(projectId, itemId) {
-    return runHttpsCallableFunction('dismissKnowledgeNewsItem', { projectId, itemId })
 }

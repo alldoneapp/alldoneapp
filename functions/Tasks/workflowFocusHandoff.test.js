@@ -5,7 +5,6 @@ jest.mock('firebase-admin', () => ({
 const {
     resolveWorkflowStepId,
     hasWorkflowStepChanged,
-    hasFocusHolderChanged,
     getWorkflowFocusHandoffCandidates,
     releaseFocusTaskOnWorkflowStepChange,
 } = require('./workflowFocusHandoff')
@@ -125,16 +124,15 @@ describe('getWorkflowFocusHandoffCandidates', () => {
     })
 
     // AT-2188: a VM agent asking the user a question parks currentReviewerId WITHOUT moving the
-    // step. The asked user must keep the task (it is on their plate now). AT-3124: the reviewer it
-    // was taken from can no longer see it in their list, so only they are a candidate.
-    it('keeps the task with the asked user when a VM interaction hold starts', () => {
+    // step. Reading currentReviewerId as the step would drop the focus task on every question.
+    it('does not hand off focus for a VM interaction reviewer hold', () => {
         const oldTask = onFirstStepTask()
         const held = {
             ...oldTask,
             currentReviewerId: OWNER,
             vmInteractionWorkflowStep: { reviewerId: OWNER, previousReviewerId: REVIEWER_A },
         }
-        expect(getWorkflowFocusHandoffCandidates(oldTask, held)).toEqual([REVIEWER_A])
+        expect(getWorkflowFocusHandoffCandidates(oldTask, held)).toEqual([])
     })
 
     it('ignores subtasks, which only mirror their parent step', () => {
@@ -269,10 +267,8 @@ describe('releaseFocusTaskOnWorkflowStepChange', () => {
             deps
         )
 
-        // The owner's pick blew up, so their focus was cleared instead (AT-3124: never leave a hidden
-        // focus task behind); the reviewer still got their normal handoff.
-        expect(deps.focusTaskService.clearFocusTask).toHaveBeenCalledWith(OWNER, TASK_ID)
-        expect(released).toEqual([OWNER, REVIEWER_A])
+        // The owner blew up; the reviewer still got their handoff.
+        expect(released).toEqual([REVIEWER_A])
         console.error.mockRestore()
     })
 
@@ -446,233 +442,5 @@ describe('completing the focus task hands over deterministically (AT-2251)', () 
 
         expect(released).toEqual([OWNER])
         expect(deps.focusTaskService.clearFocusTask).toHaveBeenCalledWith(OWNER, TASK_ID)
-    })
-})
-
-/**
- * AT-3124 — the focus task must be replaced whenever a change makes it disappear from the user's
- * list, not only when its workflow step changes.
- *
- * Reproduced from production (2026-11-21): AT-3123 sat in an AI step with the assistant as reviewer.
- * The VM agent asked Karsten a question, so the AT-2188 hold made him the reviewer without changing
- * the step. The picker then (correctly) chose it as his next focus task. When he answered, the hold
- * gave the task back to the assistant — same step — and nothing released his focus, so it stayed on
- * a task he could no longer see.
- */
-describe('a focus task that leaves the user without a step change (AT-3124)', () => {
-    const ASSISTANT = 'assistant-id'
-    const OTHER_USER = 'other-user-uid'
-    const AI_STEP = 'ai-step'
-
-    // The task while the assistant works on its step.
-    const withAssistant = (overrides = {}) => ({
-        userId: OWNER,
-        userIds: [OWNER, ASSISTANT],
-        stepHistory: [OPEN_STEP, AI_STEP],
-        currentReviewerId: ASSISTANT,
-        vmInteractionWorkflowStep: null,
-        done: false,
-        ...overrides,
-    })
-
-    // The same task while the agent's question to the owner is open.
-    const heldForOwner = (overrides = {}) =>
-        withAssistant({
-            currentReviewerId: OWNER,
-            vmInteractionWorkflowStep: {
-                correlationId: 'vm-1',
-                requestId: 'req-1',
-                reviewerId: OWNER,
-                previousReviewerId: ASSISTANT,
-                workflowStepId: AI_STEP,
-                reason: 'interaction',
-            },
-            ...overrides,
-        })
-
-    const buildDeps = (usersById, { replacement = null, pickError = null } = {}) => {
-        const focusTaskService = {
-            findAndSetNewFocusTask: pickError
-                ? jest.fn().mockRejectedValue(pickError)
-                : jest.fn().mockResolvedValue(replacement),
-            clearFocusTask: jest.fn().mockResolvedValue({ cleared: true }),
-        }
-        const database = {
-            doc: jest.fn(path => ({
-                get: jest.fn().mockResolvedValue({
-                    exists: !!usersById[path],
-                    data: () => usersById[path],
-                }),
-            })),
-        }
-        return { focusTaskService, database }
-    }
-
-    describe('hasFocusHolderChanged', () => {
-        it('detects a reviewer change on the same step', () => {
-            expect(hasWorkflowStepChanged(heldForOwner(), withAssistant())).toBe(false)
-            expect(hasFocusHolderChanged(heldForOwner(), withAssistant())).toBe(true)
-        })
-
-        it('detects an owner change', () => {
-            expect(hasFocusHolderChanged(openTask(), openTask({ userId: OTHER_USER }))).toBe(true)
-        })
-
-        it('still detects a step change', () => {
-            expect(hasFocusHolderChanged(openTask(), onFirstStepTask())).toBe(true)
-        })
-
-        it('treats missing, null and empty reviewers as the same', () => {
-            const legacy = openTask({ currentReviewerId: undefined })
-            expect(hasFocusHolderChanged(legacy, { ...legacy, currentReviewerId: null })).toBe(false)
-            expect(hasFocusHolderChanged(legacy, { ...legacy, currentReviewerId: '' })).toBe(false)
-        })
-
-        it('ignores unrelated edits', () => {
-            const task = withAssistant()
-            expect(hasFocusHolderChanged(task, { ...task, name: 'renamed', lastEditionDate: 1 })).toBe(false)
-        })
-    })
-
-    it('reproduction: answering the agent question hands the owner a new visible focus task', async () => {
-        const deps = buildDeps(
-            { [`users/${OWNER}`]: { inFocusTaskId: TASK_ID } },
-            { replacement: { id: 'visible-task', projectId: PROJECT_ID } }
-        )
-
-        const released = await releaseFocusTaskOnWorkflowStepChange(
-            PROJECT_ID,
-            TASK_ID,
-            heldForOwner(),
-            withAssistant({ parentGoalId: 'goal-1' }),
-            deps
-        )
-
-        expect(released).toEqual([OWNER])
-        // The canonical picker chooses the replacement (it filters by isTaskOnUserPlate), with the
-        // task that left excluded and the write conditional on the focus still being that task.
-        expect(deps.focusTaskService.findAndSetNewFocusTask).toHaveBeenCalledWith(
-            OWNER,
-            PROJECT_ID,
-            'goal-1',
-            TASK_ID,
-            expect.anything(),
-            null,
-            { expectedCurrentFocusTaskId: TASK_ID }
-        )
-        expect(deps.focusTaskService.clearFocusTask).not.toHaveBeenCalled()
-    })
-
-    it('clears the focus when no visible replacement exists', async () => {
-        const deps = buildDeps({ [`users/${OWNER}`]: { inFocusTaskId: TASK_ID } }, { replacement: null })
-
-        const released = await releaseFocusTaskOnWorkflowStepChange(
-            PROJECT_ID,
-            TASK_ID,
-            heldForOwner(),
-            withAssistant(),
-            deps
-        )
-
-        expect(released).toEqual([OWNER])
-        expect(deps.focusTaskService.clearFocusTask).toHaveBeenCalledWith(OWNER, TASK_ID)
-    })
-
-    it('clears the focus when picking a replacement fails, rather than leaving a hidden focus task', async () => {
-        jest.spyOn(console, 'error').mockImplementation(() => {})
-        const deps = buildDeps(
-            { [`users/${OWNER}`]: { inFocusTaskId: TASK_ID } },
-            { pickError: new Error('firestore unavailable') }
-        )
-
-        const released = await releaseFocusTaskOnWorkflowStepChange(
-            PROJECT_ID,
-            TASK_ID,
-            heldForOwner(),
-            withAssistant(),
-            deps
-        )
-
-        expect(deps.focusTaskService.clearFocusTask).toHaveBeenCalledWith(OWNER, TASK_ID)
-        expect(released).toEqual([OWNER])
-        console.error.mockRestore()
-    })
-
-    it('keeps the focus of the asked user when the agent question starts', async () => {
-        // Only the owner has a user document; the assistant never has a focus task.
-        const deps = buildDeps({ [`users/${OWNER}`]: { inFocusTaskId: TASK_ID } })
-
-        const released = await releaseFocusTaskOnWorkflowStepChange(
-            PROJECT_ID,
-            TASK_ID,
-            withAssistant(),
-            heldForOwner(),
-            deps
-        )
-
-        expect(released).toEqual([])
-        expect(deps.database.doc).not.toHaveBeenCalledWith(`users/${OWNER}`)
-        expect(deps.focusTaskService.findAndSetNewFocusTask).not.toHaveBeenCalled()
-        expect(deps.focusTaskService.clearFocusTask).not.toHaveBeenCalled()
-    })
-
-    it('leaves the owner alone when their focus is a different task', async () => {
-        const deps = buildDeps({ [`users/${OWNER}`]: { inFocusTaskId: 'some-other-task' } })
-
-        const released = await releaseFocusTaskOnWorkflowStepChange(
-            PROJECT_ID,
-            TASK_ID,
-            heldForOwner(),
-            withAssistant(),
-            deps
-        )
-
-        expect(released).toEqual([])
-        expect(deps.focusTaskService.findAndSetNewFocusTask).not.toHaveBeenCalled()
-        expect(deps.focusTaskService.clearFocusTask).not.toHaveBeenCalled()
-    })
-
-    it('does nothing for writes that keep the task with the same reviewer and owner', async () => {
-        const deps = buildDeps({ [`users/${OWNER}`]: { inFocusTaskId: TASK_ID } })
-        const task = heldForOwner()
-
-        const released = await releaseFocusTaskOnWorkflowStepChange(
-            PROJECT_ID,
-            TASK_ID,
-            task,
-            { ...task, name: 'renamed' },
-            deps
-        )
-
-        expect(released).toEqual([])
-        expect(deps.database.doc).not.toHaveBeenCalled()
-    })
-
-    it('hands the old owner a new focus task when the task is reassigned', async () => {
-        const deps = buildDeps(
-            {
-                [`users/${OWNER}`]: { inFocusTaskId: TASK_ID },
-                [`users/${OTHER_USER}`]: { inFocusTaskId: 'their-own-task' },
-            },
-            { replacement: { id: 'next-task' } }
-        )
-        // setTaskAssignee: new owner, new reviewer, workflow reset to Open (same step for an Open task).
-        const reassigned = openTask({ userId: OTHER_USER, userIds: [OTHER_USER], currentReviewerId: OTHER_USER })
-
-        const released = await releaseFocusTaskOnWorkflowStepChange(PROJECT_ID, TASK_ID, openTask(), reassigned, deps)
-
-        expect(released).toEqual([OWNER])
-        expect(deps.focusTaskService.findAndSetNewFocusTask).toHaveBeenCalledTimes(1)
-        expect(deps.focusTaskService.findAndSetNewFocusTask.mock.calls[0][0]).toBe(OWNER)
-        // The new owner now has the task on their plate and is never touched.
-        expect(deps.database.doc).not.toHaveBeenCalledWith(`users/${OTHER_USER}`)
-    })
-
-    it('hands a human reviewer a new focus task when a hold takes the task away from them', () => {
-        // A VM question asked to the owner while a human reviewer held the step.
-        const oldTask = onFirstStepTask()
-        const held = { ...oldTask, currentReviewerId: OWNER }
-
-        expect(getWorkflowFocusHandoffCandidates(oldTask, held)).toEqual([REVIEWER_A])
     })
 })

@@ -10,7 +10,6 @@ import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOf
 import ToggleByTime from '../../ToggleByTime'
 import { alphaColor, themed } from '../../../../Themes/colorMode'
 import { isSectionsTopSidebarNavigation } from '../../../../utils/SidebarNavigationModes'
-import { MirroredActionsSpacer, useMirroredActionsWidth } from '../centeredHeaderTitle'
 
 // Required on use: RootSectionNavigation reaches the settings tree (and its drag and drop) through the
 // tab header, which this line, imported by many views, does not need otherwise.
@@ -29,20 +28,12 @@ export default function AllProjectsLine({ showActions = true, customRight, botto
     const annaOnTop = useSelector(state => isSectionsTopSidebarNavigation(state.loggedUser.sidebarNavigationMode))
 
     const inOpenSection = taskViewToggleSection === 'Open'
-    // AT-3132: on mobile sizes (smallScreenNavigation) the avatar, title and grouping toggle sit
-    // centred on the whole line as one block; on desktop they stay left aligned.
-    const centerTitle = mobile
-    const [actionsWidth, onActionsLayout] = useMirroredActionsWidth()
 
     return (
         <>
             <HeaderActionsContext.Provider value={true}>
                 <View style={[localStyles.container, localStyles.hierarchyHeader, { marginBottom: bottomSpacing }]}>
-                    {centerTitle && <MirroredActionsSpacer width={actionsWidth} testID="all-projects-line-mirror" />}
-                    <View
-                        style={[localStyles.rightContainer, centerTitle && localStyles.centeredTitle]}
-                        testID="all-projects-line-title"
-                    >
+                    <View style={localStyles.rightContainer}>
                         <Avatar
                             borderSize={0}
                             avatarId={loggedUserId}
@@ -58,8 +49,6 @@ export default function AllProjectsLine({ showActions = true, customRight, botto
                         </View>
                     </View>
                     <View
-                        testID="all-projects-line-actions"
-                        onLayout={centerTitle ? onActionsLayout : undefined}
                         style={[localStyles.leftContainer, { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}
                     >
                         {customRight}
@@ -109,7 +98,6 @@ const localStyles = StyleSheet.create({
         flexShrink: 1,
         minWidth: 0,
     },
-    // The title and the grouping toggle stay left aligned to each other inside the centred block.
     mobileTitleAndGrouping: {
         flexDirection: 'column',
         alignItems: 'flex-start',
@@ -132,10 +120,6 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         minWidth: 0,
-    },
-    // AT-3132: mobile only, see centeredHeaderTitle.js.
-    centeredTitle: {
-        justifyContent: 'center',
     },
     avatar: {
         marginRight: 10,

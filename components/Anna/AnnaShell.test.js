@@ -184,15 +184,7 @@ jest.mock('../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel', () => props => 
     return <input aria-label="Private login input" />
 })
 const mockUpdate = jest.fn().mockResolvedValue(undefined)
-// Pinned to the simple sidebar: since AT-3122 a user who never picked one gets "Anna on top", and
-// most of these tests are about the plain strip. The "Anna on top" block sets its own mode.
-const mockUser = {
-    uid: 'u1',
-    gold: 100,
-    displayName: 'Test user',
-    sidebarExpanded: true,
-    sidebarNavigationMode: 'simple',
-}
+const mockUser = { uid: 'u1', gold: 100, displayName: 'Test user', sidebarExpanded: true }
 const mockDispatch = jest.fn()
 let mockMobileNavigation = false
 let mockAssistant
@@ -3824,7 +3816,7 @@ describe('the "Anna on top" sidebar (AT-3121)', () => {
         mockUser.sidebarNavigationMode = 'sectionsTop'
     })
     afterEach(() => {
-        mockUser.sidebarNavigationMode = 'simple'
+        delete mockUser.sidebarNavigationMode
     })
 
     it.each(['split', 'chat'])('draws the sidebar left of the chat (%s), and the screens leave theirs out', layout => {
@@ -4008,10 +4000,7 @@ describe('the "Anna on top" sidebar (AT-3121)', () => {
 
     it.each([
         ['sectionsTop', false],
-        ['simple', true],
-        ['advanced', true],
-        // AT-3122: a user who never picked a sidebar gets "Anna on top".
-        [undefined, false],
+        [undefined, true],
     ])('on a phone (%s) shows the Anna | App switch in the bars: %s', (mode, shown) => {
         if (mode) mockUser.sidebarNavigationMode = mode
         else delete mockUser.sidebarNavigationMode
@@ -4028,8 +4017,8 @@ describe('the "Anna on top" sidebar (AT-3121)', () => {
         }
     })
 
-    it.each(['simple', 'advanced'])('changes nothing in the %s sidebar', mode => {
-        mockUser.sidebarNavigationMode = mode
+    it('changes nothing in the other sidebar modes', () => {
+        delete mockUser.sidebarNavigationMode
         setAnnaLayout('split')
         render(shellWithSidebar())
 

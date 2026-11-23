@@ -82,86 +82,6 @@ async function appendOriginEmailToTask({
     return { commentId: comment.commentId, existing: !!comment.existing }
 }
 
-// The From header's display name (or its address when it has none) and address. The name is the
-// header's, as for a task created as a reply task in assistantHelper.js.
-function getReplySender(from = '') {
-    const { parseEmailHeaderAddresses } = require('./emailChannelHelpers')
-    const raw = String(from || '').trim()
-    const entry = parseEmailHeaderAddresses(raw)[0]
-    const email = entry && /^[^\s@]+@[^\s@]+$/.test(entry.email) ? entry.email : ''
-    return { name: entry?.displayName || email || raw, email }
-}
-
-// AT-3135: a later email of a thread that is part of a collection to-do. Actionable mail adds a line
-// with the thread's current state and puts that state in the title (and reopens a done to-do);
-// anything else is only a silent comment. The task never becomes a reply task here: a collection
-// to-do is not one conversation.
-async function continueEmailBundleThread({
-    database,
-    userId,
-    userData,
-    identity,
-    projectIds,
-    selected,
-    gmailData,
-    context,
-    actor,
-    fromAssistant,
-    actionable,
-    result,
-}) {
-    const { summarizeEmailContinuation } = require('./emailLine/taskSummarizer')
-    const { resolveFeatureModelKey } = require('../Assistant/featureModelPreferences')
-    const { appendEmailToBundleTask } = require('./emailTaskBundle')
-    const summary = await summarizeEmailContinuation({
-        context: {
-            from: context.from || '',
-            subject: context.subject || '',
-            date: context.date || '',
-            body: String(context.bodyText || context.body || context.snippet || '').slice(0, 12000),
-        },
-        task: selected.task,
-        language: userData.language || userData.appLanguage,
-        cacheScope: `${userId}:${identity.key}`,
-        modelKey: resolveFeatureModelKey('emailTaskSummary', userData),
-        bundle: true,
-    })
-    const state = summary.plan.state || ''
-    const appended = await appendEmailToBundleTask({
-        database,
-        userId,
-        projectIds,
-        selected,
-        bundleId: selected.task.gmailData.bundle.id,
-        via: 'thread',
-        gmailData,
-        context,
-        itemText: actionable ? state || summary.plan.actionUpdate || summary.plan.summary : '',
-        state,
-        commentText: summary.plan.summary,
-        actionable,
-        actor: actor ? { ...actor, fromAssistant: actor.fromAssistant ?? fromAssistant } : actor,
-        fromAssistant,
-    })
-    if (appended.updated) {
-        const { calculateGoldCostFromTokens } = require('../Assistant/assistantModelRuntime')
-        const { deductGold } = require('../Gold/goldHelper')
-        const goldCost = calculateGoldCostFromTokens(summary.totalTokens, summary.modelKey)
-        if (goldCost > 0) {
-            const charged = await deductGold(userId, goldCost, {
-                source: 'email_thread_continuation',
-                projectId: selected.projectId,
-                objectId: identity.messageId,
-                channel: identity.provider,
-                model: summary.modelKey,
-            })
-            if (charged?.success) result.goldCost = goldCost
-            else console.warn('[emailThread] Collection line saved, Gold deduction failed', { taskId: selected.taskId })
-        }
-    }
-    return { ...result, ...appended, goldCost: result.goldCost }
-}
-
 // `reopenOnNewEmail`: whether this email may reopen a done task. Callers that know the email's
 // classification pass it (the labeling sync: actionable or needs a reply); the explicit
 // "Create task" action leaves the default, since the user asked for the task themselves.
@@ -201,22 +121,6 @@ async function continueEmailThread({
     }
 
     const resolvedActor = typeof actor === 'function' ? await actor(selected) : actor
-    if (selected.task.gmailData?.bundle?.id) {
-        return continueEmailBundleThread({
-            database,
-            userId,
-            userData,
-            identity,
-            projectIds,
-            selected,
-            gmailData,
-            context,
-            actor: resolvedActor,
-            fromAssistant,
-            actionable: reopenOnNewEmail !== false,
-            result,
-        })
-    }
 
     // The provider context may contain Outlook HTML. Models receive bounded email
     // data; only their summary is persisted as a comment, never the full body.
@@ -257,8 +161,6 @@ async function continueEmailThread({
                 ...summary.plan,
                 reopen: reopenOnNewEmail !== false,
                 needsReply: needsReply === true,
-                // Who asks for the answer, for a task that becomes a reply task now (AT-3131).
-                ...(needsReply === true ? { replySender: getReplySender(context.from) } : {}),
                 expected: {
                     name: selected.task.name,
                     dueDate: selected.task.dueDate,

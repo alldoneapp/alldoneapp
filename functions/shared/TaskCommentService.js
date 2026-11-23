@@ -6,10 +6,10 @@ const admin = require('firebase-admin')
 const { getId } = require('../Firestore/generalFirestoreCloud')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { Timestamp } = require('firebase-admin/firestore')
-const { getEmailIdentity, matchesEmailAccount, matchesEmailThread } = require('../Email/emailThreadIdentity')
+const { getEmailIdentity, matchesEmailThread } = require('../Email/emailThreadIdentity')
 const { canAccessObject } = require('./privacyAccess')
 const { buildEmailTaskUpdate } = require('../Email/emailTaskContentUpdate')
-const { getBundleThreadPointerRef, resolveEmailThreadTask } = require('../Email/emailThreadTaskStore')
+const { resolveEmailThreadTask } = require('../Email/emailThreadTaskStore')
 const { MCP_CHANNEL, formatActorDisplayName, getActorChannelFields, isMcpActor } = require('./mcpActor')
 
 const COMMENT_MAX_LENGTH = 5000
@@ -47,9 +47,6 @@ class TaskCommentService {
         gmailData = null,
         linkEmail = false,
         emailContinuation = null,
-        // AT-3135: the email joins a collection to-do (Email/emailTaskBundle.js):
-        // { id, via: 'bundle' | 'thread', projectIds, plan: { actionable, itemText, state } }.
-        emailBundle = null,
         // A user's message that asks the thread's assistant to answer (MCP ask_assistant): the server
         // runs the assistant for it (Assistant/assistantMissedRunCatchUp.js).
         assistantRunRequest = null,
@@ -58,10 +55,7 @@ class TaskCommentService {
         createdAt = null,
     }) {
         if (!projectId || !taskId) throw new Error('Project ID and task ID are required to add a comment')
-        if ((emailContinuation || emailBundle) && !gmailData)
-            throw new Error('Email continuation requires email metadata')
-        if (emailContinuation && emailBundle)
-            throw new Error('Choose either a thread continuation or a collection to-do')
+        if (emailContinuation && !gmailData) throw new Error('Email continuation requires email metadata')
 
         const commentText = normalizeTaskComment(comment)
         const actorId = actor?.uid || actor?.id || actor?.creatorId
@@ -98,47 +92,7 @@ class TaskCommentService {
             }
 
             const taskData = taskSnapshot.data() || task || {}
-            if (gmailData && emailBundle) {
-                // A collection to-do takes new threads, so the check is the account and the
-                // collection, and the selection is re-read here like a thread continuation.
-                const identity = getEmailIdentity(gmailData.accountUserId, gmailData)
-                if (
-                    !identity ||
-                    !matchesEmailAccount(taskData.gmailData, identity) ||
-                    !emailBundle.id ||
-                    taskData.gmailData?.bundle?.id !== emailBundle.id
-                ) {
-                    throw new Error('Email comment does not match the task account and collection')
-                }
-                if (!canAccessObject(taskData, identity.ownerId)) throw new Error('Email task is no longer readable')
-                const { findLiveEmailBundleTask } = require('../Email/emailTaskBundle')
-                const selected =
-                    emailBundle.via === 'thread'
-                        ? await resolveEmailThreadTask({
-                              database: this.database,
-                              identity,
-                              projectIds: emailBundle.projectIds,
-                              transaction,
-                          })
-                        : await findLiveEmailBundleTask({
-                              database: this.database,
-                              identity,
-                              bundleId: emailBundle.id,
-                              projectIds: emailBundle.projectIds,
-                              transaction,
-                          })
-                if (selected?.taskId !== taskId || selected?.projectId !== projectId) {
-                    throw new Error('Email collection selection changed; retry processing')
-                }
-                if (
-                    [taskData.gmailData.messageId, ...(taskData.gmailData.messageIds || [])].includes(
-                        identity.messageId
-                    )
-                ) {
-                    existing = true
-                    return
-                }
-            } else if (gmailData) {
+            if (gmailData) {
                 const identity = getEmailIdentity(gmailData.accountUserId, gmailData)
                 if (!identity || !matchesEmailThread(taskData.gmailData, identity)) {
                     throw new Error('Email comment does not match the task account and thread')
@@ -165,12 +119,9 @@ class TaskCommentService {
                     }
                 }
             }
-            const { buildEmailBundleTaskUpdate } = require('../Email/emailTaskBundle')
-            const contentUpdate = emailBundle
-                ? buildEmailBundleTaskUpdate(taskData, emailBundle.plan || {}, gmailData, actorId, now)
-                : emailContinuation
-                  ? buildEmailTaskUpdate(taskData, emailContinuation.plan, gmailData, actorId, now)
-                  : {}
+            const contentUpdate = emailContinuation
+                ? buildEmailTaskUpdate(taskData, emailContinuation.plan, gmailData, actorId, now)
+                : {}
             updatedTaskName = contentUpdate.name || taskData.name || null
             const chatData = chatSnapshot.exists ? chatSnapshot.data() || {} : {}
             const followersData = followersSnapshot.exists ? followersSnapshot.data() || {} : {}
@@ -205,17 +156,6 @@ class TaskCommentService {
             }
 
             transaction.set(commentRef, commentData)
-            if (emailBundle) {
-                const identity = getEmailIdentity(gmailData.accountUserId, gmailData)
-                transaction.set(
-                    this.database.doc(`users/${identity.ownerId}/emailThreadTasks/message_${identity.messageKey}`),
-                    { projectId, taskId }
-                )
-                // Later mail of this thread finds the collection to-do (emailThreadTaskStore.js).
-                if (identity.threadId && identity.threadId !== taskData.gmailData?.threadId) {
-                    transaction.set(getBundleThreadPointerRef(this.database, identity), { projectId, taskId })
-                }
-            }
             if (emailContinuation) {
                 const identity = getEmailIdentity(gmailData.accountUserId, gmailData)
                 transaction.set(
@@ -325,7 +265,7 @@ class TaskCommentService {
             notifiedFollowers: silent ? 0 : notifiedCount || 0,
             notificationError,
             ...(suppliedCommentId ? { existing } : {}),
-            ...(emailContinuation || emailBundle ? { taskName: updatedTaskName } : {}),
+            ...(emailContinuation ? { taskName: updatedTaskName } : {}),
         }
     }
 

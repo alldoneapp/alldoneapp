@@ -34,9 +34,8 @@ const NON_USER_REVIEWER_IDS = [OPEN_STEP, DONE_STEP, 'Open', 'Done']
  *
  * Deliberately ignores `currentReviewerId`: resolveVmInteractionWorkflowHold (vmInteraction.js)
  * parks that field on a different user while a VM agent asks the user a question, WITHOUT moving
- * the step (AT-2188). It is not a step change, and other step-based callers must not read it as one.
- * The focus handoff looks at the reviewer separately (hasFocusHolderChanged, AT-3124), where the
- * plate rule makes the asked user keep the task and only the user it leaves lose it.
+ * the step (AT-2188). Treating that as a step change would drop the focus task every time an agent
+ * asked something.
  */
 const resolveWorkflowStepId = task => {
     if (!task) return null
@@ -46,34 +45,6 @@ const resolveWorkflowStepId = task => {
 }
 
 const hasWorkflowStepChanged = (oldTask, newTask) => resolveWorkflowStepId(oldTask) !== resolveWorkflowStepId(newTask)
-
-// Legacy documents store "no reviewer" as missing, null or '' interchangeably; none of those is a
-// change of hands.
-const normalizeHolderId = value => (value === undefined || value === null || value === '' ? null : value)
-
-/**
- * AT-3124 — whether the write can have moved the task off somebody's plate.
- *
- * A workflow step change is the obvious case, but not the only one. Open task lists are keyed by
- * `currentReviewerId`, and that field also changes WITHOUT a step change:
- *  - a VM reviewer hold (vmWorkflowHold.js) hands the task to the user an agent asked a question
- *    (or whose run failed), and gives it back to the assistant when the question is answered or a
- *    retry starts;
- *  - reassigning the task (setTaskAssignee) gives it to a new owner and reviewer.
- *
- * Observed in production on 2026-11-21: a VM agent's question put AT-3123 on Karsten's plate, the
- * focus picker then (correctly) chose it as his next focus task, and when he answered, the hold gave
- * the task back to the assistant. The step had not changed, so nobody released the focus, and he
- * was left focusing a task his list no longer showed.
- *
- * Gating on these fields (rather than on everything) is what keeps renames, descriptions, comment
- * stamps and other unrelated writes from touching anybody's focus. Who actually loses focus is
- * still decided by the plate rule in getWorkflowFocusHandoffCandidates.
- */
-const hasFocusHolderChanged = (oldTask = {}, newTask = {}) =>
-    hasWorkflowStepChanged(oldTask, newTask) ||
-    normalizeHolderId(oldTask.currentReviewerId) !== normalizeHolderId(newTask.currentReviewerId) ||
-    normalizeHolderId(oldTask.userId) !== normalizeHolderId(newTask.userId)
 
 const isRealUserId = candidate =>
     typeof candidate === 'string' &&
@@ -95,20 +66,15 @@ const isRealUserId = candidate =>
  * drift apart: whoever keeps the task focused here is precisely whoever the picker would have been
  * allowed to hand it to anyway.
  *
- * Returns [] when neither the step, the current reviewer nor the owner changed, which is what keeps
- * unrelated task updates (renames, descriptions, estimations, assistant comments) from touching
+ * Returns [] when the step did not actually change, which is what keeps unrelated task updates
+ * (renames, descriptions, estimations, assistant comments, VM interaction holds) from touching
  * anybody's focus.
- *
- * AT-3124: a reviewer-only change (a VM hold starting or ending) or an owner change counts too. The
- * user a VM hold hands the task to keeps it (it is on their plate now); the user it is handed back
- * away from loses it. Assistants have no user document with a focus task, so the assistant side of
- * a hold is a no-op in releaseFocusTaskForUser.
  */
 const getWorkflowFocusHandoffCandidates = (oldTask = {}, newTask = {}) => {
     // Subtasks mirror their parent's stepHistory (updateSubtasksState), so acting on them would
     // repeat the parent's handoff once per subtask.
     if (newTask.parentId) return []
-    if (!hasFocusHolderChanged(oldTask, newTask)) return []
+    if (!hasWorkflowStepChanged(oldTask, newTask)) return []
 
     const previousUserIds = Array.isArray(oldTask.userIds) ? oldTask.userIds : []
     // Also consider the destination's participants: a user can have focused the task while only
@@ -173,7 +139,7 @@ const releaseFocusTaskForUser = async (userId, projectId, taskId, task, deps) =>
 
     if (!replacement) await focusTaskService.clearFocusTask(userId, taskId)
 
-    console.log('[workflowFocusHandoff] Released focus task after it left the user (step, reviewer or owner)', {
+    console.log('[workflowFocusHandoff] Released focus task after workflow step change', {
         userId,
         projectId,
         taskId,
@@ -212,19 +178,6 @@ const releaseFocusTaskOnWorkflowStepChange = async (projectId, taskId, oldTask, 
                 taskId,
                 error: error.message,
             })
-            // AT-3124: when picking a replacement fails, an empty focus is still better than a
-            // focus task the user can no longer see. clearFocusTask only clears while the focus is
-            // still this task, so a user who already moved on is left alone.
-            try {
-                const result = await focusTaskService.clearFocusTask(userId, taskId)
-                if (result && result.cleared) released.push(userId)
-            } catch (clearError) {
-                console.error('[workflowFocusHandoff] Fallback clear failed', {
-                    userId,
-                    taskId,
-                    error: clearError.message,
-                })
-            }
         }
     }
     return released
@@ -233,7 +186,6 @@ const releaseFocusTaskOnWorkflowStepChange = async (projectId, taskId, oldTask, 
 module.exports = {
     resolveWorkflowStepId,
     hasWorkflowStepChanged,
-    hasFocusHolderChanged,
     getWorkflowFocusHandoffCandidates,
     releaseFocusTaskOnWorkflowStepChange,
 }

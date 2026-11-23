@@ -200,6 +200,7 @@ import {
 } from '../../components/Workstreams/WorkstreamHelper'
 import { COLORS_THEME_MODERN } from '../../Themes/Themes'
 import { SIDEBAR_COLLAPSED } from '../../components/SidebarMenu/Collapsible/CollapsibleHelper'
+import { SIDEBAR_NAVIGATION_SIMPLE } from '../SidebarNavigationModes'
 import GoogleApi from '../../apis/google/GoogleApi'
 import { setServerTokenInGoogleApi, hasServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
 import { updateQuotaTraffic } from './Premium/premiumFirestore'
@@ -4029,9 +4030,7 @@ export function mapUserData(userId, user) {
             user.autoArchiveProjectsAfterDays != null
                 ? user.autoArchiveProjectsAfterDays
                 : AUTO_ARCHIVE_PROJECTS_AFTER_DAYS_DEFAULT,
-        // Kept unset (null) when the user never picked a mode, so it follows
-        // DEFAULT_SIDEBAR_NAVIGATION_MODE through the SidebarNavigationModes helpers (AT-3122).
-        sidebarNavigationMode: user.sidebarNavigationMode || null,
+        sidebarNavigationMode: user.sidebarNavigationMode || SIDEBAR_NAVIGATION_SIMPLE,
         sidebarExpanded: user.sidebarExpanded ? user.sidebarExpanded : SIDEBAR_COLLAPSED,
         gold: user.gold ? user.gold : 0,
         dailyGold: user.dailyGold || user.dailyGold === 0 ? user.dailyGold : DAILY_GOLD_LIMIT,

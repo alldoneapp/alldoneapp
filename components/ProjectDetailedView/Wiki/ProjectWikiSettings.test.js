@@ -278,7 +278,7 @@ describe('ProjectWikiSettings', () => {
         const month = new Date(Date.now()).toISOString().slice(0, 7)
         const component = mount({ enabled: true, ownerUserId: 'me', monthlyGold: { month, spent: 42 } })
 
-        expect(textOf(component.toJSON())).toContain('42 of 3000 Gold spent this month')
+        expect(textOf(component.toJSON())).toContain('42 of 500 Gold spent this month')
 
         act(() =>
             mockWatchers.knowledgeBase({
@@ -287,7 +287,7 @@ describe('ProjectWikiSettings', () => {
                 monthlyGold: { month: '2000-01', spent: 42 },
             })
         )
-        expect(textOf(component.toJSON())).toContain('0 of 3000 Gold spent this month')
+        expect(textOf(component.toJSON())).toContain('0 of 500 Gold spent this month')
     })
 
     it('warns that the monthly limit is reached until a raised limit lets the wiki run again', () => {
@@ -465,78 +465,5 @@ describe('automatic project description update (AT-3095)', () => {
 
         const someoneElses = mount({ enabled: true, ownerUserId: 'owner' })
         expect(descriptionSwitch(someoneElses).props.disabled).toBe(true)
-    })
-})
-
-describe('daily news screening (AT-3126)', () => {
-    const newsBlock = component => component.root.findByProps({ testID: 'news-screening-settings' })
-    const newsSwitch = component => newsBlock(component).findByProps({ testID: 'wiki-switch' })
-
-    it('is on by default and shows the derived topics, languages and what goes to the search provider', () => {
-        const component = mount({
-            enabled: true,
-            ownerUserId: 'me',
-            newsScreeningState: {
-                derivedTopics: [
-                    { label: 'KI-Agenten', english: 'AI agents' },
-                    { label: 'MCP', english: 'MCP' },
-                ],
-                languages: ['de', 'en'],
-                lastRunAt: Date.UTC(2026, 10, 23, 2),
-            },
-        })
-        expect(newsSwitch(component).props.accessibilityState).toEqual({ checked: true })
-        const text = textOf(newsBlock(component).children)
-        expect(text).toContain('Searches for (derived from the project description')
-        expect(text).toContain('KI-Agenten')
-        expect(text).toContain('Languages: German, English')
-        expect(text).toContain('never the project description')
-        expect(text).toContain('20 Gold per search')
-        expect(text).toContain('Last checked: 23.11.2026')
-    })
-
-    it('is switched by whoever pays for the wiki, the same rule as the wiki itself', () => {
-        const someoneElses = mount({ enabled: true, ownerUserId: 'owner' })
-        expect(newsSwitch(someoneElses).props.disabled).toBe(true)
-        expect(findButton(someoneElses, 'Edit search topics')).toBeUndefined()
-
-        const mine = mount({ enabled: true, ownerUserId: 'me' })
-        act(() => newsSwitch(mine).props.onPress())
-        expect(saveKnowledgeBaseSettings).toHaveBeenCalledWith('p1', { newsScreeningEnabled: false })
-    })
-
-    it('needs the wiki', () => {
-        const off = mount({ enabled: false })
-        expect(newsSwitch(off).props.disabled).toBe(true)
-        expect(off.root.findAllByProps({ testID: 'news-screening-needs-wiki' }).length).toBeGreaterThan(0)
-    })
-
-    it('saves topics a member types, one per line, and goes back to automatic topics', async () => {
-        const component = mount({ enabled: true, ownerUserId: 'me' })
-        act(() => findButton(component, 'Edit search topics').props.onPress())
-        const input = component.root.findByProps({ testID: 'news-screening-topics-input' })
-        act(() => input.props.onChangeText('OPC UA\n\n Retrofit '))
-        await act(async () => findButton(component, 'Save topics').props.onPress())
-        expect(saveKnowledgeBaseSettings).toHaveBeenCalledWith('p1', { newsScreeningTopics: ['OPC UA', 'Retrofit'] })
-
-        const own = mount({ enabled: true, ownerUserId: 'me', newsScreening: { topics: ['OPC UA'] } })
-        expect(textOf(newsBlock(own).children)).toContain('Searches for (your topics)')
-        await act(async () => findButton(own, 'Use automatic topics').props.onPress())
-        expect(saveKnowledgeBaseSettings).toHaveBeenCalledWith('p1', { newsScreeningTopics: null })
-    })
-
-    it('says when it was paused and when assistants stop using the page, and asks why (optionally)', async () => {
-        const pausedAt = Date.UTC(2026, 10, 20, 9)
-        const component = mount({
-            enabled: true,
-            ownerUserId: 'me',
-            newsScreening: { enabled: false, disabledAt: pausedAt },
-            newsScreeningState: { lastRunAt: pausedAt - 1000 },
-        })
-        const paused = textOf(component.root.findByProps({ testID: 'news-screening-paused' }).children)
-        expect(paused).toContain('Paused since 20.11.2026')
-        expect(paused).toContain('assistants stop using it on 20.12.2026')
-        await act(async () => findButton(component, 'Too expensive').props.onPress())
-        expect(saveKnowledgeBaseSettings).toHaveBeenCalledWith('p1', { newsScreeningDisabledReason: 'too_expensive' })
     })
 })

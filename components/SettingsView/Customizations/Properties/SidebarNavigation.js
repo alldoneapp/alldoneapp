@@ -7,7 +7,7 @@ import Icon from '../../../Icon'
 import Button from '../../../UIControls/Button'
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
-import { getSidebarNavigationMode, sidebarNavigationModeOptions } from '../../../../utils/SidebarNavigationModes'
+import { sidebarNavigationModeOptions } from '../../../../utils/SidebarNavigationModes'
 import { setUserSidebarNavigationMode } from '../../../../utils/backends/Users/usersFirestore'
 import { themed } from '../../../../Themes/colorMode'
 
@@ -15,8 +15,9 @@ export default function SidebarNavigation({ userId, sidebarNavigationMode }) {
     const mobile = useSelector(state => state.smallScreen)
     const [open, setOpen] = useState(false)
 
-    const effectiveMode = getSidebarNavigationMode(sidebarNavigationMode)
-    const currentOption = sidebarNavigationModeOptions.find(option => option.value === effectiveMode)
+    const currentOption =
+        sidebarNavigationModeOptions.find(option => option.value === sidebarNavigationMode) ||
+        sidebarNavigationModeOptions[0]
 
     return (
         <View style={localStyles.settingRow}>

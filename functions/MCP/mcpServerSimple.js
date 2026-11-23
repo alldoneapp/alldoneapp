@@ -240,15 +240,13 @@ function adaptToolSchemaForMcp(schema) {
         return { name, description: `${description}${MCP_DESCRIPTION_NOTES[name]}`, inputSchema: parameters }
     }
     if (name === 'create_task' && parameters.properties?.executionMode) {
-        // emailBundle only means something in the Gmail labeling run (AT-3135); MCP never offers it.
-        const { emailBundle: _emailBundle, ...createTaskProperties } = parameters.properties
         return {
             name,
             description,
             inputSchema: {
                 ...parameters,
                 properties: {
-                    ...createTaskProperties,
+                    ...parameters.properties,
                     executionMode: {
                         ...parameters.properties.executionMode,
                         description: MCP_CREATE_TASK_EXECUTION_MODE_DESCRIPTION,

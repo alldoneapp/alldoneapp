@@ -23,7 +23,6 @@ const {
     isKnowledgePageVisible,
     KNOWLEDGE_BASE_MAX_PAGES,
 } = require('./knowledgeBaseModel')
-const { isManagedNewsSlug, isNewsPageHiddenFromAssistants } = require('./knowledgeNewsModel')
 
 const WIKI_SEARCH_COLLECTION = 'dev_wiki'
 const MAX_QUERY_CHARS = 200
@@ -189,21 +188,13 @@ function toIso(value) {
     return Number.isFinite(millis) && millis > 0 ? new Date(millis).toISOString() : null
 }
 
-// A news page whose screening has been off for 30 days is not offered to assistants any more
-// (AT-3126); while it is, a hit on it says that it is external news.
-async function loadVisiblePages(db, projectId, now = Date.now()) {
-    const [snapshot, knowledgeBase] = await Promise.all([
-        db
-            .collection(getKnowledgePagesPath(projectId))
-            .select('title', 'summary', 'body', 'archived', 'needsRebuild', 'updatedAt', 'revision')
-            .limit(KNOWLEDGE_BASE_MAX_PAGES * 2)
-            .get(),
-        db.doc(getKnowledgeBasePath(projectId)).get(),
-    ])
-    const hideNews = isNewsPageHiddenFromAssistants(knowledgeBase.exists ? knowledgeBase.data() || {} : {}, now)
-    return snapshot.docs
-        .map(doc => ({ ...(doc.data() || {}), slug: doc.id }))
-        .filter(page => isKnowledgePageVisible(page) && !(hideNews && isManagedNewsSlug(page.slug)))
+async function loadVisiblePages(db, projectId) {
+    const snapshot = await db
+        .collection(getKnowledgePagesPath(projectId))
+        .select('title', 'summary', 'body', 'archived', 'needsRebuild', 'updatedAt', 'revision')
+        .limit(KNOWLEDGE_BASE_MAX_PAGES * 2)
+        .get()
+    return snapshot.docs.map(doc => ({ ...(doc.data() || {}), slug: doc.id })).filter(isKnowledgePageVisible)
 }
 
 function searchPages(pages, query, projectId, projectName) {
@@ -219,7 +210,6 @@ function searchPages(pages, query, projectId, projectName) {
             revision: Number(page.revision) || 0,
             updatedAt: toIso(page.updatedAt),
             passages: findPassages(page, query),
-            ...(isManagedNewsSlug(page.slug) ? { external: true } : {}),
             score: match.score,
             matchedTerms: match.matchedTerms,
         }))

@@ -1,30 +1,5 @@
 'use strict'
 
-// Same shape as a task created as a reply task (buildReplyTaskMessageData in
-// assistantHelper.js), built from the email that asks for the answer. Only for the mailbox
-// owner's own task: Messages is the owner's list of answers they owe, and a task that was handed
-// to someone else stays where it is.
-function buildUpgradedReplyMessageData(task, plan, gmailData) {
-    const taskGmailData = task.gmailData || {}
-    if (!gmailData.accountUserId || task.userId !== gmailData.accountUserId) return null
-    const conversationKey = taskGmailData.threadId || gmailData.threadId || taskGmailData.messageId || ''
-    if (!conversationKey) return null
-    const sender = plan.replySender || {}
-    return {
-        provider: (gmailData.provider || taskGmailData.provider) === 'microsoft' ? 'microsoft' : 'gmail',
-        kind: 'email',
-        connectionKey: taskGmailData.gmailEmail || gmailData.gmailEmail || '',
-        conversationKey,
-        senderName: String(sender.name || '').slice(0, 120),
-        senderEmail: String(sender.email || '')
-            .trim()
-            .toLowerCase(),
-        lastMessageAt: gmailData.receivedAt || 0,
-        needsReply: true,
-        webUrl: gmailData.webUrl || taskGmailData.webUrl || '',
-    }
-}
-
 // Only fields proven unchanged since email automation last wrote them may be
 // replaced. Legacy/user-edited tasks receive additive actionable context instead.
 function buildEmailTaskUpdate(task, plan, gmailData, actorId, now) {
@@ -81,13 +56,6 @@ function buildEmailTaskUpdate(task, plan, gmailData, actorId, now) {
             lastMessageAt: Math.max(task.messageData.lastMessageAt || 0, gmailData.receivedAt || 0),
             ...(plan.needsReply === true ? { needsReply: true } : {}),
         }
-    } else if (newer && plan.needsReply === true) {
-        // AT-3131: an ordinary email task whose thread now asks the owner for an answer becomes a
-        // reply task, so it moves into Messages. Only messageData is added: the task keeps the
-        // visibility it already has (isPrivate / isPublicFor stay untouched), so a task the
-        // project can see does not vanish for the other members.
-        const messageData = buildUpgradedReplyMessageData(task, plan, gmailData)
-        if (messageData) update.messageData = messageData
     }
     return {
         ...update,

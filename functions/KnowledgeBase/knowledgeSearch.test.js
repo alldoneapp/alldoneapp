@@ -279,31 +279,3 @@ describe('the global search index', () => {
         expect(records.map(record => record.slug).sort()).toEqual(['onboarding', 'pricing'])
     })
 })
-
-describe('the external news page in wiki search (AT-3126)', () => {
-    const newsPage = {
-        title: 'Was ist los? – Externes Umfeld',
-        summary: 'Externe Entwicklungen.',
-        body: 'Ein Anbieter senkt die Preise für Credits.',
-        archived: false,
-        needsRebuild: false,
-        revision: 1,
-    }
-
-    it('marks a hit on it as external', async () => {
-        const db = createDb({ [pagePath('external-news')]: newsPage })
-        const result = await searchKnowledgeBase({ db, userId: 'member', projectId: PROJECT_ID, query: 'credits' })
-        const hit = result.results.find(page => page.slug === 'external-news')
-        expect(hit).toMatchObject({ external: true })
-        expect(result.results.find(page => page.slug === 'pricing')).not.toHaveProperty('external')
-    })
-
-    it('no longer finds it 30 days after the screening was switched off', async () => {
-        const db = createDb({
-            [`knowledgeBases/${PROJECT_ID}`]: { enabled: true, newsScreening: { enabled: false, disabledAt: 1 } },
-            [pagePath('external-news')]: newsPage,
-        })
-        const result = await searchKnowledgeBase({ db, userId: 'member', projectId: PROJECT_ID, query: 'credits' })
-        expect(result.results.map(page => page.slug)).not.toContain('external-news')
-    })
-})

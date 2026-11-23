@@ -34,8 +34,6 @@ function createDb(extra = {}, knowledgeBase = {}) {
             lint: { lastLlmLintAt: NOW },
             // Same for the automatic project description update (AT-3095); its own block sets it.
             descriptionUpdateState: { lastRunAt: NOW },
-            // Same for the daily news screening (AT-3126); its own block sets it.
-            newsScreeningState: { lastRunAt: NOW },
             ...knowledgeBase,
         },
         ...extra,
@@ -1350,19 +1348,18 @@ describe('the weekly health check', () => {
         expect(knowledgeBase.lastSuccessfulRunAt).toBe(NOW)
     })
 
-    // Until 2026-11-23 the pass left the last fifth of the cap to the ingest; Karsten decided that
-    // every step may use the whole cap (AT-3126).
-    it('may spend up to the whole monthly cap, and stops the run there', async () => {
+    it('stops at its share of the monthly cap and never spends the reserve', async () => {
         const pages = { preise: lintPage('preise'), team: lintPage('team') }
-        const nearCap = lintDb(pages, { monthlyGoldCap: 100, monthlyGold: { month: '2026-10', spent: 80 } })
+        const reserved = lintDb(pages, { monthlyGoldCap: 100, monthlyGold: { month: '2026-10', spent: 80 } })
         const { runConversation } = scriptedModel()
 
-        const result = await run(nearCap, { runConversation })
+        const result = await run(reserved, { runConversation })
 
-        expect(runConversation).toHaveBeenCalledTimes(1)
-        expect(result).toMatchObject({ status: 'completed', stopReason: null, lintStop: null })
+        expect(runConversation).not.toHaveBeenCalled()
+        expect(result).toMatchObject({ status: 'completed', lintStop: 'budget', stopReason: null })
+        expect(reserved.read(KB_PATH).lint).toEqual({})
 
-        // A pass that reaches the cap mid-way stops the run at the cap like any other step.
+        // A pass that crosses its share mid-way ends there; the run itself is not stopped.
         const crossing = lintDb(
             Object.fromEntries(
                 Array.from({ length: 6 }, (_, index) => [
@@ -1370,7 +1367,7 @@ describe('the weekly health check', () => {
                     lintPage(`p${index}`, { body: 'x '.repeat(9000) }),
                 ])
             ),
-            { monthlyGoldCap: 100, monthlyGold: { month: '2026-10', spent: 90 } }
+            { monthlyGoldCap: 100, monthlyGold: { month: '2026-10', spent: 70 } }
         )
         const scripted = scriptedModel()
         const crossed = await run(crossing, {
@@ -1378,8 +1375,8 @@ describe('the weekly health check', () => {
             measureRound: () => ({ tokens: 1, gold: 15 }),
         })
         expect(scripted.calls).toHaveLength(1)
-        expect(crossed).toMatchObject({ status: 'stopped', stopReason: 'monthly_cap' })
-        expect(crossing.read(KB_PATH).monthlyGold.spent).toBe(105)
+        expect(crossed).toMatchObject({ status: 'completed', stopReason: null, lintStop: 'budget' })
+        expect(crossing.read(KB_PATH).monthlyGold.spent).toBe(85)
     })
 
     it('changes at most ten pages in one pass', async () => {
@@ -1721,17 +1718,14 @@ describe('automatic project description update (AT-3095)', () => {
         }
     })
 
-    // No reserve share any more (AT-3126): 450 of 500 still leaves room for the update.
-    it('may spend up to the whole monthly cap', async () => {
+    it('waits while the month is past the share of the cap the ingest keeps for itself', async () => {
         const db = descriptionDb({ knowledgeBase: { monthlyGold: { month: '2026-10', spent: 450 } } })
-        const { runConversation } = scriptedModel(async tools => {
-            await tools.keep_project_description({ reason: 'Nichts Neues' })
-        })
+        const { runConversation } = scriptedModel()
 
         const result = await run(db, { runConversation, writeDescription: writer() })
 
-        expect(runConversation).toHaveBeenCalledTimes(1)
-        expect(result.descriptionUpdate).toMatchObject({ result: 'unchanged' })
+        expect(runConversation).not.toHaveBeenCalled()
+        expect(result.descriptionUpdate).toEqual({ result: 'skipped', reason: 'budget' })
     })
 
     it('refuses citations, a gutted description and an overlong one, then accepts the model keeping it', async () => {
@@ -1800,200 +1794,5 @@ describe('automatic project description update (AT-3095)', () => {
 
         expect(result.descriptionUpdate).toEqual({ result: 'no_decision' })
         expect(db.read(KB_PATH).descriptionUpdateState).toEqual({})
-    })
-})
-
-describe('daily news screening in the wiki run (AT-3126)', () => {
-    const { runNewsScreening } = require('./knowledgeNewsScreening')
-    const DESCRIPTION =
-        'Alldone Product entwickelt alldone.app als AI-Execution-OS mit AI Chief of Staff, API/MCP und Integrationen sowie transparenten Credits.'
-    const newsPage = {
-        title: 'Was ist los? – Externes Umfeld',
-        summary: 'Externe Entwicklungen.',
-        body: 'Wettbewerber X startet einen AI Chief of Staff.',
-        revision: 1,
-        archived: false,
-        needsRebuild: false,
-        updatedAt: NOW - DAY,
-    }
-    const newsDb = (knowledgeBase = {}, extra = {}) =>
-        createDb(
-            {
-                [`projects/${PROJECT_ID}`]: { name: 'Alldone Product', userIds: ['owner'], description: DESCRIPTION },
-                ['users/owner']: {
-                    gold: 1000,
-                    timezone: 2,
-                    language: 'de',
-                    displayName: 'Karsten',
-                    lastLogin: NOW - DAY,
-                },
-                ...extra,
-            },
-            { newsScreeningState: null, ...knowledgeBase }
-        )
-    const screenWith = search => args => runNewsScreening({ ...args, search, searchConfigured: () => true })
-
-    it('screens once the wiki has caught up and bills searches and model into the one wiki cap', async () => {
-        const db = newsDb({ newsScreening: { topics: ['Model Context Protocol'] } })
-        const charge = jest.fn(async () => ({ success: true }))
-        const search = jest.fn(async () => [
-            {
-                title: 'MCP authorization extension final',
-                url: 'https://spec.example/mcp-auth',
-                content: 'The working group published the final authorization extension.',
-                publishedDate: new Date(NOW - DAY).toISOString(),
-                score: 0.8,
-            },
-        ])
-        const { runConversation, calls } = scriptedModel(async tools => {
-            await tools.submit_news_assessment({
-                assessments: [
-                    {
-                        candidate: 1,
-                        relevance: 3,
-                        title: 'MCP-Autorisierung final',
-                        what: 'Final.',
-                        whyRelevant: 'Betrifft API/MCP.',
-                    },
-                ],
-            })
-        })
-
-        const result = await run(db, { runConversation, charge, screenNews: screenWith(search) })
-
-        expect(calls.map(call => call.toolNames)).toEqual([['submit_news_assessment']])
-        expect(charge).toHaveBeenCalledWith({
-            userId: 'owner',
-            gold: 20,
-            idempotencyKey: 'wiki_news_screening:run-1:news-search-0',
-            projectId: PROJECT_ID,
-            source: 'wiki_news_screening',
-        })
-        expect(charge).toHaveBeenCalledWith(
-            expect.objectContaining({
-                source: 'wiki_news_screening',
-                idempotencyKey: 'wiki_news_screening:run-1:news-assessment:0',
-            })
-        )
-        expect(result).toMatchObject({
-            status: 'completed',
-            goldSpent: 22,
-            newsScreening: { result: 'published', created: 1 },
-        })
-        const knowledgeBase = db.read(KB_PATH)
-        expect(knowledgeBase.monthlyGold).toEqual({ month: '2026-10', spent: 22 })
-        expect(knowledgeBase.newsScreeningState).toMatchObject({
-            lastRunAt: NOW,
-            lastResult: 'published',
-            languages: ['de', 'en'],
-        })
-        expect(db.read(pagePath('external-news')).body).toContain('MCP-Autorisierung final')
-        expect(db.read(`${KB_PATH}/runs/run-1`)).toMatchObject({ changes: [{ type: 'news', slug: 'external-news' }] })
-
-        // Once a day: the same evening's "Update now" does not search again.
-        search.mockClear()
-        db.update(KB_PATH, { nextRunAt: NOW, leaseOwner: null })
-        await run(db, {
-            runConversation: scriptedModel().runConversation,
-            charge,
-            screenNews: screenWith(search),
-            clock: () => NOW + 6 * 60 * 60 * 1000,
-        })
-        expect(search).not.toHaveBeenCalled()
-    })
-
-    it('stops at the shared monthly cap like every other step', async () => {
-        const db = newsDb({
-            newsScreening: { topics: ['MCP', 'KI-Agenten'] },
-            monthlyGoldCap: 100,
-            monthlyGold: { month: '2026-10', spent: 90 },
-        })
-        const search = jest.fn(async () => [])
-        const result = await run(db, {
-            runConversation: scriptedModel().runConversation,
-            screenNews: screenWith(search),
-        })
-        expect(search).toHaveBeenCalledTimes(1)
-        expect(result).toMatchObject({ status: 'stopped', stopReason: 'monthly_cap' })
-        expect(db.read(KB_PATH).monthlyGold.spent).toBe(110)
-    })
-
-    it('keeps a failing screening from failing the wiki run', async () => {
-        const db = newsDb()
-        const result = await run(db, {
-            runConversation: scriptedModel().runConversation,
-            screenNews: async () => {
-                throw new Error('provider exploded')
-            },
-        })
-        expect(result).toMatchObject({
-            status: 'completed',
-            newsScreening: { result: 'failed', error: 'provider exploded' },
-        })
-        expect(db.read(KB_PATH).newsScreeningState).toMatchObject({ lastResult: 'failed', lastRunAt: NOW })
-    })
-
-    it('does not screen while the wiki has a switched-off screening', async () => {
-        const db = newsDb({ newsScreening: { enabled: false, disabledAt: NOW - DAY } })
-        const screenNews = jest.fn()
-        await run(db, { runConversation: scriptedModel().runConversation, screenNews })
-        expect(screenNews).not.toHaveBeenCalled()
-    })
-
-    // E3: external news never changes internal pages or the project description.
-    it('keeps the news pages out of the ingest: not in the index, not readable, not writable', async () => {
-        const db = newsDb(
-            { newsScreeningState: { lastRunAt: NOW } },
-            {
-                [pagePath('external-news')]: newsPage,
-                [taskPath('t1')]: { name: 'Pricing überarbeiten', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
-            }
-        )
-        const { runConversation, calls } = scriptedModel(async tools => {
-            await tools.read_page({ slug: 'external-news' })
-            await tools.write_page({
-                slug: 'external-news',
-                title: 'x',
-                summary: 'x',
-                body: 'x',
-                sourceKeys: [],
-                reason: 'x',
-            })
-            await tools.archive_page({ slug: 'external-news', reason: 'x' })
-        })
-
-        await run(db, { runConversation })
-
-        expect(calls[0].system).not.toContain('external-news')
-        expect(calls[0].system).not.toContain('Was ist los?')
-        expect(calls[0].results.map(({ result }) => result.success)).toEqual([false, false, false])
-        expect(calls[0].results[0].result.error).toContain('managed by the news screening')
-        expect(db.read(pagePath('external-news'))).toEqual(newsPage)
-    })
-
-    it('keeps the news pages out of the automatic description update', async () => {
-        const db = newsDb(
-            { newsScreeningState: { lastRunAt: NOW }, descriptionUpdateState: {} },
-            {
-                [pagePath('external-news')]: newsPage,
-                [pagePath('team')]: {
-                    title: 'Team',
-                    summary: 'Wer macht was.',
-                    body: 'Karla verantwortet die Roadmap.',
-                    revision: 1,
-                    archived: false,
-                    needsRebuild: false,
-                    updatedAt: NOW - DAY,
-                },
-            }
-        )
-        const { runConversation, calls } = scriptedModel(async tools => {
-            await tools.keep_project_description({ reason: 'ok' })
-        })
-        await run(db, { runConversation, writeDescription: jest.fn() })
-        expect(calls).toHaveLength(1)
-        expect(calls[0].user).toContain('Karla verantwortet die Roadmap.')
-        expect(calls[0].user).not.toContain('Wettbewerber X')
-        expect(calls[0].user).toContain('Project wiki: 1 pages.')
     })
 })

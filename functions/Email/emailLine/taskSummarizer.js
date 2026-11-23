@@ -54,7 +54,6 @@ function parseContinuationPlan(content) {
     const plan = { summary: parsed.summary.trim().slice(0, 600) }
     if (typeof parsed.actionUpdate === 'string') plan.actionUpdate = parsed.actionUpdate.trim().slice(0, 1200)
     if (typeof parsed.name === 'string' && parsed.name.trim()) plan.name = parsed.name.trim().slice(0, 300)
-    if (typeof parsed.state === 'string' && parsed.state.trim()) plan.state = parsed.state.trim().slice(0, 200)
     if (['none', 'do_later', 'could_do', 'should_do', 'must_do'].includes(parsed.priority))
         plan.priority = parsed.priority
     if (typeof parsed.dueDate === 'string' && /T.*(?:Z|[+-]\d{2}:\d{2})$/.test(parsed.dueDate)) {
@@ -64,30 +63,12 @@ function parseContinuationPlan(content) {
     return plan
 }
 
-// AT-3135: a collection to-do ("Kleinanzeigen: …") also asks for the thread's current state, which
-// becomes the to-do title after the label and its new line. Its task context is the title and the
-// end of the description (the newest lines), not the whole collection.
-const BUNDLE_CONTINUATION_PROMPT_SUFFIX =
-    ' The task collects several email conversations of one source. Also return "state": the current state of ' +
-    'this conversation as a short to-do line (at most 12 words, in the language of the email, naming the other ' +
-    'person when known), e.g. "Layla möchte ein Foto der Wickelkommode". Do not repeat the collection label. ' +
-    'Leave "name" out.'
-const BUNDLE_TASK_DESCRIPTION_CONTEXT = 1500
-
 async function summarizeEmailContinuation(options) {
     const result = await summarize({ ...options, continuation: true })
     return { ...result, plan: parseContinuationPlan(result.name) }
 }
 
-async function summarize({
-    context,
-    language,
-    cacheScope = '',
-    modelKey = null,
-    continuation = false,
-    task,
-    bundle = false,
-} = {}) {
+async function summarize({ context, language, cacheScope = '', modelKey = null, continuation = false, task } = {}) {
     if (!modelKey) modelKey = resolveFeatureModelKey('emailTaskSummary', null)
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
@@ -98,9 +79,7 @@ async function summarize({
     })
     const upstreamModel = isOpenRouter ? model : getModel(modelKey)
 
-    const systemPrompt = continuation
-        ? `${CONTINUATION_SYSTEM_PROMPT}${bundle ? BUNDLE_CONTINUATION_PROMPT_SUFFIX : ''}`
-        : TASK_SUMMARY_SYSTEM_PROMPT
+    const systemPrompt = continuation ? CONTINUATION_SYSTEM_PROMPT : TASK_SUMMARY_SYSTEM_PROMPT
     const request = {
         model: upstreamModel,
         messages: [
@@ -111,9 +90,7 @@ async function summarize({
                     ? JSON.stringify({
                           task: {
                               name: task.name,
-                              description: bundle
-                                  ? String(task.description || '').slice(-BUNDLE_TASK_DESCRIPTION_CONTEXT)
-                                  : task.description,
+                              description: task.description,
                               dueDate: task.dueDate,
                               priority: task.priority,
                           },

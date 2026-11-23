@@ -1631,28 +1631,6 @@ exports.requestKnowledgeBaseRefresh = onCall(
     }
 )
 
-// "Not relevant" on one entry of the wiki's news page (AT-3126, KnowledgeBase/knowledgeNewsScreening.js).
-// Any project member may do it; the entry leaves the page and steers the next assessments.
-exports.dismissKnowledgeNewsItem = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-        const { dismissKnowledgeNewsItem } = require('./KnowledgeBase/knowledgeNewsScreening')
-        return await dismissKnowledgeNewsItem({
-            db: admin.firestore(),
-            userId: auth.uid,
-            projectId: data && data.projectId,
-            itemId: data && data.itemId,
-        })
-    }
-)
-
 // Assistant profile (AT-3072): the private profile every assistant of the user reads, kept up to
 // date every night. The tree is server-written only; these act on the caller's own profile. See
 // AssistantProfile/assistantProfileModel.js.

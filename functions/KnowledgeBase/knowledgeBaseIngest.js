@@ -5,13 +5,9 @@
 // through what changed since the last run, a prompt-sized chunk at a time, and let the model fold
 // it into the pages with three tools of its own (read_page, write_page, archive_page). Last comes
 // the health check (knowledgeLint.js): rule-based checks whenever pages changed, and at most once a
-// week a bounded model pass, within the wiki's monthly cap like every other step. The very
+// week a bounded model pass that may only spend below the reserve it leaves for the ingest. The very
 // last step is the automatic update of the project description (projectDescriptionRefresh.js), weekly
-// by default, daily on request. After it, once a day, the news screening (knowledgeNewsScreening.js,
-// AT-3126) searches public news and the server rewrites the two managed news pages. Those pages are
-// external content and stay out of everything above: the ingest, rebuilds, the current-state pass,
-// the health check and the description update neither see them in the index nor read or write them.
-// Runs unattended from the runKnowledgeBaseIngest Cloud Tasks worker.
+// by default, daily on request. Runs unattended from the runKnowledgeBaseIngest Cloud Tasks worker.
 //
 // Order matters: rebuilds come first so that the ingest prompts never see a page that still repeats
 // a withdrawn source, not even in the index.
@@ -107,7 +103,6 @@ const {
     isProjectDescriptionUpdateDue,
     writeProjectDescriptionDefault,
 } = require('./projectDescriptionRefresh')
-const { NEWS_GOLD_SOURCE, WEB_SEARCH_GOLD, isManagedNewsSlug, isNewsScreeningDue } = require('./knowledgeNewsModel')
 
 // The run shares the heartbeat's budget for the same reason: it is delivered through Cloud Tasks,
 // whose dispatch deadline tops out at 30 minutes.
@@ -345,16 +340,6 @@ function buildWikiToolSchemas() {
     }
 }
 
-// External news (AT-3126) never becomes part of the internal wiki: the managed news pages are refused
-// to every tool of the ingest, rebuild, rewrite and lint conversations.
-const MANAGED_NEWS_PAGE_REFUSAL = slug =>
-    `The page "${slug}" holds external news managed by the news screening. It is not a source for this wiki and cannot be read or changed here.`
-
-// The pages the internal wiki work sees: everything except the managed news pages.
-function withoutManagedNewsPages(pages) {
-    return new Map([...pages].filter(([slug]) => !isManagedNewsSlug(slug)))
-}
-
 /**
  * The three tools of one conversation. They never throw for a refused write: the model gets the
  * reason back and can fix its call, because one refused write must not end the whole run.
@@ -378,7 +363,6 @@ function createWikiTools({
     const readRevisions = new Map()
     const schemas = buildWikiToolSchemas()
     const outOfScope = slug => {
-        if (isManagedNewsSlug(slug)) return MANAGED_NEWS_PAGE_REFUSAL(slug)
         if ((mode === 'rebuild' || mode === 'rewrite') && slug !== targetSlug) {
             return `Only the page "${targetSlug}" may be changed in this run.`
         }
@@ -412,7 +396,6 @@ function createWikiTools({
             // the run rebuilding it, whose prompt promises that its previous text is withheld.
             execute: async ({ slug } = {}) => {
                 const key = normalizeKnowledgePageSlug(slug)
-                if (isManagedNewsSlug(key)) return { success: false, error: MANAGED_NEWS_PAGE_REFUSAL(key) }
                 const snapshot = key ? await db.doc(getKnowledgePagePath(projectId, key)).get() : null
                 const page = snapshot?.exists ? { ...(snapshot.data() || {}), slug: key } : null
                 if (page) pages.set(key, page)
@@ -562,7 +545,6 @@ async function runKnowledgeBaseIngest({
     notifyCapReached = args => require('./knowledgeBaseCapNotice').notifyKnowledgeBaseCapReached(args),
     enqueueRun = defaultEnqueueRun,
     writeDescription = writeProjectDescriptionDefault,
-    screenNews = args => require('./knowledgeNewsScreening').runNewsScreening(args),
 }) {
     if (!projectId) throw new Error('projectId is required')
     const startedAt = clock()
@@ -599,14 +581,11 @@ async function runKnowledgeBaseIngest({
         lintEdits: 0,
         lintStop: null,
         descriptionUpdate: null,
-        newsScreening: null,
         goldSpent: 0,
         truncated: [],
     }
     // Set only when the description step reached a decision (changed, unchanged, conflict).
     let descriptionUpdateState = null
-    // Set only when the news screening finished (published, quiet, skipped or failed).
-    let newsScreeningState = null
     let lintReport = null
     let lintState = null
     let cursor = knowledgeBase.cursor || {}
@@ -622,8 +601,8 @@ async function runKnowledgeBaseIngest({
         await runRef.set({ status: 'running', trigger, startedAt, model: modelKey, ownerUserId })
     }
 
-    // `spendLimit`: the lint pass and the description update stop at it (today the whole cap,
-    // knowledgeLint.getLintSpendLimit). `goldSource`: what the Gold ledger calls the spending.
+    // `spendLimit`: the lint pass and the description update only spend while the month is below
+    // their share of the cap. `goldSource`: what the Gold ledger calls the spending.
     const conversation = async ({
         systemPrompt,
         userPrompt,
@@ -724,9 +703,7 @@ async function runKnowledgeBaseIngest({
         const onChange = change => changes.push(change)
 
         // 1. Rebuild the pages that lost a source, from the sources they still have.
-        const pendingRebuilds = [...withoutManagedNewsPages(pages).values()].filter(
-            page => page.needsRebuild === true && page.archived !== true
-        )
+        const pendingRebuilds = [...pages.values()].filter(page => page.needsRebuild === true && page.archived !== true)
         for (const page of pendingRebuilds.slice(0, MAX_REBUILDS_PER_RUN)) {
             const remainingKeys = (Array.isArray(page.sourceKeys) ? page.sourceKeys : []).filter(
                 key => !(page.removedSourceKeys || []).includes(key)
@@ -742,7 +719,7 @@ async function runKnowledgeBaseIngest({
                         projectName,
                         projectDescription,
                         instructions: knowledgeBase.instructions,
-                        index: buildKnowledgeIndex(withoutManagedNewsPages(pages)),
+                        index: buildKnowledgeIndex(pages),
                         corrections,
                         task: `Rebuild the page [[${page.slug}]] from scratch, using ONLY the source cards in the next message. Its previous text is withheld on purpose: a source it relied on is no longer available, and nothing that source said may come back. Keep the slug "${page.slug}". If the remaining sources do not support a useful page, call archive_page.`,
                     }),
@@ -798,7 +775,7 @@ async function runKnowledgeBaseIngest({
                 const page = pages.get(slug)
                 // A page this run has already written (a rebuild) follows the current rules already.
                 const sources =
-                    isKnowledgePageVisible(page) && page.lastRunId !== leaseId && !isManagedNewsSlug(slug)
+                    isKnowledgePageVisible(page) && page.lastRunId !== leaseId
                         ? (
                               await loadSourcesByKeys({ db, projectId, keys: page.sourceKeys || [], ...sourceOptions })
                           ).sort((left, right) => left.updatedAt - right.updatedAt || (left.key < right.key ? -1 : 1))
@@ -812,7 +789,7 @@ async function runKnowledgeBaseIngest({
                             projectName,
                             projectDescription,
                             instructions: knowledgeBase.instructions,
-                            index: buildKnowledgeIndex(withoutManagedNewsPages(pages)),
+                            index: buildKnowledgeIndex(pages),
                             corrections,
                             task: `Bring the page [[${slug}]] up to the current state. It was written before the rules below and may still narrate history, keep superseded statements next to newer ones, or list options that a decision has since settled. Read it with read_page first, then replace it with write_page. The next message holds the source cards of everything it cites, oldest first; where they show a newer state than the page, the page follows them. Keep the slug "${slug}", its subject and every statement that is still true: the cards may be shortened, so a statement they do not contradict stays. Add nothing the cards and corrections do not support. If the page already describes only the current state, do not write it and answer that nothing needed to change; if nothing on it is still true, call archive_page.`,
                         }),
@@ -859,7 +836,7 @@ async function runKnowledgeBaseIngest({
                         projectName,
                         projectDescription,
                         instructions: knowledgeBase.instructions,
-                        index: buildKnowledgeIndex(withoutManagedNewsPages(pages)),
+                        index: buildKnowledgeIndex(pages),
                         corrections,
                         task: 'The next message holds source cards for what changed in the project (tasks, goals, notes, contacts, comment threads, artifacts) and for documents and knowledge members added to the wiki. Fold what is worth knowing into the wiki.',
                     }),
@@ -891,14 +868,10 @@ async function runKnowledgeBaseIngest({
 
         // 4. The health check (knowledgeLint.js). The rule-based report whenever pages changed in this
         //    run or there is none yet; the model pass only once the run has caught up, at most once a
-        //    week, within the monthly cap.
-        // The managed news pages are external content: neither checked nor edited by the health check.
-        const internalChanges = changes.filter(change => !isManagedNewsSlug(change.slug))
-        if (internalChanges.length || !knowledgeBase.lintReport) {
-            lintReport = buildKnowledgeLintReport(withoutManagedNewsPages(pages), { now: clock() })
-        }
+        //    week, and only below its share of the monthly cap.
+        if (changes.length || !knowledgeBase.lintReport) lintReport = buildKnowledgeLintReport(pages, { now: clock() })
         lintState = { ...(knowledgeBase.lint || {}) }
-        if (!moreWork && isLlmLintDue(lintState, withoutManagedNewsPages(pages), clock())) {
+        if (!moreWork && isLlmLintDue(lintState, pages, clock())) {
             const spendLimit = getLintSpendLimit(goldCap)
             if (monthlyGold.spent >= spendLimit) {
                 stats.lintStop = 'budget'
@@ -907,11 +880,11 @@ async function runKnowledgeBaseIngest({
                 // waits for next week rather than starting over on every continuation run.
                 lintState = { ...lintState, lastLlmLintAt: clock(), lastLlmLintRunId: leaseId }
                 await db.doc(getKnowledgeBasePath(projectId)).update({ lint: lintState })
-                const report = lintReport || buildKnowledgeLintReport(withoutManagedNewsPages(pages), { now: clock() })
+                const report = lintReport || buildKnowledgeLintReport(pages, { now: clock() })
                 const protectedSlugs = getProtectedSlugs(corrections, clock())
                 const lintEdits = { remaining: MAX_LINT_EDITS, made: 0 }
                 try {
-                    for (const [index, batch] of selectLintBatches(withoutManagedNewsPages(pages), report).entries()) {
+                    for (const [index, batch] of selectLintBatches(pages, report).entries()) {
                         if (lintEdits.remaining <= 0) break
                         const batchKeys = collectBatchSourceKeys(batch)
                         await conversation({
@@ -921,7 +894,7 @@ async function runKnowledgeBaseIngest({
                                 projectName,
                                 projectDescription,
                                 instructions: knowledgeBase.instructions,
-                                index: buildKnowledgeIndex(withoutManagedNewsPages(pages)),
+                                index: buildKnowledgeIndex(pages),
                                 corrections,
                                 task: buildLintTask({ now: clock(), report, protectedSlugs, batch }),
                             }),
@@ -948,20 +921,18 @@ async function runKnowledgeBaseIngest({
                 } finally {
                     stats.lintEdits = lintEdits.made
                 }
-                if (lintEdits.made)
-                    lintReport = buildKnowledgeLintReport(withoutManagedNewsPages(pages), { now: clock() })
+                if (lintEdits.made) lintReport = buildKnowledgeLintReport(pages, { now: clock() })
                 lintState = { ...lintState, lastLlmLintEdits: lintEdits.made }
             }
         }
 
         // 5. The automatic update of the project description (projectDescriptionRefresh.js): once
-        //    the wiki has caught up, at most once per interval, within the monthly cap like the
-        //    health check. The model either keeps the description or saves a revision of it.
+        //    the wiki has caught up, at most once per interval, below the same share of the cap as
+        //    the health check. The model either keeps the description or saves a revision of it.
         //    Daily skips a night whose inputs are the ones the last decision left (no_changes).
         if (!moreWork && isProjectDescriptionUpdateDue(knowledgeBase, clock())) {
             const skipReason = getProjectDescriptionUpdateSkipReason({ projectId, projectData, ownerData })
-            // External news never shapes the description (AT-3126, E3): only the internal pages count.
-            const material = buildDescriptionWikiMaterial(withoutManagedNewsPages(pages))
+            const material = buildDescriptionWikiMaterial(pages)
             const spendLimit = getLintSpendLimit(goldCap)
             const currentDescription = typeof projectData.description === 'string' ? projectData.description.trim() : ''
             const descriptionSystemPrompt = buildDescriptionSystemPrompt({
@@ -1051,63 +1022,6 @@ async function runKnowledgeBaseIngest({
                 }
             }
         }
-
-        // 6. The daily news screening (knowledgeNewsScreening.js, AT-3126): once the wiki has caught up,
-        //    once a day, billed to the payer under its own source and counted in the same monthly cap.
-        //    A failure of the screening is recorded and does not fail the wiki run; the run's stops
-        //    (cap, time, Gold) end it like any other step.
-        if (!moreWork && isNewsScreeningDue(knowledgeBase, clock())) {
-            const chargeSearch = async ({ label }) => {
-                // The run document carries the night's Gold (wikiDayCost.js); a skipped screening
-                // writes none, like a quiet ingest.
-                await ensureRunDoc()
-                const result = await charge({
-                    userId: ownerUserId,
-                    gold: WEB_SEARCH_GOLD,
-                    idempotencyKey: `${NEWS_GOLD_SOURCE}:${leaseId}:${label}`,
-                    projectId,
-                    source: NEWS_GOLD_SOURCE,
-                })
-                if (!result || result.success === false) throw new KnowledgeBaseRunStop('insufficient_gold')
-                if (!result.alreadyProcessed) {
-                    monthlyGold.spent += WEB_SEARCH_GOLD
-                    stats.goldSpent += WEB_SEARCH_GOLD
-                }
-                if (await monthlyCapReached()) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
-            }
-            try {
-                if (await monthlyCapReached()) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
-                const news = await screenNews({
-                    db,
-                    projectId,
-                    knowledgeBase,
-                    projectData,
-                    ownerData,
-                    runId: leaseId,
-                    clock,
-                    conversation,
-                    chargeSearch,
-                    fieldValue,
-                })
-                stats.newsScreening = news.stats
-                newsScreeningState = news.state
-                if (news.stats.pageChanged) changes.push({ type: 'news', slug: 'external-news' })
-            } catch (error) {
-                if (error instanceof KnowledgeBaseRunStop) throw error
-                console.error('[knowledge base] News screening failed', {
-                    projectId,
-                    runId: leaseId,
-                    error: error.message,
-                })
-                stats.newsScreening = { result: 'failed', error: String(error.message || error).slice(0, 300) }
-                newsScreeningState = {
-                    ...(knowledgeBase.newsScreeningState || {}),
-                    lastRunAt: clock(),
-                    lastRunId: leaseId,
-                    lastResult: 'failed',
-                }
-            }
-        }
     } catch (error) {
         if (error instanceof KnowledgeBaseRunStop) {
             stopReason = error.reason
@@ -1189,7 +1103,6 @@ async function runKnowledgeBaseIngest({
             ...(lintReport ? { lintReport } : {}),
             ...(lintState ? { lint: lintState } : {}),
             ...(descriptionUpdateState ? { descriptionUpdateState } : {}),
-            ...(newsScreeningState ? { newsScreeningState } : {}),
             // The first time a run worked through everything; what lets an archived project's wiki
             // pause after its one complete build.
             ...(status === 'completed' && !Number.isFinite(knowledgeBase.caughtUpAt) ? { caughtUpAt: finishedAt } : {}),

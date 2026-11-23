@@ -11,29 +11,27 @@ renders it in `components/WikiView/` (the `ROOT_WIKI` root tab, `/projects/{id}/
 `/projects/{id}/wiki/{slug}/changes/{revision}` for what one revision changed, as a diff);
 its settings are the project details tab `PROJECT_WIKI` (`/project/{id}/wiki-settings`).
 
-| Module                            | Role                                                                                     |
-| --------------------------------- | ---------------------------------------------------------------------------------------- |
-| `knowledgeBaseModel.js`           | Paths, limits, slugs, `[[slug]]` / `[[task:ID]]` tokens, settings validation             |
-| `knowledgeBaseSettings.js`        | `setKnowledgeBaseSettings`, `requestKnowledgeBaseRefresh` callables                      |
-| `collectKnowledgeSources.js`      | Delta of objects visible to the whole project, as source cards                           |
-| `knowledgeArtifactText.js`        | The text an artifact's current entry file contributes to its source card                 |
-| `knowledgeSourceInvalidation.js`  | Hides and empties pages citing a withdrawn object, redacts their revisions               |
-| `knowledgePageStore.js`           | The one place a page is written: citation, revision and concurrency checks               |
-| `knowledgeBaseIngest.js`          | One ingest run (rebuilds, current-state pass, delta), billed as `knowledge_base_ingest`  |
-| `knowledgeCurrentStateRewrite.js` | Requests the one-time pass that rewrites existing pages to the current state             |
-| `knowledgeBaseDispatcher.js`      | Enqueues due runs onto the `runKnowledgeBaseIngest` Cloud Tasks queue                    |
-| `knowledgeBaseSchedule.js`        | The payer's nightly slot, and whether the payer is active (30-day login window)          |
-| `knowledgeBaseDefaults.js`        | Switches the wiki on by default for active users' projects; resumes and hands over       |
-| `knowledgeBaseAssistant.js`       | Wiki index in assistant prompts; read, correct, undo and document tools                  |
-| `knowledgeBaseToolSchemas.js`     | Names and schemas of those tools (dependency-free, for `toolSchemas.js`)                 |
-| `knowledgeDocuments.js`           | Add a chat upload to the wiki (`documents/{id}`), or take it out again                   |
-| `knowledgeContributions.js`       | "Save to wiki": knowledge from a chat (`contributions/{id}`), drafts, confirm, remove    |
-| `knowledgeSearch.js`              | `search_knowledge` (fresh Firestore scan, passages) and the `dev_wiki` search index      |
-| `knowledgeLint.js`                | Health check: rule-based report every run, weekly bounded model pass                     |
-| `knowledgeWikiFeedModel.js`       | How a revision appears in Updates: ids, change kinds (dependency-free, shared with web)  |
-| `knowledgeWikiFeed.js`            | The revision trigger's body: one Updates line per revision, no page text in it           |
-| `knowledgeNewsModel.js`           | Daily news screening rules: switch, languages, pause, managed slugs (shared with web)    |
-| `knowledgeNewsScreening.js`       | News screening step: topics, searches, checks, assessment, managed pages, "not relevant" |
+| Module                            | Role                                                                                    |
+| --------------------------------- | --------------------------------------------------------------------------------------- |
+| `knowledgeBaseModel.js`           | Paths, limits, slugs, `[[slug]]` / `[[task:ID]]` tokens, settings validation            |
+| `knowledgeBaseSettings.js`        | `setKnowledgeBaseSettings`, `requestKnowledgeBaseRefresh` callables                     |
+| `collectKnowledgeSources.js`      | Delta of objects visible to the whole project, as source cards                          |
+| `knowledgeArtifactText.js`        | The text an artifact's current entry file contributes to its source card                |
+| `knowledgeSourceInvalidation.js`  | Hides and empties pages citing a withdrawn object, redacts their revisions              |
+| `knowledgePageStore.js`           | The one place a page is written: citation, revision and concurrency checks              |
+| `knowledgeBaseIngest.js`          | One ingest run (rebuilds, current-state pass, delta), billed as `knowledge_base_ingest` |
+| `knowledgeCurrentStateRewrite.js` | Requests the one-time pass that rewrites existing pages to the current state            |
+| `knowledgeBaseDispatcher.js`      | Enqueues due runs onto the `runKnowledgeBaseIngest` Cloud Tasks queue                   |
+| `knowledgeBaseSchedule.js`        | The payer's nightly slot, and whether the payer is active (30-day login window)         |
+| `knowledgeBaseDefaults.js`        | Switches the wiki on by default for active users' projects; resumes and hands over      |
+| `knowledgeBaseAssistant.js`       | Wiki index in assistant prompts; read, correct, undo and document tools                 |
+| `knowledgeBaseToolSchemas.js`     | Names and schemas of those tools (dependency-free, for `toolSchemas.js`)                |
+| `knowledgeDocuments.js`           | Add a chat upload to the wiki (`documents/{id}`), or take it out again                  |
+| `knowledgeContributions.js`       | "Save to wiki": knowledge from a chat (`contributions/{id}`), drafts, confirm, remove   |
+| `knowledgeSearch.js`              | `search_knowledge` (fresh Firestore scan, passages) and the `dev_wiki` search index     |
+| `knowledgeLint.js`                | Health check: rule-based report every run, weekly bounded model pass                    |
+| `knowledgeWikiFeedModel.js`       | How a revision appears in Updates: ids, change kinds (dependency-free, shared with web) |
+| `knowledgeWikiFeed.js`            | The revision trigger's body: one Updates line per revision, no page text in it          |
 
 A document's text comes from `WhatsApp/whatsAppFileExtraction.js`, which reads PDF, Word, text
 and — through `Utils/officeDocumentText.js` — PowerPoint (.pptx) and Excel (.xlsx). Adding one
@@ -98,8 +96,8 @@ uncited source entries (counted, never pruned). Once the run has caught up, at m
 and only when a page changed since, a model pass looks at up to three batches of pages for
 contradictions, outdated dated claims, missing pages and links. It may change at most 10 pages,
 never one a member corrected in the last 14 days, records every change as revision mode `lint`
-with a reason starting `lint:`, and may spend up to the wiki's whole Gold cap (no reserve share
-since AT-3126). It never settles a contradiction by recency alone: unresolved ones go to an "Open questions"
+with a reason starting `lint:`, and only spends while the month is below 80% of the wiki's Gold
+cap. It never settles a contradiction by recency alone: unresolved ones go to an "Open questions"
 section. State lives in `lint` on the wiki document.
 
 ## Deploying
@@ -108,9 +106,7 @@ section. State lives in `lint` on the wiki document.
    client writes).
 2. Functions: `setKnowledgeBaseSettings`, `requestKnowledgeBaseRefresh`, `undoKnowledgeCorrection`,
    `runKnowledgeBaseIngest`, `dispatchKnowledgeBaseIngests`, `onCreateKnowledgePageRevisionSecondGen`
-   (the Updates feed lines), `dismissKnowledgeNewsItem` ("Not relevant" on a news entry, AT-3126),
-   `applyKnowledgeBaseDefaults` (the daily default switch-on and the one-time raise of untouched
-   500-Gold default caps to 3,000, which also
+   (the Updates feed lines), `applyKnowledgeBaseDefaults` (the daily default switch-on, which also
    reaches the projects that existed before the default; no migration to run), `onCreateProjectSecondGen`
    and `onUpdateUserSecondGen` (the same default for a new project and a returning user), plus the
    task/goal/note/contact/artifact/chat update

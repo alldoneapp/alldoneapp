@@ -2,7 +2,7 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
 const mockState = {
-    loggedUser: { uid: 'me', themeName: 'modern', numberUsersSidebar: 0, sidebarNavigationMode: 'simple' },
+    loggedUser: { uid: 'me', themeName: 'modern', numberUsersSidebar: 0 },
     currentUser: { uid: 'me' },
     projectUsers: {},
     projectContacts: {},
@@ -105,15 +105,14 @@ describe('TasksBoards', () => {
         expect(rows(mount())).toEqual(['user:me', 'user:derek', 'wiki:p1', 'chats:p1', 'show more'])
     })
 
-    // `undefined`: a user who never picked a sidebar gets "Anna on top" (AT-3122).
-    it.each(['advanced', 'sectionsTop', undefined])(
+    it.each(['advanced', 'sectionsTop'])(
         'leaves the wiki and the chats out in the %s sidebar, which lists them as sections',
         mode => {
             mockState.loggedUser.sidebarNavigationMode = mode
             try {
                 expect(rows(mount())).toEqual(['user:me', 'user:derek', 'user:luis', 'settings'])
             } finally {
-                mockState.loggedUser.sidebarNavigationMode = 'simple'
+                delete mockState.loggedUser.sidebarNavigationMode
             }
         }
     )
