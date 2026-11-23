@@ -4010,6 +4010,7 @@
     "meetingTime working hours": "Horario laboral de hoy: {{range}} (de la configuración de tu enlace de reuniones).",
     "meetingTime default working hours": "Horario laboral de hoy: {{range}} (predeterminado, define el tuyo en la configuración del enlace de reuniones).",
     "meetingTime summary": "{{meetings}} en reuniones en todos los proyectos; te quedan {{free}} de tiempo para trabajar en tu horario laboral (libre en tu calendario). Es disponibilidad del calendario, no tiempo de trabajo medido.",
+    "meetingTime work blocks hint": "Los bloques de trabajo solo contigo cuentan como tiempo para trabajar ({{count}} hoy).",
     "meetingTime syncing": "La sincronización del calendario sigue en curso.",
     "meetingTime sync failed hint": "La última sincronización del calendario falló, así que estas cifras pueden estar incompletas.",
     "meetingTime no calendar hint": "No hay ningún calendario conectado, así que tu tiempo de reuniones es desconocido.",

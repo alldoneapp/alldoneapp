@@ -18,6 +18,7 @@ const {
     classifyCalendarEventProject,
     coerceCalendarProjectResult,
     coerceMeetingCategorySuggestion,
+    coerceWorkBlockVerdict,
     normalizeCalendarEventForClassifier,
 } = require('./calendarProjectClassifier')
 
@@ -477,5 +478,46 @@ describe('meeting category in the routing run (AT-3137)', () => {
             meetingCategorySignals: ['Wahrscheinlich überflüssig', 'Probably a waste of time', '9 Teilnehmer', 42],
         })
         expect(result).toEqual({ category: 'status', confidence: 'low', signals: ['9 Teilnehmer'] })
+    })
+})
+
+describe('work block verdict in the routing run (AT-3136)', () => {
+    test('the prompt asks for workBlock and separates own work from private appointments and meetings', () => {
+        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).toMatch(/workBlock/)
+        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).toMatch(/doctor, childcare/)
+        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).toMatch(/null when the event gives no clear basis/)
+    })
+
+    test('keeps only a real boolean, matched or not', () => {
+        expect(coerceWorkBlockVerdict({ workBlock: true })).toBe(true)
+        expect(coerceWorkBlockVerdict({ workBlock: false })).toBe(false)
+        expect(coerceWorkBlockVerdict({ workBlock: 'true' })).toBeNull()
+        expect(coerceWorkBlockVerdict({ workBlock: 1 })).toBeNull()
+        expect(coerceWorkBlockVerdict({ workBlock: null })).toBeNull()
+        expect(coerceWorkBlockVerdict({})).toBeNull()
+
+        expect(
+            coerceCalendarProjectResult({ matched: false, confidence: 0.1, workBlock: true }, projectDefinitions, 0.7)
+                .workBlock
+        ).toBe(true)
+        expect(
+            coerceCalendarProjectResult(
+                {
+                    matched: true,
+                    projectId: 'juno-project',
+                    projectName: 'JTL Software - Project Juno',
+                    confidence: 0.9,
+                    reasoning: 'Juno.',
+                    workBlock: false,
+                },
+                projectDefinitions,
+                0.7
+            ).workBlock
+        ).toBe(false)
+    })
+
+    test("passes Google's own event type to the model", () => {
+        expect(normalizeCalendarEventForClassifier({ id: 'e', eventType: 'focusTime' }).eventType).toBe('focusTime')
+        expect(normalizeCalendarEventForClassifier({ id: 'e' })).not.toHaveProperty('eventType')
     })
 })

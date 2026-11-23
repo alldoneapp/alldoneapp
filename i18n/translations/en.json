@@ -4062,6 +4062,7 @@
     "meetingTime working hours": "Working hours today: {{range}} (from your meeting link settings).",
     "meetingTime default working hours": "Working hours today: {{range}} (default, set your own in the meeting link settings).",
     "meetingTime summary": "{{meetings}} in meetings across all projects; {{free}} of time to work left in your working hours (free in your calendar). This is calendar availability, not tracked work time.",
+    "meetingTime work blocks hint": "Work blocks with only you count as time to work ({{count}} today).",
     "meetingTime syncing": "The calendar sync is still running.",
     "meetingTime sync failed hint": "The last calendar sync failed, so these figures may be incomplete.",
     "meetingTime no calendar hint": "No calendar is connected, so your meeting time is unknown.",
