@@ -1343,6 +1343,67 @@ function buildProjectToolsPromptLines(projectToolsContext) {
     ]
 }
 
+/**
+ * The browsing rules every VM run gets (AT-3141). Three cases, kept apart because one blanket
+ * "do not start an unshared browser" blocked a local headless check of a merge request:
+ *
+ *   - local browser tests of the run's own build against localhost or an isolated emulator/test
+ *     environment with synthetic data: allowed, with the guard rails that keep them from reaching
+ *     real services (a local app can still be wired to production);
+ *   - reading public web pages without signing in, typing or submitting: allowed with a headless
+ *     browser in the VM (the reviewer's choice on AT-3141);
+ *   - interactive work on the real web (sign-ins, real accounts, forms, production data): only in
+ *     the shared Alldone browser the user can watch and take over, and only named when its tools
+ *     really reach this run (`projectToolsContext.sharedBrowser`, see vmMcpProxy
+ *     findSharedBrowserTools) and the run has a task to bind the session to. Otherwise the agent
+ *     reports the limitation; there is no unshared fallback.
+ */
+function buildBrowsingPromptLines(vmJob, projectToolsContext = null) {
+    const taskId = (vmJob.objectType || 'tasks') === 'tasks' && vmJob.objectId ? String(vmJob.objectId) : ''
+    const browserToolNames =
+        projectToolsContext && projectToolsContext.enabled && projectToolsContext.sharedBrowser
+            ? projectToolsContext.sharedBrowser.toolNames || []
+            : []
+    const serverName = (projectToolsContext && projectToolsContext.serverName) || 'project_tools'
+    const sharedBrowserAvailable = !!taskId && browserToolNames.length > 0
+
+    const lines = [
+        '# Browsers and browser tests',
+        '1. Local browser tests are allowed. You may run a headless browser (e.g. Playwright or Puppeteer) in this VM against an app you started yourself ' +
+            'on localhost, or against an isolated emulator or test environment, using only synthetic test data. Conditions: no real credentials or ' +
+            'user accounts, no production Firebase project, no production APIs or production data, and none of the tokens in this VM ' +
+            '(repository, Google Cloud or proxy tokens) in the app under test. A local app can still talk to real services: before you start it, ' +
+            'check its configuration (env files, Firebase config, API base URLs, third-party keys) and point it at local emulators or a dedicated ' +
+            'test project, or block or stub those calls. Such tests are not risk-free. If you cannot rule out that a test signs in to a real ' +
+            'account, writes real data, sends email or messages, charges money or triggers another external side effect, do not run it; say why ' +
+            'in your final message. Report what you tested and how.',
+        '2. Reading public web pages is allowed with a headless browser in this VM only for reading: no signing in, no cookies or credentials ' +
+            'of real accounts, no typing into fields, and nothing that submits, books, buys, posts, sends, deletes or otherwise changes something. ' +
+            'Plain HTTP reads (web search, fetching documentation, downloading packages) are not browsing and stay allowed.',
+    ]
+    if (sharedBrowserAvailable) {
+        lines.push(
+            '3. Interactive browsing on the real web (signing in, real accounts, forms, submitting anything, or production data in a browser) ' +
+                `happens only in the shared Alldone browser: the tools ${browserToolNames.join(', ')} of the MCP server "${serverName}". ` +
+                `Pass taskId ${taskId} on every call, so the user can see that session and take control of it. ` +
+                'Do not do this work in a browser you start inside the VM or with any other browser tool.'
+        )
+    } else {
+        lines.push(
+            '3. Interactive browsing on the real web (signing in, real accounts, forms, submitting anything, or production data in a browser) ' +
+                `is not possible in this run: ${
+                    taskId
+                        ? 'the shared Alldone browser, which the user can watch and take over, is not connected to it'
+                        : 'it has no Alldone task to bind the shared Alldone browser to, so the user could not watch or take over that session'
+                }. ` +
+                'Do not do it with a browser you start inside the VM, with another MCP or browser tool, or with scripted HTTP sign-ins. ' +
+                'If the objective needs it, do everything else, then say clearly in your final message which step needed interactive browsing ' +
+                'and that the shared browser was not available, so the user can do that step or connect the shared browser.'
+        )
+    }
+    return lines
+}
+
 function buildAgentPrompt(
     vmJob,
     gitContext = null,
@@ -1469,6 +1530,7 @@ function buildAgentPrompt(
     if (projectToolsContext && projectToolsContext.enabled) {
         parts.push('', ...buildProjectToolsPromptLines(projectToolsContext))
     }
+    parts.push('', ...buildBrowsingPromptLines(vmJob, projectToolsContext))
     parts.push(
         '',
         'Work autonomously to completion. Your final message will be delivered verbatim to the user as the result, so make it a complete, self-contained answer.',
@@ -5666,6 +5728,7 @@ module.exports = {
         buildClaudeMcpServers,
         buildVmMcpEnv,
         buildProjectToolsPromptLines,
+        buildBrowsingPromptLines,
         VM_MCP_TOKEN_ENV,
         VM_MCP_CONFIG_PATH,
         AGENT_CONFIGS,

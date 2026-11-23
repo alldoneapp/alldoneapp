@@ -10705,6 +10705,11 @@ describe('execute_task_in_vm existing task routing', () => {
                 threadContext: expect.stringContaining('tracked by the existing Alldone task task-1'),
             })
         )
+        // AT-3141: the browsing rules come from the runner, which knows whether the shared browser
+        // really reaches the run; the brief no longer names it unconditionally.
+        const { threadContext } = startVmJobSpy.mock.calls[startVmJobSpy.mock.calls.length - 1][0]
+        expect(threadContext).not.toContain('shared Alldone browser')
+        expect(threadContext).not.toContain('unshared browser')
     })
 
     test('joins an existing delegated workflow instead of dispatching a duplicate VM', async () => {
