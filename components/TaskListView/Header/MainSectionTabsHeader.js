@@ -26,6 +26,8 @@ import { isSectionsTopSidebarNavigation } from '../../../utils/SidebarNavigation
 import HeaderPickerArrow from './HeaderPickerArrow'
 import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import ChangeObjectListModal from '../../UIComponents/FloatModals/ChangeObjectListModal'
+import Icon from '../../Icon'
+import { getSectionIcon } from '../../../utils/sectionIcons'
 
 // AT-3121: with the sections on top of the sidebar the tabs give way to the section's name.
 const SECTION_TITLES = {
@@ -56,6 +58,10 @@ export const COMPACT_TABS_BREAKPOINT = 420
  * `browser-tests/section-tabs` measures every language at these widths.
  */
 export const TIGHT_TABS_BREAKPOINT = 360
+
+// AT-3155: the icon before the section name. 20px sits optically level with the 16px/24px label;
+// the sidebar and the picker use the same glyphs.
+export const SECTION_TITLE_ICON_SIZE = 20
 
 export default function MainSectionTabsHeader({
     showSectionToggle = false,
@@ -170,7 +176,9 @@ export default function MainSectionTabsHeader({
     // AT-3123: in the mobile layout the name and its arrow sit centred in the card as one unit, for
     // every section, above the centred toggle, and the picker opens centred under them. The desktop
     // row keeps the name on the left with the toggle on the right, like the desktop tabs.
+    // AT-3155: the section's icon (the one the sidebar and the picker show for it) leads the name.
     const sectionName = translate(SECTION_TITLES[selectedSidebarTab] || 'Tasks')
+    const sectionIcon = getSectionIcon(selectedSidebarTab)
     const sectionTitle = (
         <AppPopover
             content={<ChangeObjectListModal closePopover={() => setSectionPickerOpen(false)} withArtifacts withWiki />}
@@ -189,6 +197,12 @@ export default function MainSectionTabsHeader({
                 accessibilityLabel={`${sectionName} – ${translate('Switch section')}`}
                 testID="section-title"
             >
+                <Icon
+                    name={sectionIcon}
+                    size={SECTION_TITLE_ICON_SIZE}
+                    color={colors.Primary100}
+                    style={localStyles.sectionTitleIcon}
+                />
                 <Text
                     style={[
                         localStyles.tabText,
@@ -196,6 +210,7 @@ export default function MainSectionTabsHeader({
                         useMobileLayout && localStyles.sectionTitleTextMobile,
                     ]}
                     numberOfLines={1}
+                    testID="section-title-label"
                 >
                     {sectionName}
                 </Text>
@@ -390,6 +405,12 @@ const localStyles = StyleSheet.create({
     },
     sectionTitleTextMobile: {
         flexShrink: 1,
+    },
+    sectionTitleIcon: {
+        marginRight: 8,
+        flexShrink: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     controlsRowTight: {
         paddingHorizontal: 3,

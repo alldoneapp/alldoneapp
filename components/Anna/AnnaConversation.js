@@ -54,8 +54,6 @@ import useAnnaChatScroll from './useAnnaChatScroll'
 import useAnnaFileDrop from './useAnnaFileDrop'
 import { isAnnaProjectSelectable } from './annaProjectSelection'
 import { scopeAnnaThreads } from './annaThreadScope'
-import { generateTaskFromPreConfig } from '../../utils/assistantHelper'
-import { ANNA_TEMPLATE_ROUTE_CHAT, getAnnaTemplateMessageText, getAnnaTemplateRoute } from './annaTemplateRouting'
 
 const MESSAGES_PER_PAGE = 50
 // AT-3119: a loading day is smaller than the whole chat's first load (AnnaConversationSkeleton).
@@ -157,7 +155,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         messages: localMessages,
         sending,
         submit,
-        submitTask,
         retry,
         acknowledge,
         sendNow,
@@ -178,10 +175,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const composer = useRef(null)
     const composerForm = useRef(null)
     const [compactTemplates, setCompactTemplates] = useState(false)
-    // AT-3082: a template that runs as its own task tells this chat that it started and, with Anna's
-    // summary, when it has its result (preConfigOriginNotice on the server). Since AT-3153 the chat
-    // starts templates itself (`runTemplate` below, which names the chat its message landed in); this
-    // origin is only the modal's fallback.
+    // AT-3082: a template started here creates its own task; this chat is told it started and,
+    // with Anna's summary, when it has its result (preConfigOriginNotice on the server).
     const templateOrigin = useMemo(
         () =>
             conversation?.projectId && conversation?.id
@@ -371,63 +366,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         if (!dictationInserted.current) return
         dictationInserted.current = false
         send(null, null, { fromDictation: true })
-    }
-    // AT-3153: a template picked here is posted in this chat at once, as the user's own message.
-    // A template of this chat's assistant without settings of its own is then answered here like
-    // any message; every other template still runs as its own task (AT-3082), and its message
-    // shows that task's status until the run is over. Refusals are said, never silent.
-    const runTemplate = ({ template, prompt, aiSettings = null, taskMetadata = null }) => {
-        const text = getAnnaTemplateMessageText(template, prompt)
-        if (!text) return false
-        let refusal = ''
-        if (offline || isBrowserOffline()) refusal = translate('You are offline. Reconnect to start a template.')
-        else if (voiceActive) refusal = translate('End the call to start a template.')
-        else if (switching) refusal = translate('The chat is still opening. Pick the template again in a moment.')
-        else if (!(user.gold > 0))
-            refusal = translate('You need Gold to talk with %{assistantName}.', { assistantName })
-        if (refusal) {
-            setError(refusal)
-            return false
-        }
-        setError('')
-        follow.current = true
-        scrollAnchor.current = null
-        const context = getAnnaWorkspaceContext() || { path: '/', title: assistantName }
-        const route = getAnnaTemplateRoute(
-            template,
-            { projectId: conversation.projectId, assistantId: conversation.assistantId || assistant?.uid },
-            prompt
-        )
-        if (route === ANNA_TEMPLATE_ROUTE_CHAT) {
-            submit(text, context)
-            return true
-        }
-        submitTask(text, context, thread =>
-            generateTaskFromPreConfig(
-                template.projectId,
-                template.name,
-                template.assistantId,
-                prompt,
-                aiSettings,
-                taskMetadata,
-                // The task announces itself and its result in the chat its message was posted in.
-                {
-                    skipNavigation: true,
-                    originConversation: { projectId: thread.projectId, objectType: 'topics', objectId: thread.id },
-                }
-            )
-        )
-        return true
-    }
-    // "Just paste" in a template's form puts the prompt into this composer for editing.
-    const pasteTemplate = prompt => {
-        const text = typeof prompt === 'string' ? prompt.trim() : ''
-        if (!text || voiceActive) return
-        const draft = draftRef.current.trim()
-        const next = draft ? `${draft}\n\n${text}` : text
-        changeDraft(next)
-        composer.current?.setContent(next)
-        onExpand?.()
     }
     const retryMessage = key => {
         if (voiceActive || offline || isBrowserOffline()) return
@@ -770,8 +708,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                             preferredAssistantId={conversation.assistantId || assistant?.uid}
                                             preferredProjectId={conversation.projectId}
                                             originConversation={templateOrigin}
-                                            onRunTemplate={runTemplate}
-                                            onPasteTemplate={pasteTemplate}
                                             compact={compactTemplates}
                                             position={ANNA_TEMPLATES_POSITION}
                                             getPopoverViewport={getTemplatesViewport}
@@ -1114,11 +1050,9 @@ function AnnaThreadMessages({
                         {message.submission?.error && !replyConfirmsProcessing(replies[message.id]) && (
                             <div className="anna-error" role="alert">
                                 {message.submission.error}{' '}
-                                {message.submission.retryable !== false && (
-                                    <button type="button" onClick={() => onRetry(message.submission.key)}>
-                                        {translate('Retry')}
-                                    </button>
-                                )}
+                                <button type="button" onClick={() => onRetry(message.submission.key)}>
+                                    {translate('Retry')}
+                                </button>
                             </div>
                         )}
                     </article>
@@ -1132,9 +1066,7 @@ function AnnaThreadMessages({
                         preparingText={translate(
                             pendingMessage.status === 'sending'
                                 ? 'assistant_progress_sending'
-                                : pendingMessage.kind === 'task'
-                                  ? 'assistant_progress_template_task'
-                                  : 'assistant_progress_waiting'
+                                : 'assistant_progress_waiting'
                         )}
                     />
                 </div>

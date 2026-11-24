@@ -31,6 +31,9 @@ jest.mock('../../UIComponents/ModalShell/AppPopover', () => ({ __esModule: true,
 import MainSectionTabsHeader, { COMPACT_TABS_BREAKPOINT, TIGHT_TABS_BREAKPOINT } from './MainSectionTabsHeader'
 import { setLanguage } from '../../../i18n/TranslationService'
 import HeaderPickerArrow from './HeaderPickerArrow'
+import Icon from '../../Icon'
+import { colors } from '../../styles/global'
+import { SECTION_ICONS } from '../../../utils/sectionIcons'
 
 const buildState = () => ({
     selectedSidebarTab: 'Tasks',
@@ -166,6 +169,7 @@ describe('MainSectionTabsHeader with Anna on top of the sidebar', () => {
     const AppPopover = require('../../UIComponents/ModalShell/AppPopover').default
     const originalInnerWidth = window.innerWidth
     const title = tree => tree.root.findByProps({ testID: 'section-title' })
+    const titleLabel = tree => title(tree).findByProps({ testID: 'section-title-label' })
 
     beforeEach(() => {
         mockState = {
@@ -189,7 +193,7 @@ describe('MainSectionTabsHeader with Anna on top of the sidebar', () => {
         const buttons = tree.root.findAllByType(TouchableOpacity)
         expect(buttons).toHaveLength(1)
         expect(buttons[0].props.testID).toBe('section-title')
-        expect(title(tree).findAllByType(Text)[0].props.children).toBe('Notizen')
+        expect(titleLabel(tree).props.children).toBe('Notizen')
         expect(title(tree).props.accessibilityLabel).toBe('Notizen – Wähle die Sektion aus')
     })
 
@@ -224,6 +228,51 @@ describe('MainSectionTabsHeader with Anna on top of the sidebar', () => {
         // The arrow lives inside the centred title, so both move together.
         expect(title(tree).findAllByType(HeaderPickerArrow)).toHaveLength(1)
         expect(tabLabels(tree)).toEqual(expect.arrayContaining(['Notes', 'toggle']))
+    })
+
+    // AT-3155: the name is led by the section's icon, the glyph the sidebar and the picker show for it.
+    const SECTIONS = [
+        ['ROOT_TASKS', 'check-square'],
+        ['ROOT_GOALS', 'target'],
+        ['ROOT_NOTES', 'file-text'],
+        ['ROOT_CONTACTS', 'users'],
+        ['ROOT_CHATS', 'comments-thread'],
+        ['ROOT_ARTIFACTS', 'package'],
+        ['ROOT_WIKI', 'book-open'],
+    ]
+
+    it.each(SECTIONS.flatMap(([section, icon]) => [390, 1440].map(width => [section, icon, width])))(
+        'leads the %s name with its %s icon at %ipx',
+        (sectionTab, icon, width) => {
+            mockState = { ...mockState, selectedSidebarTab: sectionTab }
+            setViewportWidth(width)
+            const tree = renderHeader()
+
+            const [first, second, third] = title(tree).props.children
+            expect(first.type).toBe(Icon)
+            expect(first.props).toMatchObject({ name: icon, size: 20, color: colors.Primary100 })
+            expect(second.props.testID).toBe('section-title-label')
+            expect(third.type).toBe(HeaderPickerArrow)
+            // The icon keeps its size when a long name shrinks, and leaves a gap before the name.
+            expect(flatten(first.props.style)).toMatchObject({ marginRight: 8, flexShrink: 0 })
+            expect(SECTION_ICONS[sectionTab]).toBe(icon)
+        }
+    )
+
+    it('falls back to the Tasks icon where the name falls back to Tasks', () => {
+        mockState = { ...mockState, selectedSidebarTab: 'ROOT_UPDATES' }
+        const tree = renderHeader()
+
+        expect(title(tree).props.children[0].props.name).toBe('check-square')
+        expect(titleLabel(tree).props.children).toBe('Tasks')
+    })
+
+    it('shows no icon in the section tabs of the other sidebar modes', () => {
+        mockState = { ...mockState, loggedUser: { ...mockState.loggedUser, sidebarNavigationMode: 'simple' } }
+        setViewportWidth(1440)
+        const tree = renderHeader()
+
+        expect(tree.root.findAllByType(Icon)).toHaveLength(0)
     })
 
     it('keeps the desktop name on the left of the card', () => {

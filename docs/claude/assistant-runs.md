@@ -99,37 +99,6 @@ objectId }` of its own chat) through `AssistantTaskSearchButtonWrapper` → `Ass
   wiring order from source), `AssistantTaskSearchModal.test.js`, the AT-3082 cases in
   `AnnaConversation.test.js`, `AssistantTaskSearchButtonWrapper.test.js` and `vmResultSummary.test.js`.
 
-### A template picked in the Anna chat is the user's message there, at once (AT-3153, 2026-11-24)
-
-Karsten: after picking "Historical fact of the day" nothing showed for a long time. Cause: the
-AT-3082 path above did everything before the chat saw anything: create the task, create its chat,
-post the prompt **in the task chat**, call the callable. The first line in the Anna chat was the
-server's `🚀` notice, written only after the cold start and the run lock. Product decision
-(Karsten, 2026-11-24): a template is posted like a normal message; special cases stay a task.
-
-- **Routing** (`components/Anna/annaTemplateRouting.js`, `getAnnaTemplateRoute`): a `prompt`
-  template of the chat's own assistant **and** project, with no model / reasoning-effort override,
-  no instructions of its own (a saved copy of the assistant's current instructions does not count:
-  `PreConfigTaskModal` fills that copy in), no WhatsApp, not `workflow`, not a webhook → `chat`.
-  Everything else → `task`.
-- **`chat`**: `AnnaConversation.runTemplate` calls the composer's own `submit` (`useAnnaMessageSends`)
-  with the prompt (the filled-in prompt for a template form). Same path as a typed message:
-  local bubble at once, AT-2922 queue, `askToBotSecondGen`, live progress, retry, run lock. No task.
-- **`task`**: `submitTask` posts the prompt (or the name of a webhook template) as the user's message
-  **without** trigger and without `requestsAssistantRun`, so nobody answers it in this chat and the
-  thread gate ignores it. Then it calls `generateTaskFromPreConfig(..., { skipNavigation, originConversation })`
-  with the resolved thread as origin, so the AT-3082 notices land under that message. A pending status
-  (`assistant_progress_template_task`) stays visible until the callable returns; the job never
-  counts as "sending", so the user can keep chatting. A failure after the task was started is shown
-  without **Retry** (a retry could create a second task); before that, Retry is the normal one.
-- **Modal**: `AssistantTaskSearchModal` takes `onRunTemplate` / `onPasteTemplate` (through
-  `AssistantTaskSearchButtonWrapper`). With them it starts nothing itself; a template form gets
-  `processPromp` and "Just paste" goes into the Anna composer. Without them (assistant line) nothing
-  changed. `PreConfigTaskGeneratorModal` submits once per form.
-- Refusals are said in the composer (offline, call running, chat still opening, no Gold), never
-  dropped silently. Coverage: `annaTemplateRouting.test.js`, the AT-3153 cases in
-  `AnnaConversation.test.js` and `AssistantTaskSearchModal.test.js`.
-
 ### Task notices in another conversation speak the user's language (AT-3082)
 
 Karsten asked for the notices to be localized "überall". The fixed lines the server writes about a

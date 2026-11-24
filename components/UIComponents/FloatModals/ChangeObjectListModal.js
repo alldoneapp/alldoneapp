@@ -20,6 +20,7 @@ import {
 import ChangeObjectListModalItem from './ChangeObjectListModalItem'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 import { themed } from '../../../Themes/colorMode'
+import { SECTION_ICONS } from '../../../utils/sectionIcons'
 
 // `withArtifacts`, `withWiki`: the two sections the Updates header does not offer, for the section
 // picker in the "Anna on top" card (MainSectionTabsHeader, AT-3121); Wiki only inside a project.
@@ -27,13 +28,24 @@ export default function ChangeObjectListModal({ closePopover, withArtifacts = fa
     const [width, height] = useWindowSize()
 
     const section = [
-        { text: 'Tasks', icon: 'check-square', value: DV_TAB_ROOT_TASKS, shortcut: '1' },
-        { text: 'Goals', icon: 'target', value: DV_TAB_ROOT_GOALS, shortcut: '2' },
-        { text: 'Notes', icon: 'file-text', value: DV_TAB_ROOT_NOTES, shortcut: '3' },
-        { text: 'Contacts', icon: 'users', value: DV_TAB_ROOT_CONTACTS, shortcut: '4' },
-        { text: 'Chats', icon: 'comments-thread', value: DV_TAB_ROOT_CHATS, shortcut: '5' },
-        ...(withArtifacts ? [{ text: 'Artifacts', icon: 'package', value: DV_TAB_ROOT_ARTIFACTS, shortcut: '6' }] : []),
-        ...(withWiki ? [{ text: 'Wiki', icon: 'book-open', value: DV_TAB_ROOT_WIKI, shortcut: '7' }] : []),
+        { text: 'Tasks', icon: SECTION_ICONS[DV_TAB_ROOT_TASKS], value: DV_TAB_ROOT_TASKS, shortcut: '1' },
+        { text: 'Goals', icon: SECTION_ICONS[DV_TAB_ROOT_GOALS], value: DV_TAB_ROOT_GOALS, shortcut: '2' },
+        { text: 'Notes', icon: SECTION_ICONS[DV_TAB_ROOT_NOTES], value: DV_TAB_ROOT_NOTES, shortcut: '3' },
+        { text: 'Contacts', icon: SECTION_ICONS[DV_TAB_ROOT_CONTACTS], value: DV_TAB_ROOT_CONTACTS, shortcut: '4' },
+        { text: 'Chats', icon: SECTION_ICONS[DV_TAB_ROOT_CHATS], value: DV_TAB_ROOT_CHATS, shortcut: '5' },
+        ...(withArtifacts
+            ? [
+                  {
+                      text: 'Artifacts',
+                      icon: SECTION_ICONS[DV_TAB_ROOT_ARTIFACTS],
+                      value: DV_TAB_ROOT_ARTIFACTS,
+                      shortcut: '6',
+                  },
+              ]
+            : []),
+        ...(withWiki
+            ? [{ text: 'Wiki', icon: SECTION_ICONS[DV_TAB_ROOT_WIKI], value: DV_TAB_ROOT_WIKI, shortcut: '7' }]
+            : []),
     ]
 
     return (

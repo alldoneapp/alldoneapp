@@ -11,7 +11,6 @@ import { markAnnaActivityRead } from './annaActivityReadState'
 import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
 import { insertAttachmentInsideEditor, insertFilesAsAttachments } from '../Feeds/CommentsTextInput/textInputHelper'
 import { installAppResumeListener } from '../../utils/appResume'
-import { generateTaskFromPreConfig } from '../../utils/assistantHelper'
 jest.mock('../UIComponents/Ghosts/ghostAnimation', () => ({
     ...jest.requireActual('../UIComponents/Ghosts/ghostAnimation'),
     useReducedMotion: () => true,
@@ -175,10 +174,7 @@ jest.mock('../../utils/backends/firestore', () => ({
     }),
     runHttpsCallableFunction: jest.fn(),
 }))
-jest.mock('../../utils/assistantHelper', () => ({
-    CHAT_INPUT_LIMIT_IN_CHARACTERS: 10000,
-    generateTaskFromPreConfig: jest.fn(),
-}))
+jest.mock('../../utils/assistantHelper', () => ({ CHAT_INPUT_LIMIT_IN_CHARACTERS: 10000 }))
 jest.mock('../ChatsView/Utils/ChatHelper', () => ({ getTimestampInMilliseconds: value => value }))
 jest.mock('../../i18n/TranslationService', () => ({
     translate: (text, values = {}) => text.replace(/%{(\w+)}/g, (_, key) => values[key] ?? ''),
@@ -2826,181 +2822,5 @@ describe('thread loading state (AT-3119)', () => {
         render({ threads: [thread] })
         expect(skeleton()).toBeNull()
         expect(container.querySelector('[role="log"]').textContent).toContain('Saved message')
-    })
-})
-
-// AT-3153: a template picked in the Anna chat shows up at once as the user's message in this chat.
-describe('templates picked in the chat (AT-3153)', () => {
-    const anna = { uid: 'a1', displayName: 'Anna', instructions: 'Be Anna.' }
-    const historicalFact = {
-        id: 'tpl-1',
-        name: 'Historical fact of the day',
-        type: 'prompt',
-        prompt: 'Tell me a historical fact about today.',
-        variables: [],
-        projectId: 'p1',
-        assistantId: 'a1',
-        assistant: anna,
-        aiModel: null,
-        aiSystemMessage: '',
-        sendWhatsApp: false,
-    }
-    const pick = (template, extra = {}) =>
-        act(async () => {
-            mockTemplates.onRunTemplate({
-                template,
-                prompt: template.prompt,
-                aiSettings: null,
-                taskMetadata: { sendWhatsApp: !!template.sendWhatsApp, executionMode: template.executionMode },
-                ...extra,
-            })
-        })
-    const userBubbles = () => [...container.querySelectorAll('.anna-message-user')].map(node => node.textContent)
-
-    it('posts a template of this chat’s assistant as a normal message and answers it here', async () => {
-        const saved = deferred()
-        createObjectMessage.mockReturnValueOnce(saved.promise)
-        render({ assistant: anna })
-        await pick(historicalFact)
-
-        // Visible before anything reached the server, with the normal "sending" status.
-        expect(userBubbles()).toEqual([expect.stringContaining('Tell me a historical fact about today.')])
-        expect(container.textContent).toContain('assistant_progress_sending')
-        await act(async () => saved.resolve('m1'))
-
-        expect(createObjectMessage).toHaveBeenCalledTimes(1)
-        expect(createObjectMessage).toHaveBeenCalledWith(
-            'p1',
-            'anna_u1',
-            'Tell me a historical fact about today.',
-            'topics',
-            'stayward',
-            null,
-            null,
-            true,
-            true,
-            'a1',
-            null,
-            { id: 'm1', created: expect.any(Number), requestsAssistantRun: true, threadGateCleared: true }
-        )
-        expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
-        expect(runHttpsCallableFunction).toHaveBeenCalledWith(
-            'askToBotSecondGen',
-            expect.objectContaining({ objectId: 'anna_u1', objectType: 'topics', messageId: 'm1' }),
-            { timeout: 3600000 }
-        )
-        expect(generateTaskFromPreConfig).not.toHaveBeenCalled()
-    })
-
-    it('waits behind a running answer like any other message', async () => {
-        const first = deferred()
-        runHttpsCallableFunction.mockReturnValueOnce(first.promise)
-        createObjectMessage.mockImplementation((...args) => Promise.resolve(args[11].id))
-        render({ assistant: anna })
-        type('First question')
-        await submit()
-        await pick(historicalFact)
-        expect(container.querySelector('.anna-message-queued').textContent).toContain('historical fact')
-        expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
-        await act(async () => first.resolve({}))
-        expect(runHttpsCallableFunction).toHaveBeenCalledTimes(2)
-        expect(generateTaskFromPreConfig).not.toHaveBeenCalled()
-    })
-
-    it('posts a template with settings of its own at once and runs it as its own task, announced here', async () => {
-        const run = deferred()
-        generateTaskFromPreConfig.mockReturnValueOnce(run.promise)
-        createObjectMessage.mockImplementation((...args) => Promise.resolve(args[11].id))
-        const whatsApp = { ...historicalFact, sendWhatsApp: true }
-        render({ assistant: anna })
-        await pick(whatsApp)
-
-        expect(userBubbles()).toEqual([expect.stringContaining('Tell me a historical fact about today.')])
-        // Only the user's message: no trigger, no recorded run request, so nobody answers it here.
-        expect(createObjectMessage).toHaveBeenCalledWith(
-            'p1',
-            'anna_u1',
-            'Tell me a historical fact about today.',
-            'topics',
-            'stayward',
-            null,
-            null,
-            true,
-            false,
-            'a1',
-            null,
-            { id: 'm1', created: expect.any(Number) }
-        )
-        expect(mockContextUpdate).not.toHaveBeenCalled()
-        expect(generateTaskFromPreConfig).toHaveBeenCalledTimes(1)
-        expect(generateTaskFromPreConfig).toHaveBeenCalledWith(
-            'p1',
-            'Historical fact of the day',
-            'a1',
-            'Tell me a historical fact about today.',
-            null,
-            { sendWhatsApp: true, executionMode: undefined },
-            {
-                skipNavigation: true,
-                originConversation: { projectId: 'p1', objectType: 'topics', objectId: 'anna_u1' },
-            }
-        )
-        expect(createObjectMessage.mock.invocationCallOrder[0]).toBeLessThan(
-            generateTaskFromPreConfig.mock.invocationCallOrder[0]
-        )
-        expect(runHttpsCallableFunction).not.toHaveBeenCalled()
-        // The status stays visible while the task runs, and the chat stays free for the next message.
-        expect(container.textContent).toContain('assistant_progress_template_task')
-        expect(container.querySelector('.anna-voice-button').disabled).toBe(false)
-        type('Meanwhile, something else')
-        await submit()
-        expect(runHttpsCallableFunction).toHaveBeenCalledWith(
-            'askToBotSecondGen',
-            expect.objectContaining({ messageId: 'm2' }),
-            { timeout: 3600000 }
-        )
-
-        await act(async () => run.resolve({}))
-        expect(container.textContent).not.toContain('assistant_progress_template_task')
-        expect(generateTaskFromPreConfig).toHaveBeenCalledTimes(1)
-    })
-
-    it('reports a task that could not be started and offers no retry that would run it twice', async () => {
-        generateTaskFromPreConfig.mockRejectedValueOnce(new Error('Missing permissions'))
-        render({ assistant: anna })
-        await pick({ ...historicalFact, assistantId: 'cto' })
-        const alert = container.querySelector('.anna-message-user [role="alert"]')
-        expect(alert.textContent).toContain('The template could not be started: Missing permissions')
-        expect(alert.querySelector('button')).toBeNull()
-        expect(container.querySelector('.anna-pending-activity')).toBeNull()
-        expect(generateTaskFromPreConfig).toHaveBeenCalledTimes(1)
-    })
-
-    it('says why a template cannot start instead of staying silent', async () => {
-        render({ assistant: anna, offline: true })
-        await pick(historicalFact)
-        expect(container.querySelector('.anna-composer [role="alert"]').textContent).toBe(
-            'You are offline. Reconnect to start a template.'
-        )
-        render({ assistant: anna, switching: true })
-        await pick(historicalFact)
-        expect(container.querySelector('.anna-composer [role="alert"]').textContent).toBe(
-            'The chat is still opening. Pick the template again in a moment.'
-        )
-        render({ assistant: anna, user: { uid: 'u1', gold: 0 } })
-        await pick(historicalFact)
-        expect(container.querySelector('.anna-composer [role="alert"]').textContent).toBe(
-            'You need Gold to talk with Anna.'
-        )
-        expect(createObjectMessage).not.toHaveBeenCalled()
-        expect(generateTaskFromPreConfig).not.toHaveBeenCalled()
-    })
-
-    it('puts a pasted template into the composer after the draft, without sending it', async () => {
-        render({ assistant: anna })
-        type('My notes')
-        act(() => mockTemplates.onPasteTemplate('Tell me about Berlin'))
-        expect(container.querySelector('textarea').value).toBe('My notes\n\nTell me about Berlin')
-        expect(createObjectMessage).not.toHaveBeenCalled()
     })
 })

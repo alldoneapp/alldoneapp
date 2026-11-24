@@ -34,7 +34,6 @@ const hasNewAttachments = text =>
         return false
     })
 
-const isTask = job => job.kind === 'task'
 const threadOf = thread => ({ projectId: thread.projectId, objectType: 'topics', objectId: thread.id })
 const removedError = () => Object.assign(new Error('removed'), { code: 'removed-by-user' })
 
@@ -44,11 +43,6 @@ const removedError = () => Object.assign(new Error('removed'), { code: 'removed-
 // AT-2922: one turn at a time. A message written while the previous answer (or a VM job it
 // started) is still running waits as "queued" and is only written into the thread once that
 // answer is complete, so the history reads question, answer, question, answer.
-//
-// AT-3153: `submitTask` posts a template that runs as its own task the same way: the prompt is the
-// user's message in this chat at once, then `startTask` runs it elsewhere while the message shows a
-// status. Such a message asks this thread's assistant for nothing, so it neither waits for nor holds
-// the thread, and it never counts as "sending" once the task is started.
 export default function useAnnaMessageSends({
     userId,
     conversation,
@@ -68,9 +62,7 @@ export default function useAnnaMessageSends({
     const publish = useCallback(() => {
         if (mounted.current) setMessages([...jobs.current.values()].map(job => ({ ...job })))
     }, [])
-    const sending = messages.some(
-        message => message.userId === userId && message.running && !(message.kind === 'task' && message.dispatched)
-    )
+    const sending = messages.some(message => message.userId === userId && message.running)
     useEffect(() => {
         onSendingChange?.(sending)
     }, [sending, onSendingChange])
@@ -160,7 +152,7 @@ export default function useAnnaMessageSends({
             ([...jobs.current.values()].some(
                 other => other !== job && other.running && !other.dispatched && other.userId === job.userId
             ) ||
-                (!isTask(job) && job.thread?.id && threadRunGate.isThreadBusyLocally(threadOf(job.thread))))
+                (job.thread?.id && threadRunGate.isThreadBusyLocally(threadOf(job.thread))))
         job.running = true
         job.dispatched = false
         job.error = ''
@@ -223,33 +215,10 @@ export default function useAnnaMessageSends({
                     if (hasNewAttachments(job.text)) throw new Error(translate('Task attachment upload failed'))
                 }
                 // Capture context at submission time, before the user opens another page.
-                if (!isTask(job))
-                    await getDb()
-                        .doc(`chatObjects/${thread.projectId}/chats/${thread.id}`)
-                        .update({ annaPageContext: job.context })
+                await getDb()
+                    .doc(`chatObjects/${thread.projectId}/chats/${thread.id}`)
+                    .update({ annaPageContext: job.context })
                 if (!isActive()) return null
-                if (!job.locallySaved && isTask(job)) {
-                    // Only the user's message: this thread's assistant must not answer it, so no
-                    // trigger, no recorded run request (the missed-run catch-up stays out of it).
-                    job.id = await createObjectMessage(
-                        thread.projectId,
-                        thread.id,
-                        job.text,
-                        'topics',
-                        STAYWARD_COMMENT,
-                        null,
-                        null,
-                        true,
-                        false,
-                        thread.assistantId,
-                        null,
-                        { id: job.id, created: job.created }
-                    )
-                    if (!job.id) throw new Error(translate('Your message could not be sent. Please try again.'))
-                    job.locallySaved = true
-                    job.savedAt = Date.now()
-                    publish()
-                }
                 if (!job.locallySaved) {
                     job.id = await createObjectMessage(
                         thread.projectId,
@@ -279,14 +248,6 @@ export default function useAnnaMessageSends({
                 if (pending && pending.status !== 'sent')
                     throw new Error(translate('Your message could not be sent. Please try again.'))
                 if (!isActive()) return null
-                if (isTask(job)) {
-                    // Started once. From here a failure is reported, never retried: the task may
-                    // already exist, and a second start would run the template twice.
-                    job.status = 'working'
-                    job.dispatched = true
-                    publish()
-                    return { response: job.startTask(thread) }
-                }
                 job.status = 'working'
                 publish()
                 await flushAnnaActivityContext(job.userId)
@@ -325,16 +286,6 @@ export default function useAnnaMessageSends({
                     job.status = 'removed'
                     return
                 }
-                if (isTask(job) && job.dispatched) {
-                    settleFailed(
-                        job,
-                        failure?.message
-                            ? translate('The template could not be started: %{reason}', { reason: failure.message })
-                            : translate('The template could not be started.')
-                    )
-                    job.retryable = false
-                    return
-                }
                 const reply = replyFor(job)
                 if (job.dispatched && replyConfirmsProcessing(reply)) {
                     // The answer is already in the chat; how the response got lost is irrelevant.
@@ -348,7 +299,7 @@ export default function useAnnaMessageSends({
                 } else {
                     job.status = 'failed'
                     // A retry before the message was saved waits for its turn again (AT-2922).
-                    if (!job.locallySaved && !isTask(job)) job.gateCleared = false
+                    if (!job.locallySaved) job.gateCleared = false
                     job.sendNow = false
                     job.error = failure.message || translate('Your message could not be sent. Please try again.')
                 }
@@ -377,30 +328,8 @@ export default function useAnnaMessageSends({
         jobs.current.set(job.key, job)
         run(job)
     }
-    // AT-3153: a template that runs as its own task. `startTask(thread)` starts it once the prompt is
-    // saved as the user's message in `thread`.
-    const submitTask = (text, context, startTask) => {
-        const job = {
-            key: `local-${++sequence.current}`,
-            id: getId(),
-            kind: 'task',
-            startTask,
-            userId,
-            text,
-            context,
-            created: Date.now(),
-            thread: conversation,
-            resolved: false,
-            continuation: false,
-            // Never waits for this thread's answer: it asks this thread's assistant nothing.
-            gateCleared: true,
-        }
-        jobs.current.set(job.key, job)
-        run(job)
-    }
     const retry = key => {
         const job = jobs.current.get(key)
-        if (job?.retryable === false) return
         // A message the server is already answering must never be submitted twice.
         if (job?.status === 'failed' && !replyConfirmsProcessing(replyFor(job))) run(job)
     }
@@ -453,7 +382,6 @@ export default function useAnnaMessageSends({
         messages: messages.filter(message => message.userId === userId),
         sending,
         submit,
-        submitTask,
         retry,
         acknowledge,
         sendNow,
