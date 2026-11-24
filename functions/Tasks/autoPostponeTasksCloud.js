@@ -160,6 +160,20 @@ function getDateToMoveTaskInAutoPostpone(timesPostponed, isObservedTask, timezon
     return nextDate.valueOf()
 }
 
+/**
+ * AT-3142: true when this run would send the task to Someday although the user kept it in their
+ * latest daily plan, or when the holds could not be read (`somedayHoldTaskKeys === null`). Only
+ * the Someday step is held; every other ladder step runs as before. Observed tasks never go to
+ * Someday (their ladder is always three days).
+ */
+function isHeldFromSomeday({ eligibleTask, projectId, somedayHoldTaskKeys, timezoneContext, now = Date.now() }) {
+    if (eligibleTask.isObservedTask) return false
+    const nextDate = getDateToMoveTaskInAutoPostpone(eligibleTask.task.timesPostponed, false, timezoneContext, now)
+    if (nextDate !== BACKLOG_DATE_NUMERIC) return false
+    if (somedayHoldTaskKeys === null) return true
+    return somedayHoldTaskKeys.has(`${projectId}:${eligibleTask.task.id}`)
+}
+
 async function getActiveUsersMap(now = Date.now()) {
     const activeUsersMap = new Map()
     const thirtyDaysAgo = now - THIRTY_DAYS_MS
@@ -446,7 +460,13 @@ async function processUserAutoPostpone(userId, userData, now = Date.now()) {
     }
 
     let postponedCount = 0
+    let heldFromSomedayCount = 0
     const focusTaskService = new FocusTaskService({ database: db })
+    // AT-3142: Someday tasks the user explicitly kept in their latest applied daily plan are not
+    // sent to Someday automatically. When that record cannot be read the run fails closed and sends
+    // nothing to Someday at all (the tasks simply stay overdue until the next run).
+    const { loadSomedayHoldTaskKeys } = require('./dailyPlanService')
+    const somedayHoldTaskKeys = await loadSomedayHoldTaskKeys(db, userId)
     let postponedFocusTask = null
 
     for (const rawProjectData of activeProjects) {
@@ -477,6 +497,19 @@ async function processUserAutoPostpone(userId, userData, now = Date.now()) {
         batch.setProjectContext(projectId)
 
         for (const eligibleTask of eligibleTasks) {
+            if (
+                isHeldFromSomeday({
+                    eligibleTask,
+                    projectId,
+                    somedayHoldTaskKeys,
+                    timezoneContext,
+                    now,
+                })
+            ) {
+                heldFromSomedayCount++
+                continue
+            }
+
             await autoPostponeTaskCloud({
                 projectId,
                 task: eligibleTask.task,
@@ -522,7 +555,7 @@ async function processUserAutoPostpone(userId, userData, now = Date.now()) {
     }
 
     await db.doc(`users/${userId}`).update({ lastAutoPostponeLocalDateKey: localDateKey })
-    return { processed: true, reason: 'completed', postponedCount, localDateKey }
+    return { processed: true, reason: 'completed', postponedCount, heldFromSomedayCount, localDateKey }
 }
 
 async function checkAndAutoPostponeTasks(now = Date.now()) {
@@ -579,6 +612,7 @@ module.exports = {
     shouldAutoPostponeTask,
     mergeTaskCandidate,
     getDateToMoveTaskInAutoPostpone,
+    isHeldFromSomeday,
     autoPostponeTaskCloud,
     processUserAutoPostpone,
     checkAndAutoPostponeTasks,

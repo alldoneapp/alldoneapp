@@ -25,6 +25,7 @@ import DescriptionField from './DescriptionField'
 import { FEED_PUBLIC_FOR_ALL, FEED_TASK_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import ParentGoal from './ParentGoal'
 import ObjectRevisionHistory from '../../NotesView/NotesDV/PropertiesView/ObjectRevisionHistory'
+import MeetingReviewSection from '../../MeetingReview/MeetingReviewSection'
 import { RECURRENCE_NEVER, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../TaskListView/Utils/TasksHelper'
 import PostponedAndFollowedCounters from './PostponedAndFollowedCounters'
 import RecurrenceCounters from './RecurrenceCounters'
@@ -257,6 +258,8 @@ export default function PropertiesView({
             />
 
             <ObjectArtifacts projectId={projectId} objectType="tasks" objectId={task.id} />
+
+            {!!task.calendarData && <MeetingReviewSection task={task} projectId={projectId} />}
 
             {accessGranted && loggedUserCanUpdateObject && (
                 <View style={localStyles.deleteButtonContainer}>

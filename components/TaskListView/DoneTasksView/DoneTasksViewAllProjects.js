@@ -40,7 +40,7 @@ export default function DoneTasksViewAllProjects() {
                     mobile ? localStyles.containerForMobile : isMiddleScreen && localStyles.containerForTablet,
                 ]}
             >
-                <AllProjectsLine bottomSpacing={8} />
+                <AllProjectsLine bottomSpacing={8} showMeetingTime />
                 <AllProjectsAssistantLine />
                 {sortedLoggedUserProjects.map(project => (
                     <DoneTasksByProject key={project.id} project={project} />

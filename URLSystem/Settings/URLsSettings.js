@@ -47,6 +47,11 @@ export const URL_SETTINGS_STATISTICS = 'SETTINGS_STATISTICS'
 export const URL_SETTINGS_HAPPINESS = 'SETTINGS_HAPPINESS'
 
 /**
+ * /settings/meeting-time (AT-3137)
+ */
+export const URL_SETTINGS_MEETING_TIME = 'SETTINGS_MEETING_TIME'
+
+/**
  * /settings/okrs
  */
 export const URL_SETTINGS_OKRS = 'SETTINGS_OKRS'
@@ -133,6 +138,8 @@ class URLsSettings {
                 return `settings/statistics`
             case URL_SETTINGS_HAPPINESS:
                 return `settings/happiness`
+            case URL_SETTINGS_MEETING_TIME:
+                return `settings/meeting-time`
             case URL_SETTINGS_OKRS:
                 return `settings/okrs`
             case URL_SETTINGS_SHORTCUTS:
@@ -178,6 +185,9 @@ class URLsSettings {
                 break
             case URL_SETTINGS_HAPPINESS:
                 document.title = `Alldone.app - Settings - Happiness`
+                break
+            case URL_SETTINGS_MEETING_TIME:
+                document.title = `Alldone.app - Settings - Meeting time`
                 break
             case URL_SETTINGS_OKRS:
                 document.title = `Alldone.app - Settings - OKRs`

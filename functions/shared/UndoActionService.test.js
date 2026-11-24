@@ -493,4 +493,119 @@ describe('UndoActionService', () => {
             }
         })
     })
+
+    describe('skipIfChanged (AT-3142 daily plan)', () => {
+        const planAction = createUndoActionRecord({
+            actionId: 'action-1',
+            initiatorId: 'user-1',
+            label: 'Applied today’s plan',
+            operations: [
+                {
+                    objectType: 'task',
+                    projectId: 'project-1',
+                    objectId: 'task-1',
+                    kind: 'update',
+                    before: { priority: 'none' },
+                    after: { priority: 'must_do' },
+                    skipIfChanged: true,
+                    requiredCurrentFields: { inDone: false },
+                },
+                {
+                    objectType: 'task',
+                    projectId: 'project-1',
+                    objectId: 'task-2',
+                    kind: 'update',
+                    before: { dueDate: 100, timesPostponed: 1, priority: 'should_do' },
+                    after: { dueDate: 900, timesPostponed: 2, priority: 'none' },
+                    skipIfChanged: true,
+                    requiredCurrentFields: { inDone: false },
+                },
+            ],
+        })
+
+        it('restores untouched objects and leaves an object edited since the apply alone', async () => {
+            const { db, writes } = buildDb({
+                action: planAction,
+                user: {},
+                task: { priority: 'should_do', inDone: false, isPublicFor: [0] },
+                objectSnapshots: {
+                    'items/project-1/tasks/task-2': snapshot(true, {
+                        dueDate: 900,
+                        timesPostponed: 2,
+                        priority: 'none',
+                        inDone: false,
+                        isPublicFor: [0],
+                    }),
+                },
+            })
+
+            const result = await reverseAction({ db, userId: 'user-1', actionId: 'action-1', direction: 'undo' })
+
+            expect(result).toMatchObject({ status: 'undone', skippedOperationCount: 1 })
+            const taskWrites = writes.filter(write => write.path.startsWith('items/'))
+            expect(taskWrites).toEqual([
+                {
+                    type: 'update',
+                    path: 'items/project-1/tasks/task-2',
+                    data: { dueDate: 100, timesPostponed: 1, priority: 'should_do' },
+                },
+            ])
+            const actionWrite = writes.find(write => write.path === 'users/user-1/undoActions/action-1')
+            expect(actionWrite.data.skippedOperationIndexes).toEqual([0])
+        })
+
+        it('keeps a task completed after the apply completed (requiredCurrentFields)', async () => {
+            const { db, writes } = buildDb({
+                action: planAction,
+                user: {},
+                task: { priority: 'must_do', inDone: true, isPublicFor: [0] },
+                objectSnapshots: {
+                    'items/project-1/tasks/task-2': snapshot(true, {
+                        dueDate: 900,
+                        timesPostponed: 2,
+                        priority: 'none',
+                        inDone: false,
+                        isPublicFor: [0],
+                    }),
+                },
+            })
+
+            const result = await reverseAction({ db, userId: 'user-1', actionId: 'action-1', direction: 'undo' })
+
+            expect(result.skippedOperationCount).toBe(1)
+            expect(writes.some(write => write.path === 'items/project-1/tasks/task-1')).toBe(false)
+        })
+
+        it('still refuses to make an object invisible and still checks membership when skipping', async () => {
+            const { db } = buildDb({
+                action: planAction,
+                user: {},
+                task: { priority: 'must_do', inDone: false, isPublicFor: [0] },
+                objectSnapshots: { 'projects/project-1': snapshot(true, { userIds: ['user-2'] }) },
+            })
+            await expect(
+                reverseAction({ db, userId: 'user-1', actionId: 'action-1', direction: 'undo' })
+            ).rejects.toMatchObject({ code: 'permission-denied' })
+        })
+
+        it('operations without the flag keep the all-or-nothing conflict behaviour', async () => {
+            const { db } = buildDb({
+                action: { ...planAction, operations: planAction.operations.map(({ skipIfChanged, ...op }) => op) },
+                user: {},
+                task: { priority: 'should_do', inDone: false, isPublicFor: [0] },
+                objectSnapshots: {
+                    'items/project-1/tasks/task-2': snapshot(true, {
+                        dueDate: 900,
+                        timesPostponed: 2,
+                        priority: 'none',
+                        inDone: false,
+                        isPublicFor: [0],
+                    }),
+                },
+            })
+            await expect(
+                reverseAction({ db, userId: 'user-1', actionId: 'action-1', direction: 'undo' })
+            ).rejects.toMatchObject({ code: 'failed-precondition' })
+        })
+    })
 })

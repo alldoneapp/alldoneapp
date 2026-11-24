@@ -55,7 +55,7 @@ describe('WhatsApp call sessions', () => {
             await create(args)
             expect(admin.__mock.get('whatsAppCallSessions/call-1')).toMatchObject({
                 voiceProvider: 'gpt-live',
-                voiceModel: 'gpt-live-1',
+                voiceModel: 'gpt-live-1.1',
                 realtimeModel: null,
                 voiceBilledGold: 0,
                 voiceGoldPerMinute: 40,

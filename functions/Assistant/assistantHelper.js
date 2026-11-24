@@ -11429,7 +11429,9 @@ async function executeToolNativelyImpl(
                         (workflowOwnsTask()
                             ? 'Its workflow manages completion and human review: report the result and leave the task open.'
                             : 'Mark it complete using the existing task tool only when its requested outcome is achieved; leave it open while blocked, awaiting input, or unfinished.')
-                    threadContext += `\nThis delegated work is tracked by the existing Alldone task ${effectiveObjectId} in project ${effectiveProjectId}. Keep progress, questions and deliverables in that task's comments or linked notes. ${completionInstruction} For interactive web browsing use the shared Alldone browser tools through MCP with taskId ${effectiveObjectId} on every call, so the user can see and take control of that session. Do not start an unshared browser inside the VM for this purpose.`
+                    // The browsing rules (shared browser vs. local tests) are built by the runner, which knows
+                    // whether the shared browser's tools really reach the run (vmJobRunner buildBrowsingPromptLines).
+                    threadContext += `\nThis delegated work is tracked by the existing Alldone task ${effectiveObjectId} in project ${effectiveProjectId}. Keep progress, questions and deliverables in that task's comments or linked notes. ${completionInstruction}`
                 } else if (reopenedInstruction) {
                     threadContext += `\n${reopenedInstruction}`
                 }

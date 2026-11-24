@@ -317,6 +317,32 @@ exports.setDefaultProjectSecondGen = onCall(
     }
 )
 
+// AT-3137: the caller's own calendar tasks in a period, for the private meeting time statistics.
+exports.getMeetingTimeStatsDataSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        // AT-3145: 256MiB ran out of memory in production (258-271 MiB, the week view on a fresh
+        // instance, users with many projects) and the app showed "could not be loaded".
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated')
+
+        const { getMeetingStatsData, MeetingStatsDataError } = require('./MeetingReview/meetingStatsData')
+        try {
+            return await getMeetingStatsData(admin.firestore(), request.auth.uid, {
+                fromMs: Number(request.data?.fromMs),
+                toMs: Number(request.data?.toMs),
+            })
+        } catch (error) {
+            if (error instanceof MeetingStatsDataError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
 exports.copyProjectMoveChatSecondGen = onCall(
     {
         timeoutSeconds: 120,
@@ -6804,6 +6830,24 @@ exports.postponeProjectTasksWithUndoSecondGen = onCall(
             const code = supportedCodes.has(error.code) ? error.code : 'internal'
             console.error('[postponeProjectTasksWithUndoSecondGen] Failed', { code, error: error.message })
             throw new HttpsError(code, code === 'internal' ? 'Failed to postpone project tasks' : error.message)
+        }
+    }
+)
+
+// AT-3142: apply "Today's plan" — priorities of the planned tasks, postpones along the existing
+// ladder (Someday only when confirmed) and one undo record, in one transaction.
+exports.applyDailyPlanSecondGen = onCall(
+    { timeoutSeconds: 120, memory: '512MiB', region: 'europe-west1', cors: true },
+    async request => {
+        if (!request.auth) throw new HttpsError('permission-denied', 'Authentication required')
+        try {
+            const { executeApplyDailyPlan } = require('./Tasks/dailyPlanService')
+            return await executeApplyDailyPlan({ actorUserId: request.auth.uid, data: request.data })
+        } catch (error) {
+            const supportedCodes = new Set(['invalid-argument', 'permission-denied', 'failed-precondition'])
+            const code = supportedCodes.has(error.code) ? error.code : 'internal'
+            console.error('[applyDailyPlanSecondGen] Failed', { userId: request.auth.uid, code, error: error.message })
+            throw new HttpsError(code, code === 'internal' ? 'Failed to apply the plan' : error.message)
         }
     }
 )

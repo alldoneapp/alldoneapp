@@ -72,6 +72,130 @@ slow (32s for 7 events on the reporting account), so the meetings land a beat af
 paints. Deploying this adds a Cloud Scheduler job; per the runtime note above, confirm the
 function actually exists after the deploy rather than trusting the deploy summary.
 
+## Meeting time and time to work in the All projects line (AT-3136)
+
+The task boards and My Day show the time to work on the right of the All projects line, as a large
+figure with two small lines to its right (`AllProjectsLine showMeetingTime` → `AllProjectsMeetingTime`,
+required on use so Notes/Chats/Contacts/Goals never load it):
+
+```
+1h 30m  Zeit zum Arbeiten
+        7h 30m Meetings
+```
+
+Rules live in `utils/meetingTimeToday.js` and are pinned by `utils/meetingTimeToday.test.js`:
+
+- **Working hours are NOT a My Day setting.** There is none. The only stored working day is the
+  public meeting link's `workingHoursStart/End` (`users/{uid}/bookingSettings/default`), which
+  Anna's availability search also uses. A user who never saved it gets 09:00–17:00, named as the
+  default in the tooltip, never presented as their own choice. The clock is read
+  in the device's local zone for the local today; the doc's `timeZone` is ignored because the
+  settings screen never sends one and the server fills it from the integer `users/{uid}.timezone`,
+  i.e. often "UTC".
+- **Meetings are the synced meeting tasks** (`calendarData`), from every active project because
+  routing puts a meeting wherever it belongs. Two listeners per project, both clause-for-clause
+  identical to queries the board already runs (`getOpenTasksQuery` state 0 and
+  `getTasksCompletedTodayQuery`), so Firestore shares the server targets; the done-today stream keeps
+  a meeting that was ticked off this morning in the whole-day total. Cancelled/declined events never
+  become tasks (`filterEvents`). All-day and multi-day timed events are not busy time (same as
+  `normalizeGoogleBusyInterval`). Intervals are clipped to the window and unioned; duplicates
+  collapse by task id and by name + timing. Microsoft `dateTime` has no offset and is read in its own
+  `timeZone` (UTC), not in the reader's zone.
+- **Unknown is never zero.** No connected calendar → no figure, only "Time to work / Connect
+  calendar". Listeners not answered → a dimmed "…" figure and "… meetings". A listener error → no
+  figure, "Calendar data unavailable". `checkIfCalendarConnected` reports `syncing/synced/failed` to
+  `utils/calendarSyncStatus.js`; a running pull dims the figure, a failed one adds a small orange
+  `alert-circle` icon after the meetings line (beside the figure in the minimal form), explained in
+  the tooltip.
+- **Layout (user requests after !934 and !938, 2026-11-23).** The free time inside the working
+  hours is the one large figure, "Time to work" ("Zeit zum Arbeiten"; "Calendar-free"/"Kalenderfrei"
+  before !938). Everything else stands to its RIGHT as two stacked small lines, "Time to work" and
+  "7h 30m meetings" (`meetingTime meetings duration`, so the duration comes first in every language).
+  Nothing stands before the figure: the working hours ("9–18", or the default) are only in the
+  tooltip (`title`) and the accessibility label, together with the explanation that this is calendar
+  availability, not tracked work. The whole display is one touchable: it opens Settings >
+  Customizations (meeting link working hours), or Settings > Integrations when no calendar is
+  connected (calendars are account-level connections there since the July 2026 integrations
+  overhaul; the project properties have no calendar section, do not link there). One touchable, not
+  nested links, so screen readers get one control with the full label.
+- **Mobile: same row, title left aligned.** On mobile sizes (`smallScreenNavigation`) the display
+  stays in the line's actions cluster, right aligned before the menu, and "All projects" is left
+  aligned: no AT-3132 centring spacer where `showMeetingTime` is set (the mirrored spacer would leave
+  the title no room). Lines without the display (Notes, Chats, …) stay centred (product decision,
+  2026-11-23). The title sits in a `maxWidth: '100%'` wrapper (`titleBound`), because the mobile
+  title column aligns its children at their own width and an unbounded title ran under the figure at
+  320px. `AllProjectsLine` measures the line (onLayout) and `getMeetingTimeDensity` picks the form:
+  full (≥ 440px line width, ~472px screens), compact (≥ 340px, e.g. 390px screens: figure +
+  "7h 30m / Meetings", no "Time to work" label), minimal (narrower, e.g. 360/320px: the figure only);
+  the sync warning icon needs 20px more. Compact and minimal use an 18px figure. Thresholds were
+  measured in the browser with the German labels at 320/360/390/430/600px; check them again with
+  the browser when the line gets another element.
+- The previous layouts (a separate row under the line on mobile, `wrap-reverse` secondary text
+  before the figure) are gone; `utils/meetingTimeToday.js` was not touched by either layout
+  revision (only by the solo work block change below).
+- Known gap: a Google event marked "free" (`transparency: transparent`) still counts, because the
+  sync does not store `transparency` on `calendarData`.
+- **Solo work blocks are time to work (user correction after !939, 2026-11-23).** "Meetings in
+  denen ich alleine bin sollten als echte Arbeitszeit gelten", narrowed by the user in the same
+  thread: only solo appointments that are _work blockers_; private solo appointments (doctor,
+  childcare) still take time away, and "the LLM decides when it looks at the event". An event is
+  left out of the meeting time only when `calendarData.soloEvent === true` AND
+  `calendarData.workBlock === true` (`isSoloWorkBlock`). Everything unknown stays a meeting, so a gap
+  in the data can only make "time to work" smaller. Only the union of the remaining meetings is
+  counted, so an overlapping solo block changes nothing there; the copy check runs after the solo
+  check, so an event imported twice where only one copy is a solo work block still counts once.
+    - `soloEvent` (sync, `getSoloEventFlag` in `calendarTasks.js`, a rule, never the model): `false`
+      as soon as anybody else is in it (attendee or organizer, whatever their answer: unanswered,
+      tentative AND declined invitees keep it a meeting, decided with the user; rooms/resources are
+      not people). `true` only with nobody else AND the user verifiably the organizer (Google
+      `organizer.self`, Microsoft `isOrganizer`, now in the Graph `$select` and mapped to
+      `organizer.self` by `graphEventToGoogleEvent`, or the organizer address equals the connected
+      account). Only the organizer is sure to see the full guest list. Unset (unknown) for a group
+      calendar organizer, no organizer, or Google `attendeesOmitted`. Microsoft without `isOrganizer`
+      and an alias address counts the "other" organizer: a meeting (safe direction).
+    - `workBlock` / `workBlockSource`: `calendar` for Google `eventType: 'focusTime'` (always wins);
+      otherwise `ai`, the `workBlock` key of the EXISTING calendar routing call
+      (`WORK_BLOCK_PROMPT` in `calendarProjectClassifier.js`, booleans only via
+      `coerceWorkBlockVerdict`, null = no decision; no extra model call, no extra Gold). The model sees
+      an event only once (routed events are never re-classified), so `applyWorkBlockVerdict` keeps
+      the stored `ai` verdict on later syncs (otherwise the regenerated `calendarData` would drop it).
+      No verdict exists, i.e. the event stays a meeting, when routing is off, the user is not premium,
+      Gold is insufficient, a learned series route skipped the model, or the event was routed before
+      this change (today's events at deploy time).
+    - The tooltip adds "Work blocks with only you count as time to work (n today)" when n > 0; the
+      visible line is unchanged. Pinned by "solo work blocks" in `meetingTimeToday.test.js`, "solo
+      events and work blocks (AT-3136)" and the AT-3136 routing test in `calendarTasks.test.js`, and
+      the AT-3136 cases in `calendarProjectClassifier.test.js` / `calendarProjectRouting.test.js`.
+    - The AT-3137 statistics and the "no other participants → own time" category suggestion still
+      use `attendeeCount` and are unchanged.
+- **Time to work is what is still available, live (user correction after !940, 2026-11-23).** "Die
+  verfügbare Arbeitszeit sollte live aktualisiert werden. Wenn die vorherigen Zeitfenster bereits
+  vorbei sind, stehen die entsprechenden Stunden auch nicht mehr zur Verfügung."
+    - The large figure (`view.freeMinutes`) is the remaining window `[max(now, start), end)`
+      (`getRemainingWindow`) minus the union of the meetings inside it: before the working day the
+      whole window, after it 0 (`workdayPhase` `before`/`during`/`after`). An ongoing meeting only
+      takes its rest; free time that has passed is gone. Solo work blocks, dedup, clipping, all-day,
+      cancelled/declined are the same rules as before, applied to the remaining window.
+    - The meeting figure (`meetingMinutes`, `meetingCount`, `workBlockCount`, `windowMinutes`)
+      stays the WHOLE working day ("how much of my day is meetings"); so during the day the two
+      figures no longer add up to the window. The visible labels are unchanged; the tooltip and the
+      accessibility label say "Meetings today …: 4h (whole working day, including meetings that are
+      over). Still free to work from 14:05 to 18:00: 2h; free time that has passed no longer
+      counts." and, after the working hours, `meetingTime summary after hours`.
+    - The clock is `hooks/useMinuteClock.js`: one chained timeout re-aligned to just after every full
+      minute, plus an immediate refresh through `subscribePageVisible` (`utils/appResume.js`: tab
+      shown, focus, thaw, bfcache), cleared on unmount. No calendar sync, snapshot or navigation is
+      needed for the figure to move; no listener is re-opened by a tick.
+    - Day rollover: the same clock gives the local day key. A new day re-opens the listeners and
+      the line shows "…" until they answer (`tasksState.key` mismatch), never yesterday's figures.
+      `utils/DailyAppReload.js` then reloads the page as usual (deferred while offline).
+    - `dailyPlanModel.computePlanCapacity` (AT-3142) still reads `windowMinutes − meetingMinutes`
+      (whole day) and ignores `freeMinutes`; it was deliberately not changed with this (open product
+      question whether Plan my day should plan against the remaining time).
+    - Pinned by "remaining time to work (live)" in `meetingTimeToday.test.js`, "live remaining time
+      to work" in `useMeetingTimeToday.test.js` (fake clock: ticks, resume, unmount, midnight),
+      `hooks/useMinuteClock.test.js` and the tooltip cases in `MeetingTimeToday.test.js`.
+
 ## Task reminders and the channel they come back on (AT-2211)
 
 A "reminder" is not its own entity — it is `dueDate` + `alertEnabled` + the `alertTriggered`

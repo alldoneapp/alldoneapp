@@ -54,6 +54,11 @@ export const URL_PROJECT_DETAILS_STATISTICS = 'PROJECT_DETAILS_STATISTICS'
 export const URL_PROJECT_DETAILS_HAPPINESS = 'PROJECT_DETAILS_HAPPINESS'
 
 /**
+ * /project/{projectId}/meeting-time (AT-3145)
+ */
+export const URL_PROJECT_DETAILS_MEETING_TIME = 'PROJECT_DETAILS_MEETING_TIME'
+
+/**
  * /project/{projectId}/okrs
  */
 export const URL_PROJECT_DETAILS_OKRS = 'PROJECT_DETAILS_OKRS'
@@ -130,6 +135,8 @@ class URLsProjects {
                 return `project/${params[0]}/statistics`
             case URL_PROJECT_DETAILS_HAPPINESS:
                 return `project/${params[0]}/happiness`
+            case URL_PROJECT_DETAILS_MEETING_TIME:
+                return `project/${params[0]}/meeting-time`
             case URL_PROJECT_DETAILS_OKRS:
                 return `project/${params[0]}/okrs`
             case URL_PROJECT_DETAILS_ASSISTANTS:
@@ -189,6 +196,10 @@ class URLsProjects {
             }
             case URL_PROJECT_DETAILS_HAPPINESS: {
                 projectDetails(' - Happiness')
+                break
+            }
+            case URL_PROJECT_DETAILS_MEETING_TIME: {
+                projectDetails(' - Meeting time')
                 break
             }
             case URL_PROJECT_DETAILS_OKRS: {

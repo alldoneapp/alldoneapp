@@ -781,6 +781,23 @@ describe('gold, premium and the Stripe link are server-owned', () => {
         await assertFails(deleteDoc(doc(memberDb, `users/${MEMBER_ID}/goldRewardClaims/task-reward`)))
         await assertFails(setDoc(doc(memberDb, `users/${MEMBER_ID}/goldChangeClaims/claim`), { amount: 1 }))
     })
+
+    it('keeps daily plan records (AT-3142 Someday holds) owner-readable and server-written', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), `users/${MEMBER_ID}/dailyPlans/2026-11-23`), {
+                appliedAt: 1,
+                somedayHoldTaskKeys: [],
+            })
+        })
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertSucceeds(getDoc(doc(memberDb, `users/${MEMBER_ID}/dailyPlans/2026-11-23`)))
+        await assertFails(
+            setDoc(doc(memberDb, `users/${MEMBER_ID}/dailyPlans/2026-11-24`), { somedayHoldTaskKeys: ['p:t'] })
+        )
+        await assertFails(
+            updateDoc(doc(memberDb, `users/${MEMBER_ID}/dailyPlans/2026-11-23`), { somedayHoldTaskKeys: ['p:t'] })
+        )
+    })
 })
 
 describe('goal lock keys are written by the server (AT-2978)', () => {

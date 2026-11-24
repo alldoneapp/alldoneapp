@@ -10,6 +10,12 @@ const { isEqual } = require('lodash')
 const { getUserData } = require('../Users/usersFirestore')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { FieldPath } = require('firebase-admin/firestore')
+const {
+    MEETING_REVIEWS_COLLECTION,
+    isMeetingCategory,
+    toMeetingDocId,
+} = require('../shared/meetingReview/meetingReviewConstants')
+const { getCalendarEventBounds } = require('../shared/meetingReview/calendarEventCounting')
 
 const FIRESTORE_IN_QUERY_MAX_IDS = 30
 
@@ -184,6 +190,7 @@ const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOf
     const calendarData = { link: htmlLink, start, end, email, provider: event.provider || 'google' }
     const recurringEventId = event.recurringEventId || event.seriesMasterId || ''
     if (recurringEventId) calendarData.recurringEventId = recurringEventId
+    Object.assign(calendarData, getCalendarMeetingFields(event, email, startDate, endDate, isAllDay))
 
     // Store the original project ID if this is a new task
     if (originalProjectId) {
@@ -201,6 +208,159 @@ const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOf
     }
 
     return dataToUpdate
+}
+
+// Webmail domains say nothing about "internal" vs "external", so no external count is stored for
+// an account on one of them (the suggestion then simply has one signal less).
+const PUBLIC_MAIL_DOMAINS = new Set([
+    'gmail.com',
+    'googlemail.com',
+    'outlook.com',
+    'outlook.de',
+    'hotmail.com',
+    'hotmail.de',
+    'live.com',
+    'live.de',
+    'icloud.com',
+    'me.com',
+    'mac.com',
+    'gmx.de',
+    'gmx.net',
+    'gmx.com',
+    'web.de',
+    'yahoo.com',
+    'yahoo.de',
+    't-online.de',
+    'posteo.de',
+    'mailbox.org',
+    'proton.me',
+    'protonmail.com',
+])
+
+const normalizeEmail = value => (typeof value === 'string' ? value.trim().toLowerCase() : '')
+const getEmailDomain = value => {
+    const email = normalizeEmail(value)
+    const at = email.lastIndexOf('@')
+    return at > 0 ? email.slice(at + 1) : ''
+}
+
+/**
+ * AT-3137 — the few extra fields the meeting statistics and the category suggestion need, stored
+ * on the calendar task next to the existing event data (decided with the user 2026-11-23):
+ *
+ *   - startMs / endMs: numeric bounds, so the statistics can query a period instead of reading
+ *     every calendar task the user ever had
+ *   - isAllDay: also for Microsoft, whose all-day events arrive as midnight-to-midnight times
+ *   - attendeeCount: OTHER people in the meeting (not the user, not rooms/resources). Google omits
+ *     `attendees` for an event without guests, so 0 is real information there
+ *   - externalAttendeeCount: of those, how many are outside the account's own mail domain (not
+ *     stored for webmail accounts, where the domain says nothing)
+ *   - selfResponseStatus: the user's own answer (accepted, tentative, declined, ...)
+ *   - soloEvent (AT-3136): true only when the user is RELIABLY alone (see getSoloEventFlag), false
+ *     when anybody else is in it, absent when the data does not say
+ *   - workBlock / workBlockSource (AT-3136): Google focus time here; the routing model's verdict is
+ *     added by applyWorkBlockVerdict
+ *
+ * Counts only: no addresses or names are stored, because calendar tasks are readable by the
+ * project's members.
+ */
+const getCalendarMeetingFields = (event, email, startDate, endDate, isAllDayByDate) => {
+    const fields = {}
+    const startMs = startDate && startDate.isValid() ? startDate.valueOf() : null
+    const endMs = endDate && endDate.isValid() ? endDate.valueOf() : null
+    if (Number.isFinite(startMs) && Number.isFinite(endMs)) {
+        fields.startMs = startMs
+        fields.endMs = endMs
+    }
+    if (isAllDayByDate || event.isAllDay === true) fields.isAllDay = true
+
+    const selfEmail = normalizeEmail(email)
+    const attendees = (Array.isArray(event.attendees) ? event.attendees : []).filter(
+        attendee => attendee && !attendee.resource && normalizeEmail(attendee.email)
+    )
+    const isSelf = attendee => attendee.self === true || normalizeEmail(attendee.email) === selfEmail
+    const selfAttendee = attendees.find(isSelf)
+    const others = attendees.filter(attendee => !isSelf(attendee)).map(attendee => normalizeEmail(attendee.email))
+
+    // Microsoft does not list the organizer among the attendees; Google does. A group calendar
+    // "organizer" (…@group.calendar.google.com) is a calendar, not a person.
+    const organizerEmail = normalizeEmail(event.organizer?.email)
+    if (
+        organizerEmail &&
+        organizerEmail !== selfEmail &&
+        event.organizer?.self !== true &&
+        !organizerEmail.endsWith('calendar.google.com') &&
+        !others.includes(organizerEmail)
+    ) {
+        others.push(organizerEmail)
+    }
+    const uniqueOthers = [...new Set(others)]
+    fields.attendeeCount = uniqueOthers.length
+
+    const selfDomain = getEmailDomain(selfEmail)
+    if (selfDomain && !PUBLIC_MAIL_DOMAINS.has(selfDomain)) {
+        fields.externalAttendeeCount = uniqueOthers.filter(other => getEmailDomain(other) !== selfDomain).length
+    }
+
+    const selfResponseStatus = selfAttendee?.responseStatus || event.selfResponseStatus || ''
+    if (typeof selfResponseStatus === 'string' && selfResponseStatus) {
+        fields.selfResponseStatus = selfResponseStatus.slice(0, 40)
+    }
+
+    const soloEvent = getSoloEventFlag(event, selfEmail, uniqueOthers.length)
+    if (soloEvent !== null) fields.soloEvent = soloEvent
+    // Google's own "Focus time" event type is a work block by definition; no model needed.
+    if (event.eventType === 'focusTime') {
+        fields.workBlock = true
+        fields.workBlockSource = WORK_BLOCK_SOURCE_CALENDAR
+    }
+    return fields
+}
+
+const WORK_BLOCK_SOURCE_CALENDAR = 'calendar'
+const WORK_BLOCK_SOURCE_AI = 'ai'
+
+/**
+ * AT-3136 — is the user RELIABLY the only person in this event? `true` / `false`, or `null` when the
+ * calendar data does not say (the field is then not stored and the event counts as a meeting).
+ *
+ *   - false: anybody else is in it (attendee or organizer, whatever their answer: an invitee who
+ *     has not answered or declined is still a meeting participant; rooms/resources are not people).
+ *   - true: nobody else AND the user is verifiably the organizer: Google `organizer.self`, Microsoft
+ *     `isOrganizer` (mapped to `organizer.self` by the sync), or the organizer address equals the
+ *     connected account. Only the organizer is guaranteed to see the full guest list.
+ *   - null: nobody else is listed but the organizer is not the user (a group/shared calendar, a
+ *     guest list hidden from guests) or missing, or Google reports `attendeesOmitted`.
+ */
+const getSoloEventFlag = (event, selfEmail, othersCount) => {
+    if (othersCount > 0) return false
+    if (event.attendeesOmitted === true) return null
+    const organizer = event.organizer
+    if (!organizer) return null
+    const organizerEmail = normalizeEmail(organizer.email)
+    const selfIsOrganizer = organizer.self === true || (!!organizerEmail && organizerEmail === selfEmail)
+    return selfIsOrganizer ? true : null
+}
+
+/**
+ * AT-3136 — the "own work block" verdict on the calendar task. A verdict of the provider itself
+ * (Google focus time) wins; otherwise the routing model's verdict from THIS sync; otherwise the one
+ * stored earlier (the model looks at an event only once, so later syncs must keep it).
+ */
+const applyWorkBlockVerdict = (calendarData, routingDecision, existingCalendarData) => {
+    if (calendarData.workBlockSource === WORK_BLOCK_SOURCE_CALENDAR) return
+    if (typeof routingDecision?.workBlock === 'boolean') {
+        calendarData.workBlock = routingDecision.workBlock
+        calendarData.workBlockSource = WORK_BLOCK_SOURCE_AI
+        return
+    }
+    if (
+        typeof existingCalendarData?.workBlock === 'boolean' &&
+        existingCalendarData.workBlockSource === WORK_BLOCK_SOURCE_AI
+    ) {
+        calendarData.workBlock = existingCalendarData.workBlock
+        calendarData.workBlockSource = WORK_BLOCK_SOURCE_AI
+    }
 }
 
 const normalizeRoutingDecision = decision => {
@@ -226,6 +386,8 @@ const normalizeRoutingDecision = decision => {
         projectName: typeof decision.projectName === 'string' ? decision.projectName.trim() : '',
         goldSpent: Number.isFinite(decision.goldSpent) ? Number(decision.goldSpent) : 0,
         tokenUsage: decision.tokenUsage || null,
+        // AT-3136: the routing model's "own work block" verdict, only a real boolean.
+        ...(typeof decision.workBlock === 'boolean' ? { workBlock: decision.workBlock } : {}),
         secondPassUsed: !!decision.tokenUsage?.auditModel,
         secondPassModel:
             typeof decision.tokenUsage?.auditModel === 'string' ? decision.tokenUsage.auditModel.trim() : '',
@@ -332,6 +494,7 @@ const addOrUpdateCalendarTask = async (
             dataToUpdate.calendarData.projectRouting = task.calendarData.projectRouting
         }
     }
+    applyWorkBlockVerdict(dataToUpdate.calendarData, normalizedRoutingDecision, task?.calendarData)
 
     const reopenData = shouldReopenCompletedCalendarTask(task, dataToUpdate.calendarData)
         ? buildCalendarTaskReopenData(task, userId, dataToUpdate.calendarData)
@@ -481,6 +644,44 @@ const writeNewCalendarTask = async (db, taskRef, newTask, userId) =>
         return true
     })
 
+/**
+ * AT-3137 — stores the meeting category the routing run proposed as a PRIVATE suggestion of the
+ * calendar's owner (users/{uid}/meetingReviews/{eventId}, owner-only in firestore.rules), never on
+ * the shared task. Merge-writes `aiSuggestion` and the event bounds only, so a category or rating
+ * the user already gave is never touched. A failure here must not fail the sync.
+ */
+const writeMeetingCategorySuggestion = async (userId, event, projectId, suggestion) => {
+    if (!userId || !event?.id || !suggestion || !isMeetingCategory(suggestion.category)) return false
+    const docId = toMeetingDocId(event.id)
+    if (!docId) return false
+    const bounds = getCalendarEventBounds({ start: event.start, end: event.end, isAllDay: event.isAllDay === true })
+    const data = {
+        taskId: event.id,
+        projectId: projectId || '',
+        recurringEventId: event.recurringEventId || event.seriesMasterId || null,
+        aiSuggestion: {
+            category: suggestion.category,
+            confidence: suggestion.confidence === 'medium' ? 'medium' : 'low',
+            signals: Array.isArray(suggestion.signals) ? suggestion.signals.slice(0, 3) : [],
+            createdAt: Date.now(),
+        },
+    }
+    if (bounds && !bounds.isAllDay) {
+        data.startMs = bounds.startMs
+        data.endMs = bounds.endMs
+    }
+    try {
+        await admin.firestore().doc(`users/${userId}/${MEETING_REVIEWS_COLLECTION}/${docId}`).set(data, { merge: true })
+        return true
+    } catch (error) {
+        console.warn('[calendarTasks] Could not store the meeting category suggestion', {
+            eventId: event.id,
+            error: error.message,
+        })
+        return false
+    }
+}
+
 const createTasksMap = tasks => {
     const tasksMap = {}
     tasks.forEach(task => {
@@ -535,6 +736,13 @@ const addCalendarEvents = async (
                 timezoneOffset,
                 routingDecision,
                 user
+            ).then(() =>
+                writeMeetingCategorySuggestion(
+                    userId,
+                    event,
+                    targetProjectId,
+                    routingDecisionsByEventId[event.id]?.meetingCategory
+                )
             )
         )
     })
@@ -736,6 +944,9 @@ const removeCalendarTasks = async (
 }
 
 module.exports = {
+    getCalendarMeetingFields,
+    applyWorkBlockVerdict,
+    writeMeetingCategorySuggestion,
     writeNewCalendarTask,
     removeCalendarTasks,
     generateTask,

@@ -39,13 +39,20 @@ function graphEventToGoogleEvent(event = {}) {
                   optional: attendee?.type === 'optional',
               }))
             : [],
+        // AT-3136: Graph lists the organizer outside `attendees` and says reliably whether that is
+        // the signed-in user (`isOrganizer`), also when the account address is an alias of it.
         organizer: event.organizer?.emailAddress
             ? {
                   email: event.organizer.emailAddress.address || '',
                   displayName: event.organizer.emailAddress.name || '',
+                  ...(event.isOrganizer === true ? { self: true } : {}),
               }
             : null,
         recurringEventId: event.seriesMasterId || '',
+        // AT-3137: Graph returns all-day events as midnight-to-midnight date-times; without the flag
+        // they would count as 24 hours of meetings. The user's own answer is not in `attendees`.
+        isAllDay: event.isAllDay === true,
+        selfResponseStatus: event.responseStatus?.response || '',
         provider: 'microsoft',
     }
 }
@@ -121,7 +128,7 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
                 $top: '100',
                 $orderby: 'start/dateTime',
                 $select:
-                    'id,subject,bodyPreview,body,location,isCancelled,webLink,start,end,attendees,organizer,onlineMeeting,seriesMasterId',
+                    'id,subject,bodyPreview,body,location,isCancelled,isAllDay,isOrganizer,responseStatus,webLink,start,end,attendees,organizer,onlineMeeting,seriesMasterId',
             })
             const response = await graph.request(`/me/calendarView?${query.toString()}`, {
                 headers: { Prefer: 'outlook.body-content-type="text",outlook.timezone="UTC"' },
@@ -251,4 +258,5 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
 
 module.exports = {
     syncCalendarEvents,
+    graphEventToGoogleEvent,
 }
