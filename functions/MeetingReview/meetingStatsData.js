@@ -58,6 +58,10 @@ const pickCalendarData = calendarData => {
         'selfResponseStatus',
         'status',
         'provider',
+        // AT-3145: "meeting-free work time" treats reliably solo work blocks as work time, like
+        // "Time to work" (utils/meetingTimeToday.js). Booleans only, nothing personal.
+        'soloEvent',
+        'workBlock',
     ].forEach(key => {
         if (calendarData[key] !== undefined) picked[key] = calendarData[key]
     })

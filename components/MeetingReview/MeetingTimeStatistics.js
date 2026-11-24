@@ -48,6 +48,8 @@ import { formatWorkingHoursRange, resolveWorkingHours } from '../../utils/meetin
 import SettingsHelper from '../SettingsView/SettingsHelper'
 import NavigationService from '../../utils/NavigationService'
 import { DV_TAB_SETTINGS_CUSTOMIZATIONS } from '../../utils/TabNavigationConstants'
+import { computeMeetingFreeWorkTime, resolveIncludeWeekends } from '../../utils/meetingReview/meetingFreeWorkTime'
+import MeetingFreeTimeSeries from './MeetingFreeTimeSeries'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -100,17 +102,28 @@ const openWorkingHoursSettings = () => {
  * against every project, so per-project figures add up to the all-projects total.
  * "Time to work" in the All projects line opens this tab; the working hours line links back to
  * where they are edited.
+ *
+ * AT-3145 (follow-up) — "Meeting-free work time per day" (`MeetingFreeTimeSeries`): the working
+ * window minus the union of ALL own meetings per day over the selected period, calendar-derived, not
+ * measured. A project scope only highlights that project's part; the free time stays global.
  */
 export default function MeetingTimeStatistics({ projectId = null }) {
     const uid = useSelector(state => state.loggedUser?.uid)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
+    // Same signal as "Time to work" (getCalendarConnectedProjectIdsFromApis), inlined so this view
+    // does not load the Firestore backend for it.
+    const calendarConnected = useSelector(state =>
+        Object.values(state.loggedUser?.apisConnected || {}).some(apis => !!apis?.calendar)
+    )
     const [period, setPeriod] = useState(MEETING_STATS_PERIOD_WEEK)
     const [anchorMs, setAnchorMs] = useState(() => Date.now())
     const [loadState, setLoadState] = useState({ loading: true, error: '', tasks: [], reviews: {}, failed: [] })
     const [filter, setFilter] = useState(null)
     const [projectFilter, setProjectFilter] = useState(null)
     const [workingHours, setWorkingHours] = useState(null)
+    const [includeWeekends, setIncludeWeekends] = useState(false)
+    const [workingHoursFailed, setWorkingHoursFailed] = useState(false)
     const scopeProjectId = projectId || projectFilter
     const liveReviews = useMeetingReviewSelector(state => state.reviews)
     const seriesCategories = useMeetingReviewSelector(state => state.seriesCategories)
@@ -128,10 +141,13 @@ export default function MeetingTimeStatistics({ projectId = null }) {
         let cancelled = false
         fetchWorkingHoursSettings(uid)
             .then(settings => {
-                if (!cancelled) setWorkingHours(resolveWorkingHours(settings))
+                if (cancelled) return
+                setWorkingHours(resolveWorkingHours(settings))
+                setIncludeWeekends(resolveIncludeWeekends(settings))
             })
             .catch(error => {
-                // The link to the settings stays; only the hours are left out.
+                // The link to the settings stays; only the hours (and the meeting-free time) are left out.
+                if (!cancelled) setWorkingHoursFailed(true)
                 console.warn('[meetingReview] working hours could not be read', error?.message)
             })
         return () => {
@@ -188,7 +204,7 @@ export default function MeetingTimeStatistics({ projectId = null }) {
         }
     }, [uid, range.startMs, range.endMs])
 
-    const { stats, allStats, tasksById } = useMemo(() => {
+    const { stats, allStats, tasksById, entries } = useMemo(() => {
         // Live reviews win: a rating changed in the sheet shows here at once.
         const reviews = { ...loadState.reviews, ...liveReviews }
         const entries = buildMeetingStatsEntries({ tasks: loadState.tasks, reviews, seriesCategories, rules })
@@ -207,8 +223,25 @@ export default function MeetingTimeStatistics({ projectId = null }) {
             // The "By project" table always lists every project, also while one is selected.
             allStats: scopeProjectId ? compute(null) : scoped,
             tasksById: new Map(entries.map(entry => [entry.id, entry.task])),
+            entries,
         }
     }, [loadState, liveReviews, seriesCategories, rules, range, scopeProjectId])
+
+    const freeTimeSeries = useMemo(
+        () =>
+            workingHours
+                ? computeMeetingFreeWorkTime({
+                      entries,
+                      workingHours,
+                      includeWeekends,
+                      dayStartsMs: range.dayStartsMs,
+                      rangeEndMs: range.endMs,
+                      nowMs: Date.now(),
+                      projectId: scopeProjectId,
+                  })
+                : null,
+        [entries, workingHours, includeWeekends, range, scopeProjectId]
+    )
 
     const dateFormat = getDateFormat()
     const timeFormat = getTimeFormat()
@@ -384,6 +417,20 @@ export default function MeetingTimeStatistics({ projectId = null }) {
                             {translate('Meeting statistics incomplete')}
                         </Text>
                     ) : null}
+
+                    <MeetingFreeTimeSeries
+                        key={`${period}-${range.startMs}`}
+                        series={freeTimeSeries}
+                        period={period}
+                        calendarConnected={calendarConnected}
+                        incomplete={loadState.failed.length > 0 || !!loadState.truncated}
+                        workingHours={workingHours}
+                        workingHoursFailed={workingHoursFailed}
+                        includeWeekends={includeWeekends}
+                        scopeProjectName={scopeProjectId ? projectName(scopeProjectId) : ''}
+                        dateFormat={dateFormat}
+                        timeFormat={timeFormat}
+                    />
 
                     {total <= 0 ? (
                         <Text style={localStyles.empty} testID="meeting-stats-empty">

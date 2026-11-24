@@ -112,6 +112,20 @@ describe('getMeetingStatsData', () => {
         expect(mine.calendarData).not.toHaveProperty('link')
     })
 
+    it('passes the solo work block flags on, so meeting-free time treats them like "Time to work" (AT-3145)', async () => {
+        const fixture = baseFixture()
+        fixture.tasksByProject.shared[0].calendarData = {
+            ...fixture.tasksByProject.shared[0].calendarData,
+            soloEvent: true,
+            workBlock: true,
+            workBlockSource: 'ai',
+        }
+        const result = await getMeetingStatsData(createDb(fixture), 'me', { fromMs: FROM, toMs: TO })
+        const mine = result.tasks.find(task => task.id === 'mine')
+        expect(mine.calendarData).toMatchObject({ soloEvent: true, workBlock: true })
+        expect(mine.calendarData).not.toHaveProperty('workBlockSource')
+    })
+
     it('rejects missing auth, invalid and too long periods', async () => {
         const db = createDb(baseFixture())
         await expect(getMeetingStatsData(db, '', { fromMs: FROM, toMs: TO })).rejects.toMatchObject({

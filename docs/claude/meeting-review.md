@@ -95,6 +95,41 @@ not use those fields.
   The statistics show the working hours ("Arbeitsfenster", from `users/{uid}/bookingSettings/default`
   via `resolveWorkingHours`, default labelled) with a link to Settings → Customizations, where they
   are edited. No second working-hours setting.
+- **Meeting-free work time per day (AT-3145 follow-up, 2026-11-24).** User request: "how much
+  actual working time free of meetings did I have per day, over time". A block at the top of
+  Settings → Meeting time (and the project tab), `MeetingFreeTimeSeries` fed by the pure
+  `utils/meetingReview/meetingFreeWorkTime.js`: per local day `free = working window − union of
+meetings clipped to the window`, a column chart for week/month (scrolls on month), a time line
+  for a day, a per-day table. Labelled as **calendar-derived** time without appointments, never as
+  measured/productive time. Decided with the user (all four recommendations):
+    - **Always global.** The free time subtracts every own appointment of every project. A project
+      scope (filter row or `/project/{pid}/meeting-time`) only adds `scopedMeetingMs`, the time in
+      which at least one appointment of that project ran (union, not the even split of the usefulness
+      statistics), shown as "of which {project}" and a darker part of the meeting segment, with a
+      hint that the free time is across all projects.
+    - **Days without any calendar entry** (not even all-day/excluded ones) count as free but are
+      flagged `noCalendarEntries` (faded, "?", counted in the summary). Reason: there is no
+      scheduled server-side sync (`taskBoardCalendarSync.js`); the sync reads from "today" on and
+      keeps past tasks, so a day on which the app was never opened has no meetings at all, and later
+      calendar changes to past days are not reflected.
+    - **Workdays** follow the existing "Include weekends" switch (`includeWeekends`, default off) of the
+      same booking settings; without it Saturday/Sunday have no window and are left out of the totals.
+      "Time to work" in the All projects line still ignores it.
+    - **Review corrections count**: "not attended" occupies nothing, an adjusted duration replaces the
+      planned one. Past appointments never checked off still occupied the calendar and count.
+    - Like "Time to work": all-day, cancelled, declined and multi-day timed events are not busy;
+      reliably solo work blocks (`soloEvent && workBlock`) are work time. The callable now passes those
+      two booleans on (`pickCalendarData`); until it is deployed they are missing and the blocks count
+      as meetings (only ever too little free time). `buildMeetingStatsEntries` sets
+      `entry.soloWorkBlock` and keeps a slot a meeting when another calendar imported the same event as
+      a normal meeting.
+    - The **current** working hours apply to past days (no history of the setting); the UI says so.
+      Windows are set by wall clock per day (`getWorkingWindowForDay`), so DST days keep 9–17.
+    - Only days whose window has ended count in totals/averages; today is drawn faded from the
+      calendar plan, future days get no values. No calendar connected (`loggedUser.apisConnected`) →
+      no series, a hint instead; failed/truncated loads → "may be too high" warning.
+    - Chart colours: free `#2a78d6`/`#3987e5`, meetings `#e87ba4`/`#d55181` (light/dark via
+      `modeColor`), checked with the dataviz palette validator; every value is also printed.
 - **No composite index on purpose.** The first version filtered `userId ==` plus the range and
   declared a composite index; CI never creates indexes (`ci-cd.md`), so the master pipeline's
   `check:firestore:indexes:production` failed after the merge (pipeline 3104346584) and the query
@@ -102,7 +137,8 @@ not use those fields.
   that way unless someone creates the index interactively first.
 
 Pinned by `functions/shared/meetingReview/*.test.js` (project scope: the AT-3145 block in
-`meetingTimeStats.test.js`), `MeetingTimeToday.test.js` (click target), `functions/MeetingReview/meetingStatsData.test.js`,
+`meetingTimeStats.test.js`), `utils/meetingReview/meetingFreeWorkTime.test.js` and the
+"meeting-free work time" block in `MeetingTimeStatistics.test.js`, `MeetingTimeToday.test.js` (click target), `functions/MeetingReview/meetingStatsData.test.js`,
 the AT-3137 cases in `calendarTasks.test.js`, `calendarProjectClassifier.test.js`,
 `calendarProjectRouting.test.js`, `CheckBoxWrapper.test.js`, `utils/meetingReview/*.test.js`,
 `components/MeetingReview/*.test.js` and `firestoreRequiredIndexes.test.js`.

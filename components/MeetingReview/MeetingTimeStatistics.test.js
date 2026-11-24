@@ -5,9 +5,10 @@ const mockProjects = [
     { id: 'p1', name: 'Alldone Product', color: '#0070E0' },
     { id: 'p2', name: 'Juno', color: '#07A873' },
 ]
+const mockLoggedUser = { uid: 'me' }
 jest.mock('react-redux', () => ({
     useSelector: selector =>
-        selector({ loggedUser: { uid: 'me' }, smallScreenNavigation: false, loggedUserProjects: mockProjects }),
+        selector({ loggedUser: mockLoggedUser, smallScreenNavigation: false, loggedUserProjects: mockProjects }),
 }))
 jest.mock('../SettingsView/SettingsHelper', () => ({
     __esModule: true,
@@ -93,6 +94,7 @@ afterEach(() => {
 beforeEach(() => {
     jest.clearAllMocks()
     resetMeetingReviewStoreForTests()
+    delete mockLoggedUser.apisConnected
     fetchWorkingHoursSettings.mockResolvedValue({ workingHoursStart: '09:00', workingHoursEnd: '18:00' })
 })
 
@@ -246,6 +248,94 @@ describe('MeetingTimeStatistics', () => {
             ).toBe('Meeting working window unknown')
             expect(view.all('meeting-stats-working-hours-link')).toHaveLength(1)
             warn.mockRestore()
+        })
+    })
+
+    describe('meeting-free work time per day (AT-3145)', () => {
+        // The previous week is complete whenever the test runs, so every workday counts.
+        const prevMonday = monday.clone().subtract(1, 'week')
+        const prevAt = (days, h, m = 0) => prevMonday.clone().add(days, 'days').hour(h).minute(m).valueOf()
+        const rowTexts = (byId, dayOffset) =>
+            byId(`meeting-free-row-${prevMonday.clone().add(dayOffset, 'days').valueOf()}`)
+                .findAllByType(require('react-native').Text)
+                .map(node => [].concat(node.props.children).join(''))
+        const lastWeek = async (props = {}) => {
+            fetchMeetingStatsTasks.mockResolvedValue({
+                tasks: [
+                    calendarTask('alldone', prevAt(0, 9), prevAt(0, 10)),
+                    calendarTask('juno', prevAt(0, 9, 30), prevAt(0, 10, 30), { projectId: 'p2' }),
+                    calendarTask('focus', prevAt(1, 13), prevAt(1, 15), {
+                        calendarData: {
+                            startMs: prevAt(1, 13),
+                            endMs: prevAt(1, 15),
+                            soloEvent: true,
+                            workBlock: true,
+                        },
+                    }),
+                ],
+                failedProjectIds: [],
+            })
+            fetchMeetingReviewsInRange.mockResolvedValue({})
+            const view = await render(props)
+            await act(async () => view.byId('meeting-stats-prev').props.onPress())
+            await flush()
+            return view
+        }
+
+        it('needs a connected calendar instead of showing an empty calendar as free time', async () => {
+            const { all } = await lastWeek()
+            expect(all('meeting-free-no-calendar')).toHaveLength(1)
+            expect(all('meeting-free-summary')).toHaveLength(0)
+            expect(all('meeting-free-table')).toHaveLength(0)
+        })
+
+        it('shows window, union of meetings and meeting-free time per day, flags days without entries', async () => {
+            mockLoggedUser.apisConnected = { p1: { calendar: true } }
+            const { text, all, byId } = await lastWeek()
+            // Mon 9–18 minus 9:00–10:30 (overlap counted once) = 7 h 30; Tue–Fri have no meeting.
+            expect(text('meeting-free-summary')).toBe(
+                'Meeting free summary {"average":"8 h 42","free":"43 h 30","window":"45 h 00","share":97,"days":5,"meetings":"1 h 30"}'
+            )
+            expect(rowTexts(byId, 0).slice(1, 4)).toEqual(['9 h 00', '1 h 30', '7 h 30'])
+            // the solo work block on Tuesday is work time, and Tuesday has a calendar entry
+            expect(rowTexts(byId, 1).slice(1, 4)).toEqual(['9 h 00', '0 h 00', '9 h 00'])
+            expect(rowTexts(byId, 1)[4]).toBe('Meeting free solo blocks {"count":1}')
+            expect(rowTexts(byId, 2)[4]).toBe('Meeting free note no entries')
+            expect(text('meeting-free-no-entries')).toBe('Meeting free no entries hint {"count":3}')
+            // weekends are no workdays without "Include weekends"
+            expect(rowTexts(byId, 5).slice(1, 5)).toEqual(['–', '–', '–', 'Meeting free non workday'])
+            expect(text('meeting-free-current-settings')).toContain('"range":"9–18"')
+            expect(all('meeting-free-scope-hint')).toHaveLength(0)
+        })
+
+        it('keeps the free time global under a project filter and only highlights the project part', async () => {
+            mockLoggedUser.apisConnected = { p1: { calendar: true } }
+            const { text, all, byId } = await lastWeek()
+            act(() => byId('meeting-stats-project-p1').props.onPress())
+            expect(all('meeting-free-scope-hint')).toHaveLength(1)
+            expect(text('meeting-free-summary')).toContain('"free":"43 h 30"')
+            expect(text('meeting-free-summary')).toContain(
+                'Meeting free scoped part {"name":"Alldone Product","time":"1 h 00"}'
+            )
+        })
+
+        it('in the project details also subtracts the other projects’ meetings', async () => {
+            mockLoggedUser.apisConnected = { p1: { calendar: true } }
+            const { text } = await lastWeek({ projectId: 'p2' })
+            expect(text('meeting-free-summary')).toContain('"free":"43 h 30"')
+            expect(text('meeting-free-summary')).toContain('Meeting free scoped part {"name":"Juno","time":"1 h 00"}')
+        })
+
+        it('uses "Include weekends" from the working hours settings', async () => {
+            mockLoggedUser.apisConnected = { p1: { calendar: true } }
+            fetchWorkingHoursSettings.mockResolvedValue({
+                workingHoursStart: '09:00',
+                workingHoursEnd: '18:00',
+                includeWeekends: true,
+            })
+            const { text } = await lastWeek()
+            expect(text('meeting-free-summary')).toContain('"days":7')
+            expect(text('meeting-free-current-settings')).toContain('Meeting free all days')
         })
     })
 })
