@@ -140,8 +140,10 @@ describe('computeMeetingTimeStats', () => {
         expect(minutes(stats.adjustedBasisMs)).toBe(30)
         expect(minutes(stats.plannedBasisMs)).toBe(405)
 
-        // E1: the unconfirmed suggestion is NOT counted as status; it is "category open"
-        expect(minutes(categoryRow(stats, 'status').totalMs)).toBe(15 + 60 + 30)
+        // E1: the unconfirmed suggestion is NOT counted as status; it is "category open". The steering
+        // rated under the retired 'stakeholder' key counts in "Status & Stakeholder" (AT-3147).
+        expect(minutes(categoryRow(stats, 'status').totalMs)).toBe(15 + 60 + 30 + 30)
+        expect(categoryRow(stats, 'stakeholder')).toBeUndefined()
         expect(minutes(categoryRow(stats, MEETING_CATEGORY_OPEN).totalMs)).toBe(30)
         expect(stats.categoryRows.reduce((sum, item) => sum + item.sharePercent, 0)).toBe(100)
 
@@ -149,7 +151,63 @@ describe('computeMeetingTimeStats', () => {
             categoryRow: 'status',
             usefulnessBucket: 'not_helpful',
         })
-        expect(statusNotHelpful.map(item => item.id)).toEqual(['standup', 'reporting'])
+        expect(statusNotHelpful.map(item => item.id)).toEqual(['standup', 'steering', 'reporting'])
+    })
+
+    describe('AT-3147: merged "Status & Stakeholder" and the new learning category', () => {
+        it('has exactly the five categories plus "category open" as rows, in display order', () => {
+            const stats = dayStats([entry('a', at(9), at(10), rated('learning', 'worthwhile'))])
+            expect(stats.categoryRows.map(item => item.key)).toEqual([
+                'work',
+                'status',
+                'learning',
+                'network',
+                'own_time',
+                MEETING_CATEGORY_OPEN,
+            ])
+            expect(minutes(categoryRow(stats, 'learning').totalMs)).toBe(60)
+            expect(categoryRow(stats, 'learning').sharePercent).toBe(100)
+        })
+
+        it('counts historic "stakeholder" and "status" ratings once each in the merged row, keeping their usefulness', () => {
+            const stats = dayStats([
+                entry('steering', at(9), at(10), rated('stakeholder', 'not_helpful')),
+                entry('standup', at(10), at(10, 30), rated('status', 'worthwhile')),
+                // overlaps the standup: the shared 15 minutes are split, never counted twice
+                entry('board', at(10, 15), at(11), rated('stakeholder', 'partly')),
+                entry('insight', at(11), at(12), rated('learning', 'worthwhile')),
+            ])
+            const merged = categoryRow(stats, 'status')
+            expect(minutes(stats.totalMs)).toBe(180)
+            expect(minutes(merged.totalMs)).toBe(120)
+            expect(minutes(merged.byUsefulness.not_helpful)).toBe(60)
+            expect(merged.byUsefulness.worthwhile / MIN).toBeCloseTo(22.5, 5)
+            expect(merged.byUsefulness.partly / MIN).toBeCloseTo(37.5, 5)
+            expect(categoryRow(stats, 'stakeholder')).toBeUndefined()
+
+            // no loss and no double counting: the category rows add up to the recorded time
+            const rowsTotal = stats.categoryRows.reduce((sum, item) => sum + item.totalMs, 0)
+            expect(minutes(rowsTotal)).toBe(minutes(stats.totalMs))
+            expect(stats.categoryRows.reduce((sum, item) => sum + item.sharePercent, 0)).toBe(100)
+
+            expect(row(stats, 'steering').category).toBe('status')
+            expect(
+                filterMeetingStatRows(stats, { categoryRow: 'status', usefulnessBucket: null }).map(item => item.id)
+            ).toEqual(['steering', 'standup', 'board'])
+        })
+
+        it('reads an unconfirmed "stakeholder" suggestion as "Status & Stakeholder?" but still counts it as open', () => {
+            const stats = dayStats([entry('qbr', at(9), at(10), { suggestedCategory: 'stakeholder' })])
+            expect(row(stats, 'qbr').suggestedCategory).toBe('status')
+            expect(row(stats, 'qbr').categoryRow).toBe(MEETING_CATEGORY_OPEN)
+            expect(minutes(categoryRow(stats, MEETING_CATEGORY_OPEN).totalMs)).toBe(60)
+        })
+
+        it('treats an unknown stored category as open instead of dropping its time', () => {
+            const stats = dayStats([entry('odd', at(9), at(10), rated('something_else', 'worthwhile'))])
+            expect(row(stats, 'odd').categoryRow).toBe(MEETING_CATEGORY_OPEN)
+            expect(minutes(categoryRow(stats, MEETING_CATEGORY_OPEN).totalMs)).toBe(60)
+        })
     })
 
     it('keeps unrated time as its own segment and flags a limited result below 70 % rated', () => {

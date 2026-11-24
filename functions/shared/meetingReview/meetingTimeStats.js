@@ -34,7 +34,7 @@ const {
     MEETING_USEFULNESS_PARTLY,
     MEETING_ATTENDANCE_NOT_ATTENDED,
     MEETING_RATED_SHARE_WARNING_THRESHOLD,
-    isMeetingCategory,
+    normalizeMeetingCategory,
     isMeetingUsefulness,
 } = require('./meetingReviewConstants')
 
@@ -170,7 +170,9 @@ const computeMeetingTimeStats = ({
         if (!entry || !entry.id) return
         const inScope = !projectId || (entry.projectId || '') === projectId
         const usefulness = isMeetingUsefulness(entry.usefulness) ? entry.usefulness : null
-        const confirmedCategory = entry.categoryConfirmed && isMeetingCategory(entry.category) ? entry.category : null
+        // A rating stored under a retired key ('stakeholder', AT-3147) counts in the category it was
+        // merged into; each entry still lands in exactly one row, so nothing is counted twice.
+        const confirmedCategory = entry.categoryConfirmed ? normalizeMeetingCategory(entry.category) : null
         const plannedMs =
             isFiniteNumber(entry.startMs) && isFiniteNumber(entry.endMs) ? Math.max(0, entry.endMs - entry.startMs) : 0
         const adjusted = getAdjustedInterval(entry)
@@ -189,7 +191,7 @@ const computeMeetingTimeStats = ({
             notCheckedOff: false,
             category: confirmedCategory,
             categoryRow: confirmedCategory || MEETING_CATEGORY_OPEN,
-            suggestedCategory: isMeetingCategory(entry.suggestedCategory) ? entry.suggestedCategory : null,
+            suggestedCategory: normalizeMeetingCategory(entry.suggestedCategory),
             usefulness,
             usefulnessBucket: usefulness || MEETING_UNRATED,
             status: MEETING_ROW_COUNTED,

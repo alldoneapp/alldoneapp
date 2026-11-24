@@ -6,12 +6,43 @@ Settings → Meeting time.
 
 ## Two dimensions, never mixed
 
-- **Category** (type, `functions/shared/meetingReview/meetingReviewConstants.js`): `work`,
-  `stakeholder`, `status`, `network` ("Netzwerk & Austausch", chosen over "Netzwerk & Persönlich"
-  on 2026-11-23, E7), `own_time`. Suggested, confirmed by the user.
+- **Category** (type, `functions/shared/meetingReview/meetingReviewConstants.js`), exactly five
+  since AT-3147: `work` (Arbeitsmeeting), `status` ("Status & Stakeholder"), `learning`
+  ("Lernen & Wissensaustausch"), `network` ("Netzwerk & Vertrieb" / "Network & sales"; was
+  "Netzwerk & Austausch", chosen over "Netzwerk & Persönlich" on 2026-11-23, E7), `own_time`.
+  Suggested, confirmed by the user.
 - **Usefulness** (judgement): `worthwhile`, `partly`, `not_helpful`, or unrated. **Only the user
   sets it.** Nothing (series, rules, AI, title) ever proposes or copies a usefulness. "Pointless" is
   not a category; it is `not_helpful` in any category.
+
+## Merged and new categories (AT-3147, 2026-11-24)
+
+Decided with the user in the task thread: "Stakeholder-Meeting" and "Status & Routine" merged into
+**"Status & Stakeholder"**, a new **"Lernen & Wissensaustausch"** ("Learning & knowledge sharing")
+covers sessions like "AI Insight Session #8: AI Pricing", and the network category was renamed
+**"Network & Sales"** ("Netzwerk & Vertrieb"); "Lernen" left its hint.
+
+- **Historic data, no migration.** The merged category keeps the storage key `status`; the key
+  `stakeholder` is retired (`MEETING_CATEGORY_LEGACY_ALIASES`). Everything that READS a stored
+  category goes through `normalizeMeetingCategory` (review category, series default, learned rule,
+  `aiSuggestion`, classifier output, statistics entries, chip, rule list), so an old `stakeholder`
+  rating counts once in the `status` row and keeps its usefulness. Nothing is rewritten; a doc is
+  only rewritten when the user changes it. `isMeetingCategory` stays strict (current keys only) for
+  everything WRITTEN, so `stakeholder` is never offered or saved again. Keeping `status` (not a new
+  key) means old app bundles still running after a deploy keep writing a valid key. Do not add a key
+  without an alias for the one it replaces.
+- **Suggestions.** The keyword lists of both former categories form `status`; learning formats moved
+  from network to `learning` (webinar, talk, training/Schulung, insight/learning session, brown bag,
+  lunch & learn …); sales words (sales, Vertrieb, Akquise, pitch, prospect) went to `network`.
+  Conferences, meetups, intros, coffee, mentoring and interviews stay network. A longer phrase beats a
+  shorter word of another category it contains (`insight session` vs work's `session`,
+  `lunch & learn` vs own time's `lunch`).
+- **Learning beats "no participants → own time".** Learning sessions often arrive as a private copy
+  without participants (that is how the Insight Session was suggested as Eigenzeit). With 0 attendees
+  and a single, learning keyword in the TITLE, the heuristic proposes `learning` with medium confidence
+  and `decisive: true`, which takes the own-time rule's place in the priority (above the AI, below user,
+  series default and learned rule). A learning title also fits without a participant list. The routing
+  prompt says the same.
 
 ## Where the data lives (privacy)
 
@@ -150,7 +181,10 @@ meetings clipped to the window`, a column chart for week/month (scrolls on month
   would have failed in production. A single-field range needs nothing deployed by hand. Keep it
   that way unless someone creates the index interactively first.
 
-Pinned by `functions/shared/meetingReview/*.test.js` (project scope: the AT-3145 block in
+Pinned by `functions/shared/meetingReview/*.test.js` (AT-3147: the "AT-3147" blocks in
+`meetingCategorySuggestion.test.js` and `meetingTimeStats.test.js`, plus AT-3147 cases in
+`calendarProjectClassifier.test.js`, `meetingReviewActions.test.js`, `MeetingReviewSheet.test.js`
+and `MeetingTimeStatistics.test.js`; project scope: the AT-3145 block in
 `meetingTimeStats.test.js`), `utils/meetingReview/meetingFreeWorkTime.test.js` and the
 "meeting-free work time" block in `MeetingTimeStatistics.test.js`, `MeetingTimeToday.test.js` (click target), `functions/MeetingReview/meetingStatsData.test.js`,
 the AT-3137 cases in `calendarTasks.test.js`, `calendarProjectClassifier.test.js`,

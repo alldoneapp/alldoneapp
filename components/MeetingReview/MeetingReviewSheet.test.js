@@ -146,4 +146,59 @@ describe('MeetingReviewSheet', () => {
         act(() => byId('meeting-review-clear').props.onPress())
         expect(onAction).toHaveBeenCalledWith({ type: 'clear' }, { close: true })
     })
+    describe('AT-3147: five categories', () => {
+        const textOf = node =>
+            node
+                .findAll(child => typeof child.props.children === 'string')
+                .map(child => child.props.children)
+                .join(' ')
+        const insight = task({
+            name: 'AI Insight Session #8: AI Pricing',
+            calendarData: { startMs: START, endMs: START + 3600000, attendeeCount: 0 },
+        })
+
+        it('lists exactly work, status & stakeholder, learning, network & sales and own time', () => {
+            const { all, byId } = render({
+                task: task({ name: 'Termin', calendarData: { startMs: START, endMs: START + 3600000 } }),
+            })
+            expect(byId('meeting-category-list')).toBeTruthy()
+            const keys = all('meeting-category-list')[0]
+                .findAll(node => typeof node.props.testID === 'string' && /^meeting-category-/.test(node.props.testID))
+                .filter(node => node.props.onPress)
+                .map(node => node.props.testID.replace('meeting-category-', ''))
+            expect([...new Set(keys)]).toEqual(['work', 'status', 'learning', 'network', 'own_time'])
+            expect(all('meeting-category-stakeholder')).toHaveLength(0)
+        })
+
+        it('preselects learning for "AI Insight Session #8: AI Pricing" instead of own time; one tap confirms it', () => {
+            const { byId, onAction } = render({
+                task: insight,
+                review: {
+                    aiSuggestion: { category: 'own_time', confidence: 'medium', signals: ['keine Teilnehmenden'] },
+                },
+            })
+            const selected = byId('meeting-category-selected')
+            expect(textOf(selected)).toContain('Meeting category learning')
+            act(() => byId('meeting-usefulness-worthwhile').props.onPress())
+            expect(onAction).toHaveBeenCalledWith(
+                { type: 'rate', usefulness: 'worthwhile', category: undefined },
+                { scope: null, duration: null }
+            )
+        })
+
+        it('shows a rating saved as "stakeholder" as "Status & Stakeholder" when editing it', () => {
+            const t = task({
+                name: 'Steering',
+                calendarData: { startMs: START, endMs: START + 3600000, attendeeCount: 5 },
+            })
+            const review = {
+                category: 'stakeholder',
+                categorySource: 'user',
+                usefulness: 'partly',
+                reviewStatus: 'rated',
+            }
+            const { byId } = render({ task: t, review, isEdit: true })
+            expect(textOf(byId('meeting-category-selected'))).toContain('Meeting category status')
+        })
+    })
 })

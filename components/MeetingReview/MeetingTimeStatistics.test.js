@@ -53,7 +53,11 @@ import {
 } from '../../utils/meetingReview/meetingReviewBackend'
 import SettingsHelper from '../SettingsView/SettingsHelper'
 import URLsSettings from '../../URLSystem/Settings/URLsSettings'
-import { getMeetingReviewState, resetMeetingReviewStoreForTests } from '../../utils/meetingReview/meetingReviewStore'
+import {
+    getMeetingReviewState,
+    resetMeetingReviewStoreForTests,
+    setMeetingReviewState,
+} from '../../utils/meetingReview/meetingReviewStore'
 
 // Monday of the current local week, so the default week view covers these appointments.
 const monday = moment().startOf('isoWeek')
@@ -182,6 +186,49 @@ describe('MeetingTimeStatistics', () => {
         const { text, all } = await render()
         expect(text('meeting-stats-error')).toBe('Meeting statistics offline')
         expect(all('meeting-stats-summary')).toHaveLength(0)
+    })
+
+    it('AT-3147: shows five category rows; "stakeholder" ratings count in "Status & Stakeholder", once', async () => {
+        fetchMeetingStatsTasks.mockResolvedValue({
+            tasks: [
+                calendarTask('steering', at(9), at(10)),
+                calendarTask('standup', at(10), at(10, 30)),
+                calendarTask('insight', at(11), at(12), { name: 'AI Insight Session #8: AI Pricing' }),
+            ],
+            failedProjectIds: [],
+        })
+        const review = (category, usefulness, startMs) => ({
+            reviewStatus: 'rated',
+            usefulness,
+            category,
+            categorySource: 'user',
+            startMs,
+        })
+        fetchMeetingReviewsInRange.mockResolvedValue({
+            steering: review('stakeholder', 'not_helpful', at(9)),
+            standup: review('status', 'not_helpful', at(10)),
+            insight: review('learning', 'worthwhile', at(11)),
+        })
+        setMeetingReviewState({ rules: [{ pattern: 'steuerkreis', category: 'stakeholder', corrections: 2 }] })
+
+        const { byId, text, all, tree } = await render()
+        expect(text('meeting-stats-summary')).toContain('"total":"2 h 30"')
+        const rowKeys = tree.root
+            .findAll(node => /^meeting-stats-category-/.test(node.props.testID || ''))
+            .map(node => node.props.testID.replace('meeting-stats-category-', ''))
+        expect([...new Set(rowKeys)]).toEqual(['work', 'status', 'learning', 'network', 'own_time', 'open'])
+        expect(all('meeting-stats-category-stakeholder')).toHaveLength(0)
+
+        act(() => byId('meeting-stats-cell-status-not_helpful').props.onPress())
+        expect(all('meeting-stats-row-steering')).toHaveLength(1)
+        expect(all('meeting-stats-row-standup')).toHaveLength(1)
+        expect(all('meeting-stats-row-insight')).toHaveLength(0)
+
+        // a learned rule saved before the merge is labelled with the merged category
+        const ruleTexts = byId('meeting-stats-rules')
+            .findAllByType(require('react-native').Text)
+            .map(node => [].concat(node.props.children).join(''))
+        expect(ruleTexts.some(line => line.includes('"category":"Meeting category status"'))).toBe(true)
     })
 
     describe('projects and working hours (AT-3145)', () => {

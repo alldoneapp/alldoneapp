@@ -481,6 +481,29 @@ describe('meeting category in the routing run (AT-3137)', () => {
     })
 })
 
+describe('merged and new meeting categories in the routing run (AT-3147)', () => {
+    test('the prompt offers exactly the five current keys and puts learning sessions into learning', () => {
+        const offered = [...CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT.matchAll(/"([a-z_]+)" \(/g)].map(match => match[1])
+        expect(offered).toEqual(['work', 'status', 'learning', 'network', 'own_time'])
+        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).not.toMatch(/"stakeholder"/)
+        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).toMatch(/AI Insight Session/)
+        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).toMatch(/learning even when no other participants are listed/)
+        // webinars moved from network to learning
+        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).toMatch(/"learning" \([^)]*webinars/)
+        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).not.toMatch(/"network" \([^)]*webinars/)
+        expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).toMatch(/"network" \([^)]*sales calls/)
+    })
+
+    test('accepts learning and maps a retired "stakeholder" answer to "status"', () => {
+        expect(
+            coerceMeetingCategorySuggestion({ meetingCategory: 'learning', meetingCategoryConfidence: 0.8 })
+        ).toEqual({ category: 'learning', confidence: 'medium', signals: [] })
+        expect(coerceMeetingCategorySuggestion({ meetingCategory: ' stakeholder ' })).toMatchObject({
+            category: 'status',
+        })
+    })
+})
+
 describe('work block verdict in the routing run (AT-3136)', () => {
     test('the prompt asks for workBlock and separates own work from private appointments and meetings', () => {
         expect(CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT).toMatch(/workBlock/)

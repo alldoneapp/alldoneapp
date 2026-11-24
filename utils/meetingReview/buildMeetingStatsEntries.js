@@ -7,7 +7,7 @@ import {
 import { resolveMeetingCategory } from '../../functions/shared/meetingReview/meetingCategorySuggestion'
 import {
     MEETING_REVIEW_STATUS_RATED,
-    isMeetingCategory,
+    normalizeMeetingCategory,
     toMeetingDocId,
 } from '../../functions/shared/meetingReview/meetingReviewConstants'
 import { isSoloWorkBlock } from '../meetingTimeToday'
@@ -51,7 +51,7 @@ export const buildMeetingStatsEntries = ({ tasks = [], reviews = {}, seriesCateg
         const resolved = resolveMeetingCategory({
             task,
             review,
-            seriesCategory: isMeetingCategory(seriesDoc?.category) ? seriesDoc.category : null,
+            seriesCategory: normalizeMeetingCategory(seriesDoc?.category),
             rules,
         })
         const bounds = getCalendarEventBounds(task.calendarData) || {}

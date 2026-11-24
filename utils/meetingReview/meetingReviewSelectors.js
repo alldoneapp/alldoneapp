@@ -1,6 +1,6 @@
 import { resolveMeetingCategory } from '../../functions/shared/meetingReview/meetingCategorySuggestion'
 import { getCalendarEventExclusionReason } from '../../functions/shared/meetingReview/calendarEventCounting'
-import { isMeetingCategory, toMeetingDocId } from '../../functions/shared/meetingReview/meetingReviewConstants'
+import { normalizeMeetingCategory, toMeetingDocId } from '../../functions/shared/meetingReview/meetingReviewConstants'
 import { getMeetingReviewState } from './meetingReviewStore'
 
 /**
@@ -22,7 +22,8 @@ export const getSeriesCategory = (task, state = getMeetingReviewState()) => {
     const seriesId = task?.calendarData?.recurringEventId
     if (!seriesId) return null
     const doc = state.seriesCategories[toMeetingDocId(seriesId)]
-    return doc && isMeetingCategory(doc.category) ? doc.category : null
+    // A series default saved as a retired key counts as its merged category (AT-3147).
+    return doc ? normalizeMeetingCategory(doc.category) : null
 }
 
 export const getStoredReview = (task, state = getMeetingReviewState()) =>

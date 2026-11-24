@@ -7,7 +7,9 @@
  *   1. the category the user set for THIS occurrence (confirmed)
  *   2. the series default the user set for its recurring series
  *   3. a learned rule from the user's own corrections (same title pattern), visible and deletable
- *   4. the unambiguous rule "no other participants → own time"
+ *   4. the unambiguous rule "no other participants → own time", except that a clear learning title
+ *      (webinar, training, insight session …) proposes "learning" instead (AT-3147: such sessions
+ *      often arrive as a private copy without participants)
  *   5. the AI suggestion written by the existing calendar routing LLM run (no extra call)
  *   6. keyword signals in the title/description, combined with the participant structure
  *
@@ -24,8 +26,8 @@
 
 const {
     MEETING_CATEGORY_WORK,
-    MEETING_CATEGORY_STAKEHOLDER,
     MEETING_CATEGORY_STATUS,
+    MEETING_CATEGORY_LEARNING,
     MEETING_CATEGORY_NETWORK,
     MEETING_CATEGORY_OWN_TIME,
     MEETING_CATEGORIES,
@@ -42,6 +44,7 @@ const {
     MEETING_ATTENDANCE_ATTENDED,
     MEETING_ATTENDANCE_NOT_ATTENDED,
     isMeetingCategory,
+    normalizeMeetingCategory,
     isMeetingUsefulness,
 } = require('./meetingReviewConstants')
 const { getCalendarEventBounds } = require('./calendarEventCounting')
@@ -49,6 +52,11 @@ const { getCalendarEventBounds } = require('./calendarEventCounting')
 // Whole words / phrases, matched case-insensitively on word boundaries. German and English, the
 // two languages calendars in this product are written in. Kept short on purpose: a keyword alone
 // never yields more than "medium".
+//
+// AT-3147: "Status & Stakeholder" holds the words of both former categories. "Learning" holds the
+// learning formats that used to count as network (webinar, talk); "Network & sales" gained the sales
+// words. A longer phrase beats a shorter word of another category that it contains ("insight
+// session" is learning, not the "session" of a working meeting), see findKeywordMatches.
 const CATEGORY_KEYWORDS = {
     [MEETING_CATEGORY_STATUS]: [
         'standup',
@@ -71,6 +79,21 @@ const CATEGORY_KEYWORDS = {
         'retro',
         'check-in',
         'checkin',
+        'steering',
+        'steerco',
+        'freigabe',
+        'approval',
+        'board',
+        'beirat',
+        'investor',
+        'abstimmung',
+        'alignment',
+        'review mit',
+        'kundentermin',
+        'kunde',
+        'customer',
+        'client',
+        'qbr',
     ],
     [MEETING_CATEGORY_WORK]: [
         'workshop',
@@ -91,23 +114,33 @@ const CATEGORY_KEYWORDS = {
         'arbeitssession',
         'working session',
     ],
-    [MEETING_CATEGORY_STAKEHOLDER]: [
-        'steering',
-        'steerco',
-        'freigabe',
-        'approval',
-        'board',
-        'beirat',
-        'investor',
-        'pitch',
-        'abstimmung',
-        'alignment',
-        'review mit',
-        'kundentermin',
-        'kunde',
-        'customer',
-        'client',
-        'qbr',
+    [MEETING_CATEGORY_LEARNING]: [
+        'insight session',
+        'insights session',
+        'learning session',
+        'lernsession',
+        'knowledge sharing',
+        'knowledge session',
+        'wissensaustausch',
+        'wissenstransfer',
+        'webinar',
+        'training',
+        'schulung',
+        'fortbildung',
+        'weiterbildung',
+        'seminar',
+        'masterclass',
+        'tutorial',
+        'lecture',
+        'vortrag',
+        'talk',
+        'tech talk',
+        'brown bag',
+        'brownbag',
+        'lunch & learn',
+        'lunch and learn',
+        'show & tell',
+        'show and tell',
     ],
     [MEETING_CATEGORY_NETWORK]: [
         'intro',
@@ -117,14 +150,18 @@ const CATEGORY_KEYWORDS = {
         'networking',
         'mentoring',
         'mentor',
-        'webinar',
         'konferenz',
         'conference',
         'meetup',
-        'talk',
         'interview',
         'bewerbungsgespräch',
         'chat',
+        'sales',
+        'vertrieb',
+        'akquise',
+        'pitch',
+        'prospect',
+        'discovery call',
     ],
     [MEETING_CATEGORY_OWN_TIME]: [
         'fokus',
@@ -155,10 +192,13 @@ const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const KEYWORD_MATCHERS = Object.entries(CATEGORY_KEYWORDS).map(([category, words]) => ({
     category,
-    matchers: words.map(word => ({
-        word,
-        regex: new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(word)}($|[^\\p{L}\\p{N}])`, 'iu'),
-    })),
+    matchers: words
+        .slice()
+        .sort((a, b) => b.length - a.length)
+        .map(word => ({
+            word,
+            regex: new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(word)}($|[^\\p{L}\\p{N}])`, 'iu'),
+        })),
 }))
 
 /**
@@ -181,13 +221,20 @@ const isUsableRulePattern = pattern => typeof pattern === 'string' && pattern.le
 
 const signal = (key, params = {}) => ({ key, params })
 
+const containsWord = (phrase, word) =>
+    phrase !== word && new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(word)}($|[^\\p{L}\\p{N}])`, 'iu').test(phrase)
+
 const findKeywordMatches = text => {
     const matches = []
     KEYWORD_MATCHERS.forEach(({ category, matchers }) => {
         const hit = matchers.find(({ regex }) => regex.test(text))
         if (hit) matches.push({ category, word: hit.word })
     })
-    return matches
+    // "AI Insight Session" hits learning ("insight session") and work ("session"); the longer phrase
+    // is the more specific signal, so the word it contains is not counted as a second category.
+    return matches.filter(
+        match => !matches.some(other => other.category !== match.category && containsWord(other.word, match.word))
+    )
 }
 
 const getAttendeeCount = calendarData =>
@@ -216,7 +263,28 @@ const getHeuristicCategorySuggestion = task => {
         if (externalCount) baseSignals.push(signal('Meeting signal external attendees', { count: externalCount }))
     }
 
+    const title = String(task?.name || task?.extendedName || '')
+    const titleMatches = findKeywordMatches(title)
+
     if (attendeeCount === 0) {
+        // AT-3147: a learning session (webinar, training, "AI Insight Session") often has no
+        // participants in the user's copy of the event (registration, private mirror block). A clear
+        // learning title then proposes learning, with medium confidence, instead of own time.
+        const learning = titleMatches.length === 1 && titleMatches[0].category === MEETING_CATEGORY_LEARNING
+        if (learning) {
+            return {
+                category: MEETING_CATEGORY_LEARNING,
+                confidence: MEETING_CONFIDENCE_MEDIUM,
+                candidates: [MEETING_CATEGORY_LEARNING, MEETING_CATEGORY_OWN_TIME],
+                signals: [
+                    signal('Meeting signal title word', { word: titleMatches[0].word }),
+                    signal('Meeting signal no attendees'),
+                    ...baseSignals,
+                ],
+                // Takes the place of the own-time rule, so it ranks above an AI suggestion.
+                decisive: true,
+            }
+        }
         return {
             category: MEETING_CATEGORY_OWN_TIME,
             confidence: MEETING_CONFIDENCE_HIGH,
@@ -225,8 +293,6 @@ const getHeuristicCategorySuggestion = task => {
         }
     }
 
-    const title = String(task?.name || task?.extendedName || '')
-    const titleMatches = findKeywordMatches(title)
     const descriptionMatches = titleMatches.length === 0 ? findKeywordMatches(String(task?.description || '')) : []
     const matches = titleMatches.length > 0 ? titleMatches : descriptionMatches
     const matchSignal = match =>
@@ -242,8 +308,11 @@ const getHeuristicCategorySuggestion = task => {
 
     if (consistentMatches.length === 1) {
         const [match] = consistentMatches
+        // A learning title fits without a participant list (webinars rarely carry one).
         const structureFits =
-            (attendeeCount !== null && attendeeCount > 0) || (isRecurring && match.category === MEETING_CATEGORY_STATUS)
+            (attendeeCount !== null && attendeeCount > 0) ||
+            (isRecurring && match.category === MEETING_CATEGORY_STATUS) ||
+            (titleMatches.length > 0 && match.category === MEETING_CATEGORY_LEARNING)
         return {
             category: structureFits ? match.category : null,
             confidence: structureFits ? MEETING_CONFIDENCE_MEDIUM : MEETING_CONFIDENCE_LOW,
@@ -253,13 +322,13 @@ const getHeuristicCategorySuggestion = task => {
     }
 
     if (consistentMatches.length > 1) {
-        // Prefer the precedence rule of the concept (what happens beats who is there): status,
-        // then work, then stakeholder, then network.
+        // Prefer the precedence rule of the concept (what happens beats who is there): status &
+        // stakeholder, then work, then learning, then network & sales.
         const order = [
             MEETING_CATEGORY_OWN_TIME,
             MEETING_CATEGORY_STATUS,
             MEETING_CATEGORY_WORK,
-            MEETING_CATEGORY_STAKEHOLDER,
+            MEETING_CATEGORY_LEARNING,
             MEETING_CATEGORY_NETWORK,
         ]
         const sorted = consistentMatches.slice().sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category))
@@ -274,7 +343,7 @@ const getHeuristicCategorySuggestion = task => {
     return {
         category: null,
         confidence: MEETING_CONFIDENCE_LOW,
-        candidates: externalCount ? [MEETING_CATEGORY_STAKEHOLDER] : [],
+        candidates: externalCount ? [MEETING_CATEGORY_STATUS] : [],
         signals: baseSignals.length > 0 ? baseSignals : [signal('Meeting signal thin data')],
     }
 }
@@ -282,21 +351,22 @@ const getHeuristicCategorySuggestion = task => {
 const findMatchingRule = (task, rules = []) => {
     const pattern = normalizeMeetingTitlePattern(task?.name || task?.extendedName)
     if (!isUsableRulePattern(pattern)) return null
-    return (
+    const rule =
         (Array.isArray(rules) ? rules : []).find(
-            rule => rule && rule.pattern === pattern && isMeetingCategory(rule.category)
+            rule => rule && rule.pattern === pattern && normalizeMeetingCategory(rule.category)
         ) || null
-    )
+    return rule ? { ...rule, category: normalizeMeetingCategory(rule.category) } : null
 }
 
 const normalizeAiSuggestion = aiSuggestion => {
-    if (!aiSuggestion || !isMeetingCategory(aiSuggestion.category)) return null
+    const category = normalizeMeetingCategory(aiSuggestion?.category)
+    if (!category) return null
     const confidence =
         aiSuggestion.confidence === MEETING_CONFIDENCE_MEDIUM ? MEETING_CONFIDENCE_MEDIUM : MEETING_CONFIDENCE_LOW
     const texts = (Array.isArray(aiSuggestion.signals) ? aiSuggestion.signals : [])
         .filter(text => typeof text === 'string' && text.trim())
         .slice(0, 3)
-    return { category: aiSuggestion.category, confidence, texts }
+    return { category, confidence, texts }
 }
 
 /**
@@ -310,15 +380,18 @@ const normalizeAiSuggestion = aiSuggestion => {
  * @returns {{category:string|null, confirmed:boolean, source:string|null, confidence:string|null,
  *            preselected:boolean, candidates:string[], signals:Array}}
  */
-const resolveMeetingCategory = ({ task, review = null, seriesCategory = null, rules = [] }) => {
-    if (review && review.categorySource === MEETING_CATEGORY_SOURCE_USER && isMeetingCategory(review.category)) {
+const resolveMeetingCategory = ({ task, review = null, seriesCategory: storedSeriesCategory = null, rules = [] }) => {
+    // Stored values may still carry a retired key ('stakeholder' → 'status', AT-3147).
+    const reviewCategory = normalizeMeetingCategory(review?.category)
+    const seriesCategory = normalizeMeetingCategory(storedSeriesCategory)
+    if (review && review.categorySource === MEETING_CATEGORY_SOURCE_USER && reviewCategory) {
         return {
-            category: review.category,
+            category: reviewCategory,
             confirmed: true,
             source: MEETING_CATEGORY_SOURCE_USER,
             confidence: MEETING_CONFIDENCE_HIGH,
             preselected: true,
-            candidates: [review.category],
+            candidates: [reviewCategory],
             signals: [signal('Meeting signal confirmed by you')],
         }
     }
@@ -333,7 +406,7 @@ const resolveMeetingCategory = ({ task, review = null, seriesCategory = null, ru
         signals,
     })
 
-    if (isMeetingCategory(seriesCategory)) {
+    if (seriesCategory) {
         return unconfirmed(seriesCategory, MEETING_CATEGORY_SOURCE_SERIES, MEETING_CONFIDENCE_HIGH, [
             signal('Meeting signal series default'),
         ])
@@ -351,7 +424,7 @@ const resolveMeetingCategory = ({ task, review = null, seriesCategory = null, ru
     }
 
     const heuristic = getHeuristicCategorySuggestion(task)
-    if (heuristic.confidence === MEETING_CONFIDENCE_HIGH) {
+    if (heuristic.confidence === MEETING_CONFIDENCE_HIGH || heuristic.decisive) {
         return unconfirmed(
             heuristic.category,
             MEETING_CATEGORY_SOURCE_HEURISTIC,
@@ -392,7 +465,7 @@ const resolveMeetingCategory = ({ task, review = null, seriesCategory = null, ru
  */
 const getDefaultSeriesScope = ({ recurringEventId, seriesCategory }) => {
     if (!recurringEventId) return null
-    return isMeetingCategory(seriesCategory) ? 'instance' : 'series'
+    return normalizeMeetingCategory(seriesCategory) ? 'instance' : 'series'
 }
 
 /**
@@ -503,7 +576,7 @@ const buildCategoryRuleUpdate = ({
     if (resolved?.confirmed && resolved.category === chosenCategory) return null
     const pattern = normalizeMeetingTitlePattern(task?.name || task?.extendedName)
     if (!isUsableRulePattern(pattern)) return null
-    const sameCategory = existingRule && existingRule.category === chosenCategory
+    const sameCategory = existingRule && normalizeMeetingCategory(existingRule.category) === chosenCategory
     return {
         pattern,
         category: chosenCategory,

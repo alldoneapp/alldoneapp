@@ -16,7 +16,14 @@ const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsi
 const { getOpenRouterAssistantModelId } = require('../Assistant/assistantModelRouting')
 const { resolveClassifierClient } = require('../Assistant/classifierModelClient')
 const { appendCalendarLearnedRulesToPrompt } = require('./calendarProjectRoutingConfig')
-const { MEETING_CATEGORIES, isMeetingCategory } = require('../shared/meetingReview/meetingReviewConstants')
+const {
+    MEETING_CATEGORY_WORK,
+    MEETING_CATEGORY_STATUS,
+    MEETING_CATEGORY_LEARNING,
+    MEETING_CATEGORY_NETWORK,
+    MEETING_CATEGORY_OWN_TIME,
+    normalizeMeetingCategory,
+} = require('../shared/meetingReview/meetingReviewConstants')
 const { toAiConfidenceLevel } = require('../shared/meetingReview/meetingCategorySuggestion')
 
 // AT-3137: the same run also proposes the meeting's PURPOSE category for the user's private meeting
@@ -25,12 +32,12 @@ const { toAiConfidenceLevel } = require('../shared/meetingReview/meetingCategory
 // the user's call alone, and the model is told so explicitly.
 const MEETING_CATEGORY_PROMPT =
     ' Additionally classify the PURPOSE of the event into exactly one meeting category, using only the event fields provided: ' +
-    `"${MEETING_CATEGORIES[0]}" (working meeting: jointly working out or deciding something concrete, workshops, planning, design sessions, co-creation, also with customers), ` +
-    `"${MEETING_CATEGORIES[1]}" (stakeholder meeting: aligning expectations, approval or support with management, customers, partners, investors, board), ` +
-    `"${MEETING_CATEGORIES[2]}" (status and routine: exchanging the current state, standups, jour fixe, weekly syncs, reporting, info all-hands, also with customers), ` +
-    `"${MEETING_CATEGORIES[3]}" (network and exchange: relationship, intro, mentoring, career talks, conferences, webinars, interviews, without a concrete work result), ` +
-    `"${MEETING_CATEGORIES[4]}" (own time: no other participants or private: focus blocks, solo work, preparation, travel, lunch, family, doctor, sport). ` +
-    'Precedence: no other participants or private comes first; then what happens in the meeting decides over who attends (reporting status to a customer is status, a workshop with a customer is working). ' +
+    `"${MEETING_CATEGORY_WORK}" (working meeting: jointly working out or deciding something concrete, workshops, planning, design sessions, co-creation, also with customers), ` +
+    `"${MEETING_CATEGORY_STATUS}" (status and stakeholders: exchanging the current state or aligning expectations, approval or support: standups, jour fixe, weekly syncs, reporting, info all-hands, steering committees, board, investor and management alignment, also with customers and partners), ` +
+    `"${MEETING_CATEGORY_LEARNING}" (learning and knowledge sharing: sharing or taking in knowledge: insight sessions, webinars, trainings, talks, lectures, brown bags, lunch & learn, internal knowledge-sharing sessions), ` +
+    `"${MEETING_CATEGORY_NETWORK}" (network and sales: relationships and winning business: intro, coffee chats, mentoring, career talks, conferences, meetups, interviews, sales calls, pitches, prospect meetings), ` +
+    `"${MEETING_CATEGORY_OWN_TIME}" (own time: no other participants or private: focus blocks, solo work, preparation, travel, lunch, family, doctor, sport). ` +
+    'Precedence: no other participants or private comes first, except that a learning or knowledge-sharing session (e.g. "AI Insight Session", a webinar or training) is learning even when no other participants are listed; then what happens in the meeting decides over who attends (reporting status to a customer is status, a workshop with a customer is working, a talk that teaches something is learning). ' +
     'Add keys meetingCategory (one of the category keys, or null when the event gives no basis), meetingCategoryConfidence (0 to 1; use below 0.6 when the signals are thin or conflicting) and meetingCategorySignals (at most 3 short factual phrases in the language of the event title naming the event fields you used, e.g. a title word, the attendee count, the recurrence). ' +
     'Never judge whether the meeting is useful, necessary, productive or a waste of time, and never invent outcomes, decisions or content that is not in the event.'
 
@@ -55,14 +62,16 @@ const JUDGEMENT_WORDS =
 
 function coerceMeetingCategorySuggestion(result) {
     const category = typeof result?.meetingCategory === 'string' ? result.meetingCategory.trim() : ''
-    if (!isMeetingCategory(category)) return null
+    // normalize: a retired key the model might still produce ('stakeholder') maps to its merged one.
+    const normalizedCategory = normalizeMeetingCategory(category)
+    if (!normalizedCategory) return null
     const signals = (Array.isArray(result.meetingCategorySignals) ? result.meetingCategorySignals : [])
         .filter(item => typeof item === 'string')
         .map(item => item.trim().slice(0, 120))
         .filter(item => item && !JUDGEMENT_WORDS.test(item))
         .slice(0, 3)
     return {
-        category,
+        category: normalizedCategory,
         confidence: toAiConfidenceLevel(Number(result.meetingCategoryConfidence)),
         signals,
     }

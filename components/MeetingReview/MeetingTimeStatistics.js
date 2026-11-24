@@ -11,6 +11,7 @@ import {
     MEETING_UNRATED_SYMBOL,
     MEETING_USEFULNESS_EMOJI,
     MEETING_USEFULNESS_LABEL_KEYS,
+    normalizeMeetingCategory,
 } from '../../functions/shared/meetingReview/meetingReviewConstants'
 import {
     MEETING_CATEGORY_OPEN,
@@ -81,8 +82,12 @@ const bucketLabel = bucket =>
         ? `${MEETING_UNRATED_SYMBOL} ${translate('Meeting unrated')}`
         : `${MEETING_USEFULNESS_EMOJI[bucket]} ${translate(MEETING_USEFULNESS_LABEL_KEYS[bucket])}`
 
-const categoryLabel = key =>
-    key === MEETING_CATEGORY_OPEN ? translate('Meeting category open') : translate(MEETING_CATEGORY_LABEL_KEYS[key])
+// A learned rule may still carry a retired key ('stakeholder' → "Status & Stakeholder", AT-3147).
+const categoryLabel = key => {
+    if (key === MEETING_CATEGORY_OPEN) return translate('Meeting category open')
+    const category = normalizeMeetingCategory(key)
+    return category ? translate(MEETING_CATEGORY_LABEL_KEYS[category]) : translate('Meeting category open')
+}
 
 // The working hours "Time to work" is computed from are edited with the meeting link settings in
 // Settings > Customizations (AT-3136); the statistics only link there (AT-3145).

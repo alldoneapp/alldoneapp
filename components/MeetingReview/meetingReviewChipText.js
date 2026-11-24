@@ -5,21 +5,21 @@ import {
     MEETING_REVIEW_STATUS_RATED,
     MEETING_UNRATED_SYMBOL,
     MEETING_USEFULNESS_EMOJI,
-    isMeetingCategory,
+    normalizeMeetingCategory,
     isMeetingUsefulness,
 } from '../../functions/shared/meetingReview/meetingReviewConstants'
 
 /**
  * AT-3137 — the chip text (concept 5.1):
- *   [Status & Routine · 👎]    rated, category confirmed
- *   [Status & Routine? · ○]    unrated, category only a suggestion
+ *   [Status & Stakeholder · 👎]    rated, category confirmed
+ *   [Status & Stakeholder? · ○]    unrated, category only a suggestion
  *   [Category? · ○]            category open
  *   [not attended]
  */
 export const getMeetingReviewChipState = (review, resolved) => {
     if (review?.attendance === MEETING_ATTENDANCE_NOT_ATTENDED) return { notAttended: true }
     const rated = review?.reviewStatus === MEETING_REVIEW_STATUS_RATED && isMeetingUsefulness(review?.usefulness)
-    const category = isMeetingCategory(resolved?.category) ? resolved.category : null
+    const category = normalizeMeetingCategory(resolved?.category)
     return {
         notAttended: false,
         category,

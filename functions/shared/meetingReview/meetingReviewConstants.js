@@ -15,35 +15,52 @@
  */
 
 const MEETING_CATEGORY_WORK = 'work'
-const MEETING_CATEGORY_STAKEHOLDER = 'stakeholder'
+// "Status & Stakeholder" (AT-3147, 2026-11-24): the former "Status & Routine" and "Stakeholder-
+// Meeting" merged into one category. It keeps the storage key 'status'; ratings, series defaults,
+// learned rules and AI suggestions saved as 'stakeholder' before the merge are read as 'status' by
+// normalizeMeetingCategory (nothing is rewritten, so there is nothing to migrate or roll back).
 const MEETING_CATEGORY_STATUS = 'status'
+const MEETING_CATEGORY_LEARNING = 'learning'
+// "Netzwerk & Vertrieb" / "Network & sales" since AT-3147 (was "Netzwerk & Austausch"); same key.
 const MEETING_CATEGORY_NETWORK = 'network'
 const MEETING_CATEGORY_OWN_TIME = 'own_time'
 
-// Display order everywhere (sheet, statistics matrix).
+// Legacy storage key, no longer offered or written. Only ever read through normalizeMeetingCategory.
+const MEETING_CATEGORY_LEGACY_STAKEHOLDER = 'stakeholder'
+
+// Display order everywhere (sheet, statistics matrix). Exactly five categories.
 const MEETING_CATEGORIES = [
     MEETING_CATEGORY_WORK,
-    MEETING_CATEGORY_STAKEHOLDER,
     MEETING_CATEGORY_STATUS,
+    MEETING_CATEGORY_LEARNING,
     MEETING_CATEGORY_NETWORK,
     MEETING_CATEGORY_OWN_TIME,
 ]
 
+// Retired keys → the category they now count as. Every place that READS a stored category
+// (review, series default, learned rule, aiSuggestion, classifier output) goes through
+// normalizeMeetingCategory, so a 'stakeholder' and a 'status' rating both land in the one
+// "Status & Stakeholder" row, each exactly once.
+const MEETING_CATEGORY_LEGACY_ALIASES = {
+    [MEETING_CATEGORY_LEGACY_STAKEHOLDER]: MEETING_CATEGORY_STATUS,
+}
+
 // Translation keys (en/de/es). "Netzwerk & Austausch" was chosen over "Netzwerk & Persönlich"
 // (open decision E7, decided 2026-11-23) because "Persönlich" read like private appointments,
-// which belong to Eigenzeit.
+// which belong to Eigenzeit. AT-3147 renamed it to "Netzwerk & Vertrieb" / "Network & sales"; the
+// learning part of its old hint moved to its own category.
 const MEETING_CATEGORY_LABEL_KEYS = {
     [MEETING_CATEGORY_WORK]: 'Meeting category work',
-    [MEETING_CATEGORY_STAKEHOLDER]: 'Meeting category stakeholder',
     [MEETING_CATEGORY_STATUS]: 'Meeting category status',
+    [MEETING_CATEGORY_LEARNING]: 'Meeting category learning',
     [MEETING_CATEGORY_NETWORK]: 'Meeting category network',
     [MEETING_CATEGORY_OWN_TIME]: 'Meeting category own time',
 }
 
 const MEETING_CATEGORY_HINT_KEYS = {
     [MEETING_CATEGORY_WORK]: 'Meeting category work hint',
-    [MEETING_CATEGORY_STAKEHOLDER]: 'Meeting category stakeholder hint',
     [MEETING_CATEGORY_STATUS]: 'Meeting category status hint',
+    [MEETING_CATEGORY_LEARNING]: 'Meeting category learning hint',
     [MEETING_CATEGORY_NETWORK]: 'Meeting category network hint',
     [MEETING_CATEGORY_OWN_TIME]: 'Meeting category own time hint',
 }
@@ -51,8 +68,8 @@ const MEETING_CATEGORY_HINT_KEYS = {
 // Accent colors (hex accents read in light and dark mode, see docs/claude/dark-mode.md).
 const MEETING_CATEGORY_COLORS = {
     [MEETING_CATEGORY_WORK]: '#0070E0',
-    [MEETING_CATEGORY_STAKEHOLDER]: '#8743FF',
     [MEETING_CATEGORY_STATUS]: '#F58E0A',
+    [MEETING_CATEGORY_LEARNING]: '#8743FF',
     [MEETING_CATEGORY_NETWORK]: '#07A873',
     [MEETING_CATEGORY_OWN_TIME]: '#5AACFF',
 }
@@ -108,7 +125,17 @@ const MEETING_REVIEWS_COLLECTION = 'meetingReviews'
 const MEETING_SERIES_CATEGORIES_COLLECTION = 'meetingSeriesCategories'
 const MEETING_CATEGORY_RULES_COLLECTION = 'meetingCategoryRules'
 
+// Strict: only a current category. Used for what is WRITTEN (a user's choice, a new suggestion).
 const isMeetingCategory = value => typeof value === 'string' && MEETING_CATEGORIES.includes(value)
+
+/** A stored category as it counts today: current keys unchanged, retired keys mapped, else null. */
+const normalizeMeetingCategory = value => {
+    if (isMeetingCategory(value)) return value
+    if (typeof value === 'string' && Object.prototype.hasOwnProperty.call(MEETING_CATEGORY_LEGACY_ALIASES, value)) {
+        return MEETING_CATEGORY_LEGACY_ALIASES[value]
+    }
+    return null
+}
 const isMeetingUsefulness = value => typeof value === 'string' && MEETING_USEFULNESS_LEVELS.includes(value)
 
 // Firestore document ids may not contain '/'. Calendar ids from Microsoft can; Google ids cannot,
@@ -122,10 +149,12 @@ const toMeetingDocId = value => {
 
 module.exports = {
     MEETING_CATEGORY_WORK,
-    MEETING_CATEGORY_STAKEHOLDER,
     MEETING_CATEGORY_STATUS,
+    MEETING_CATEGORY_LEARNING,
     MEETING_CATEGORY_NETWORK,
     MEETING_CATEGORY_OWN_TIME,
+    MEETING_CATEGORY_LEGACY_STAKEHOLDER,
+    MEETING_CATEGORY_LEGACY_ALIASES,
     MEETING_CATEGORIES,
     MEETING_CATEGORY_LABEL_KEYS,
     MEETING_CATEGORY_HINT_KEYS,
@@ -154,6 +183,7 @@ module.exports = {
     MEETING_SERIES_CATEGORIES_COLLECTION,
     MEETING_CATEGORY_RULES_COLLECTION,
     isMeetingCategory,
+    normalizeMeetingCategory,
     isMeetingUsefulness,
     toMeetingDocId,
 }

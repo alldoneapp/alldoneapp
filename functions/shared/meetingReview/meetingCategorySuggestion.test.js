@@ -14,7 +14,12 @@ const {
     getCalendarEventExclusionReason,
     dedupeCalendarTasks,
 } = require('./calendarEventCounting')
-const { toMeetingDocId } = require('./meetingReviewConstants')
+const {
+    MEETING_CATEGORIES,
+    isMeetingCategory,
+    normalizeMeetingCategory,
+    toMeetingDocId,
+} = require('./meetingReviewConstants')
 
 const task = (name, calendarData = {}, extra = {}) => ({
     id: 'evt1',
@@ -64,7 +69,8 @@ describe('heuristic category suggestion', () => {
         )
         expect(result.category).toBeNull()
         expect(result.confidence).toBe('low')
-        expect(result.candidates).toEqual(['work', 'stakeholder'])
+        // "Abstimmung" belongs to "Status & Stakeholder" since AT-3147; it ranks before work.
+        expect(result.candidates).toEqual(['status', 'work'])
     })
 
     it('ignores an own-time keyword when other people attend', () => {
@@ -93,9 +99,9 @@ describe('resolveMeetingCategory priority', () => {
     })
 
     it('2. a series default is a high-confidence suggestion, not yet confirmed', () => {
-        const result = resolveMeetingCategory({ task: weekly, seriesCategory: 'stakeholder' })
+        const result = resolveMeetingCategory({ task: weekly, seriesCategory: 'network' })
         expect(result).toMatchObject({
-            category: 'stakeholder',
+            category: 'network',
             confirmed: false,
             source: 'series',
             confidence: 'high',
@@ -116,10 +122,10 @@ describe('resolveMeetingCategory priority', () => {
         const result = resolveMeetingCategory({
             task: task('Q1 Abstimmung', { attendeeCount: 4 }),
             review: {
-                aiSuggestion: { category: 'stakeholder', confidence: 'medium', signals: ['2 external domains'] },
+                aiSuggestion: { category: 'status', confidence: 'medium', signals: ['2 external domains'] },
             },
         })
-        expect(result).toMatchObject({ category: 'stakeholder', source: 'ai', confidence: 'medium', preselected: true })
+        expect(result).toMatchObject({ category: 'status', source: 'ai', confidence: 'medium', preselected: true })
         expect(result.signals[0]).toEqual({ key: 'Meeting signal ai text', params: { text: '2 external domains' } })
     })
 
@@ -137,6 +143,159 @@ describe('resolveMeetingCategory priority', () => {
         expect(toAiConfidenceLevel(0.99)).toBe('medium')
         expect(toAiConfidenceLevel(0.4)).toBe('low')
         expect(toAiConfidenceLevel(undefined)).toBe('low')
+    })
+})
+
+describe('AT-3147: five categories, "Status & Stakeholder" and "Learning & knowledge sharing"', () => {
+    const insight = (calendarData = {}) => task('AI Insight Session #8: AI Pricing', calendarData)
+
+    it('offers exactly five categories and maps the retired "stakeholder" key to "status"', () => {
+        expect(MEETING_CATEGORIES).toEqual(['work', 'status', 'learning', 'network', 'own_time'])
+        expect(normalizeMeetingCategory('stakeholder')).toBe('status')
+        expect(normalizeMeetingCategory('status')).toBe('status')
+        expect(normalizeMeetingCategory('learning')).toBe('learning')
+        expect(normalizeMeetingCategory('nonsense')).toBeNull()
+        expect(normalizeMeetingCategory(undefined)).toBeNull()
+        // retired keys are read, never offered or written
+        expect(isMeetingCategory('stakeholder')).toBe(false)
+        expect(() =>
+            buildMeetingReviewUpdate({
+                task: task('x'),
+                resolved: null,
+                action: { type: 'category', category: 'stakeholder' },
+                nowMs: NOW,
+            })
+        ).toThrow('Invalid meeting category')
+    })
+
+    it('proposes learning for "AI Insight Session #8: AI Pricing" with participants (not "session" = work)', () => {
+        const result = getHeuristicCategorySuggestion(insight({ attendeeCount: 25 }))
+        expect(result).toMatchObject({ category: 'learning', confidence: 'medium', candidates: ['learning'] })
+        expect(result.signals[0]).toEqual({ key: 'Meeting signal title word', params: { word: 'insight session' } })
+    })
+
+    it('a clear learning title overrides "no participants → own time" and ranks above the AI suggestion', () => {
+        const heuristic = getHeuristicCategorySuggestion(insight({ attendeeCount: 0 }))
+        expect(heuristic).toMatchObject({ category: 'learning', confidence: 'medium' })
+        expect(heuristic.candidates).toEqual(['learning', 'own_time'])
+
+        // the screenshot case: the private copy of the event was suggested as own time before
+        const result = resolveMeetingCategory({
+            task: insight({ attendeeCount: 0 }),
+            review: { aiSuggestion: { category: 'own_time', confidence: 'medium', signals: ['keine Teilnehmenden'] } },
+        })
+        expect(result).toMatchObject({
+            category: 'learning',
+            source: 'heuristic',
+            confidence: 'medium',
+            preselected: true,
+            confirmed: false,
+        })
+    })
+
+    it('keeps own time for a solo block without a learning title, and for "Lunch" alone', () => {
+        expect(getHeuristicCategorySuggestion(task('Konzept schreiben', { attendeeCount: 0 }))).toMatchObject({
+            category: 'own_time',
+            confidence: 'high',
+        })
+        expect(getHeuristicCategorySuggestion(task('Lunch', { attendeeCount: 0 }))).toMatchObject({
+            category: 'own_time',
+        })
+        expect(getHeuristicCategorySuggestion(task('Lunch & Learn: Prompting', { attendeeCount: 0 }))).toMatchObject({
+            category: 'learning',
+        })
+    })
+
+    it('proposes learning for webinars and trainings even without a participant list', () => {
+        expect(getHeuristicCategorySuggestion(task('Webinar: EU AI Act'))).toMatchObject({
+            category: 'learning',
+            confidence: 'medium',
+        })
+        expect(getHeuristicCategorySuggestion(task('Schulung Datenschutz', { attendeeCount: 6 }))).toMatchObject({
+            category: 'learning',
+        })
+    })
+
+    it('moves sales to "Network & sales" and keeps intros there', () => {
+        expect(getHeuristicCategorySuggestion(task('Sales Call ACME', { attendeeCount: 2 }))).toMatchObject({
+            category: 'network',
+        })
+        expect(getHeuristicCategorySuggestion(task('Intro Julius', { attendeeCount: 1 }))).toMatchObject({
+            category: 'network',
+        })
+    })
+
+    it('suggests "Status & Stakeholder" for former stakeholder meetings (steering, board, investor)', () => {
+        expect(getHeuristicCategorySuggestion(task('SteerCo Juno', { attendeeCount: 6 }))).toMatchObject({
+            category: 'status',
+        })
+        expect(getHeuristicCategorySuggestion(task('Investor Update', { attendeeCount: 3 }))).toMatchObject({
+            category: 'status',
+        })
+        expect(
+            getHeuristicCategorySuggestion(task('Termin', { attendeeCount: 3, externalAttendeeCount: 2 }))
+        ).toMatchObject({ category: null, candidates: ['status'] })
+    })
+
+    it('the user, a series default and a learned rule still beat the learning override', () => {
+        expect(
+            resolveMeetingCategory({
+                task: insight({ attendeeCount: 0 }),
+                review: { category: 'own_time', categorySource: 'user' },
+            })
+        ).toMatchObject({ category: 'own_time', confirmed: true })
+        expect(
+            resolveMeetingCategory({
+                task: insight({ attendeeCount: 0 }),
+                rules: [{ pattern: 'ai insight session ai pricing', category: 'work', corrections: 1 }],
+            })
+        ).toMatchObject({ category: 'work', source: 'rule' })
+    })
+
+    describe('historic data saved as "stakeholder"', () => {
+        const weekly = task('Weekly Sync', { recurringEventId: 'series-1', attendeeCount: 8 })
+
+        it('a confirmed rating stays confirmed, now as "Status & Stakeholder"', () => {
+            expect(
+                resolveMeetingCategory({
+                    task: weekly,
+                    review: { category: 'stakeholder', categorySource: 'user', usefulness: 'worthwhile' },
+                })
+            ).toMatchObject({ category: 'status', confirmed: true, source: 'user', candidates: ['status'] })
+        })
+
+        it('a series default, a learned rule and an AI suggestion are read as "status"', () => {
+            expect(resolveMeetingCategory({ task: weekly, seriesCategory: 'stakeholder' })).toMatchObject({
+                category: 'status',
+                source: 'series',
+                preselected: true,
+            })
+            expect(getDefaultSeriesScope({ recurringEventId: 's', seriesCategory: 'stakeholder' })).toBe('instance')
+            expect(
+                resolveMeetingCategory({
+                    task: task('Steuerkreis Juno', { attendeeCount: 5 }),
+                    rules: [{ pattern: 'steuerkreis juno', category: 'stakeholder', corrections: 2 }],
+                })
+            ).toMatchObject({ category: 'status', source: 'rule', confidence: 'high' })
+            expect(
+                resolveMeetingCategory({
+                    task: task('Q1 Gespräch', { attendeeCount: 4 }),
+                    review: { aiSuggestion: { category: 'stakeholder', confidence: 'medium' } },
+                })
+            ).toMatchObject({ category: 'status', source: 'ai', preselected: true })
+        })
+
+        it('a correction to "status" continues a learned "stakeholder" rule instead of restarting it', () => {
+            const update = buildCategoryRuleUpdate({
+                task: task('Steuerkreis Juno'),
+                resolved: { category: 'work', preselected: true, confirmed: false },
+                chosenCategory: 'status',
+                scope: null,
+                existingRule: { pattern: 'steuerkreis juno', category: 'stakeholder', corrections: 2 },
+                nowMs: NOW,
+            })
+            expect(update).toMatchObject({ pattern: 'steuerkreis juno', category: 'status', corrections: 3 })
+        })
     })
 })
 
@@ -174,7 +333,7 @@ describe('buildMeetingReviewUpdate', () => {
     it('with nothing preselected, a usefulness tap leaves the category open', () => {
         const update = buildMeetingReviewUpdate({
             task: weekly,
-            resolved: { category: null, preselected: false, confirmed: false, candidates: ['work', 'stakeholder'] },
+            resolved: { category: null, preselected: false, confirmed: false, candidates: ['work', 'status'] },
             action: { type: 'rate', usefulness: 'worthwhile' },
             nowMs: NOW,
         })

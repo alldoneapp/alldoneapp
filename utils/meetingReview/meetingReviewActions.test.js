@@ -125,7 +125,7 @@ describe('applyMeetingReviewAction', () => {
         await applyMeetingReviewAction({
             uid: 'me',
             task: weekly,
-            action: { type: 'rate', usefulness: 'worthwhile', category: 'stakeholder' },
+            action: { type: 'rate', usefulness: 'worthwhile', category: 'learning' },
             scope: 'instance',
             nowMs: NOW,
         })
@@ -133,7 +133,30 @@ describe('applyMeetingReviewAction', () => {
         expect(saveMeetingReview).toHaveBeenCalledWith(
             'me',
             'evt-weekly',
-            expect.objectContaining({ category: 'stakeholder' })
+            expect.objectContaining({ category: 'learning' })
+        )
+    })
+
+    it('AT-3147: a series default saved as "stakeholder" is read and suggested as "status"', async () => {
+        setMeetingReviewState({ seriesCategories: { 'series-1': { seriesId: 'series-1', category: 'stakeholder' } } })
+        const { resolveTaskMeetingCategory } = require('./meetingReviewActions')
+        expect(resolveTaskMeetingCategory(weekly, getMeetingReviewState())).toMatchObject({
+            category: 'status',
+            source: 'series',
+            preselected: true,
+        })
+        // one tap confirms it under the current key; the legacy series default is not rewritten
+        await applyMeetingReviewAction({
+            uid: 'me',
+            task: weekly,
+            action: { type: 'rate', usefulness: 'partly' },
+            nowMs: NOW,
+        })
+        expect(saveMeetingSeriesCategory).not.toHaveBeenCalled()
+        expect(saveMeetingReview).toHaveBeenCalledWith(
+            'me',
+            'evt-weekly',
+            expect.objectContaining({ category: 'status', categoryConfirmedFrom: 'series' })
         )
     })
 
