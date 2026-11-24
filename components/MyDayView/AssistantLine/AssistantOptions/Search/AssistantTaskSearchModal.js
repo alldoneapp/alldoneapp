@@ -55,6 +55,11 @@ export default function AssistantTaskSearchModal({
     preferredAssistantId,
     preferredProjectId,
     originConversation = null,
+    // AT-3153: the Anna chat starts a picked prompt or webhook template itself, so it can show it as
+    // the user's message at once ({ template, prompt, aiSettings, taskMetadata }). `onPasteTemplate`
+    // receives the prompt of a form's "Just paste".
+    onRunTemplate = null,
+    onPasteTemplate = null,
 }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
@@ -83,7 +88,18 @@ export default function AssistantTaskSearchModal({
             return
         }
 
-        if (task.type === TASK_TYPE_PROMPT) {
+        const runsWithoutForm =
+            task.type === TASK_TYPE_WEBHOOK || (task.type === TASK_TYPE_PROMPT && !(task.variables || []).length)
+        if (onRunTemplate && runsWithoutForm) {
+            executingTaskRef.current = true
+            closeModal()
+            onRunTemplate({
+                template: task,
+                prompt: task.prompt,
+                aiSettings: getAiSettings(task),
+                taskMetadata: getTaskMetadata(task),
+            })
+        } else if (task.type === TASK_TYPE_PROMPT) {
             if ((task.variables || []).length > 0) {
                 setSelectedTask(task)
             } else {
@@ -207,6 +223,20 @@ export default function AssistantTaskSearchModal({
                 task={selectedTask}
                 assistant={selectedTask.assistant}
                 originConversation={originConversation}
+                processPromp={
+                    onRunTemplate
+                        ? (prompt, options) => {
+                              if (options?.pasteOnly) onPasteTemplate?.(prompt)
+                              else
+                                  onRunTemplate({
+                                      template: selectedTask,
+                                      prompt,
+                                      aiSettings: getAiSettings(selectedTask),
+                                      taskMetadata: getTaskMetadata(selectedTask),
+                                  })
+                          }
+                        : undefined
+                }
             />
         )
     }

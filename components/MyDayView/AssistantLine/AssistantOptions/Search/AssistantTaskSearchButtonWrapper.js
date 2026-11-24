@@ -19,7 +19,8 @@ import { translate } from '../../../../../i18n/TranslationService'
  * chat pane, so it passes `position` (open upwards) and `getPopoverViewport`: without one the
  * popover is constrained to the global workspace viewport and would jump into the workspace pane.
  * It also passes `originConversation` (its own chat), so a template's new task is announced there
- * (AT-3082).
+ * (AT-3082), and since AT-3153 `onRunTemplate` / `onPasteTemplate`: the chat then posts the picked
+ * template as the user's message itself (see AssistantTaskSearchModal).
  */
 const DEFAULT_POSITION = ['bottom', 'top', 'left', 'right']
 
@@ -30,6 +31,8 @@ export default function AssistantTaskSearchButtonWrapper({
     position = DEFAULT_POSITION,
     getPopoverViewport,
     originConversation = null,
+    onRunTemplate = null,
+    onPasteTemplate = null,
 }) {
     const dispatch = useDispatch()
     const [isOpen, setIsOpen] = useState(false)
@@ -70,6 +73,8 @@ export default function AssistantTaskSearchButtonWrapper({
                         preferredAssistantId={preferredAssistantId}
                         preferredProjectId={preferredProjectId}
                         originConversation={originConversation}
+                        onRunTemplate={onRunTemplate}
+                        onPasteTemplate={onPasteTemplate}
                     />
                 ) : null
             }

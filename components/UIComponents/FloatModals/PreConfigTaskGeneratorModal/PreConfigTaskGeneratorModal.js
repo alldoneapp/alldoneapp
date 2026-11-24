@@ -38,6 +38,9 @@ export default function PreConfigTaskGeneratorModal({
     const [width, height] = useWindowSize()
 
     const inputRefs = useRef({})
+    // One submission per form: Enter pressed again before the popover is gone must not start the
+    // template a second time (AT-3153).
+    const submittedRef = useRef(false)
 
     const { prompt, variables, name } = task
 
@@ -48,6 +51,8 @@ export default function PreConfigTaskGeneratorModal({
     }
 
     const addTask = async () => {
+        if (submittedRef.current) return
+        submittedRef.current = true
         closeModal()
         if (processPromp) {
             processPromp(generatedPrompt)
@@ -81,6 +86,8 @@ export default function PreConfigTaskGeneratorModal({
     }
 
     const justPaste = async () => {
+        if (submittedRef.current) return
+        submittedRef.current = true
         closeModal()
         if (processPromp) {
             processPromp(generatedPrompt, { pasteOnly: true })
