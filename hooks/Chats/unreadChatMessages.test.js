@@ -1,9 +1,4 @@
-import {
-    getUnreadMessagesFetchSize,
-    selectUnreadMessages,
-    UNREAD_MESSAGES_FETCH_BUFFER,
-    UNREAD_MESSAGES_FETCH_LIMIT,
-} from './unreadChatMessages'
+import { getUnreadCommentIdsToWatch, selectUnreadMessages, UNREAD_MESSAGES_FETCH_LIMIT } from './unreadChatMessages'
 
 describe('selectUnreadMessages', () => {
     const messages = [
@@ -41,19 +36,43 @@ describe('selectUnreadMessages', () => {
     })
 })
 
-describe('getUnreadMessagesFetchSize', () => {
-    it('asks for the unread comments plus a small buffer', () => {
-        expect(getUnreadMessagesFetchSize(['c1', 'c2'])).toBe(2 + UNREAD_MESSAGES_FETCH_BUFFER)
+describe('selectUnreadMessages thread order (AT-3149)', () => {
+    it('sorts by creation time, because the by-id query returns document id order', () => {
+        const messages = [
+            { id: 'gmail-a', created: 300 },
+            { id: 'gmail-b', created: 100 },
+            { id: 'gmail-c', created: 200 },
+        ]
+        expect(selectUnreadMessages(messages, ['gmail-a', 'gmail-b', 'gmail-c']).map(m => m.id)).toEqual([
+            'gmail-b',
+            'gmail-c',
+            'gmail-a',
+        ])
     })
 
-    it('never asks Firestore for a non-positive limit', () => {
-        // `limit(n)` rejects n <= 0, which would break the whole row rather than the preview.
-        expect(getUnreadMessagesFetchSize([])).toBeGreaterThan(0)
-        expect(getUnreadMessagesFetchSize(undefined)).toBeGreaterThan(0)
+    it('falls back to lastChangeDate (ISO string) when created is missing', () => {
+        const messages = [
+            { id: 'late', lastChangeDate: '2026-11-24T17:18:55.115Z' },
+            { id: 'early', lastChangeDate: '2026-11-24T16:40:54.169Z' },
+        ]
+        expect(selectUnreadMessages(messages, ['late', 'early']).map(m => m.id)).toEqual(['early', 'late'])
+    })
+})
+
+describe('getUnreadCommentIdsToWatch', () => {
+    it('watches every unread id, whatever its position in the thread', () => {
+        expect(getUnreadCommentIdsToWatch(['old', 'new'])).toEqual(['old', 'new'])
     })
 
-    it('caps the window a single chat row may open', () => {
-        const manyUnread = new Array(500).fill('c')
-        expect(getUnreadMessagesFetchSize(manyUnread)).toBe(UNREAD_MESSAGES_FETCH_LIMIT)
+    it('drops duplicates and empty ids', () => {
+        expect(getUnreadCommentIdsToWatch(['a', '', null, 'a', 'b'])).toEqual(['a', 'b'])
+        expect(getUnreadCommentIdsToWatch(undefined)).toEqual([])
+    })
+
+    it('caps a huge backlog to the newest ids', () => {
+        const ids = Array.from({ length: 500 }, (_, index) => `c${index}`)
+        const watched = getUnreadCommentIdsToWatch(ids)
+        expect(watched).toHaveLength(UNREAD_MESSAGES_FETCH_LIMIT)
+        expect(watched[watched.length - 1]).toBe('c499')
     })
 })
