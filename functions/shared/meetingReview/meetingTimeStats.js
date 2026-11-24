@@ -21,6 +21,10 @@
  *   - unconfirmed categories (E1) are NOT added to a category: they form the row "category open"
  *   - "not helpful" is a RANGE: lower = not helpful, upper = not helpful + partly
  *   - average per day (E6) divides by the days in the period that have recorded time
+ *   - project scope (AT-3145): the overlap split always runs over ALL projects, then only the
+ *     scoped project's appointments are counted, so the per-project figures add up to the total
+ *     of "all projects" and a minute shared with another project's appointment is never counted
+ *     twice. `projectRows` breaks the (scoped) total down by project.
  */
 
 const {
@@ -147,14 +151,24 @@ const splitOverlaps = (intervals, dayStartsMs = []) => {
  * @param {number} params.rangeEndMs exclusive
  * @param {number[]} params.dayStartsMs local day starts inside the range (first = rangeStartMs)
  * @param {number} params.nowMs
+ * @param {string|null} [params.projectId] only count this project's appointments (overlaps are
+ *   still split against every project's appointments)
  */
-const computeMeetingTimeStats = ({ entries = [], rangeStartMs, rangeEndMs, dayStartsMs = [], nowMs = Date.now() }) => {
+const computeMeetingTimeStats = ({
+    entries = [],
+    rangeStartMs,
+    rangeEndMs,
+    dayStartsMs = [],
+    nowMs = Date.now(),
+    projectId = null,
+}) => {
     const rows = []
     const intervals = []
     let stillPlannedMs = 0
 
     ;(Array.isArray(entries) ? entries : []).forEach(entry => {
         if (!entry || !entry.id) return
+        const inScope = !projectId || (entry.projectId || '') === projectId
         const usefulness = isMeetingUsefulness(entry.usefulness) ? entry.usefulness : null
         const confirmedCategory = entry.categoryConfirmed && isMeetingCategory(entry.category) ? entry.category : null
         const plannedMs =
@@ -188,6 +202,7 @@ const computeMeetingTimeStats = ({ entries = [], rangeStartMs, rangeEndMs, daySt
         }
 
         if (entry.excludedReason) {
+            if (!inScope) return
             row.status = MEETING_ROW_EXCLUDED
             if (isFiniteNumber(entry.startMs) && entry.startMs < rangeEndMs && entry.endMs > rangeStartMs)
                 rows.push(row)
@@ -197,6 +212,7 @@ const computeMeetingTimeStats = ({ entries = [], rangeStartMs, rangeEndMs, daySt
         if (!(baseInterval.endMs > rangeStartMs && baseInterval.startMs < rangeEndMs)) return
 
         if (entry.attendance === MEETING_ATTENDANCE_NOT_ATTENDED) {
+            if (!inScope) return
             row.status = MEETING_ROW_NOT_ATTENDED
             rows.push(row)
             return
@@ -209,10 +225,11 @@ const computeMeetingTimeStats = ({ entries = [], rangeStartMs, rangeEndMs, daySt
         // duration). An open one counts only up to now; the rest is "still planned".
         if (!entry.done) {
             if (countEnd > nowMs) {
-                stillPlannedMs += countEnd - Math.max(countStart, nowMs)
+                if (inScope) stillPlannedMs += countEnd - Math.max(countStart, nowMs)
                 countEnd = Math.min(countEnd, nowMs)
             }
             if (!(countEnd > countStart)) {
+                if (!inScope) return
                 row.status = MEETING_ROW_PLANNED
                 rows.push(row)
                 return
@@ -221,8 +238,9 @@ const computeMeetingTimeStats = ({ entries = [], rangeStartMs, rangeEndMs, daySt
         }
 
         row.rawMs = countEnd - countStart
+        // Out-of-scope appointments still take part in the overlap split (see the header).
         intervals.push({ key: entry.id, startMs: countStart, endMs: countEnd })
-        rows.push(row)
+        if (inScope) rows.push(row)
     })
 
     const split = splitOverlaps(intervals, dayStartsMs)
@@ -231,6 +249,7 @@ const computeMeetingTimeStats = ({ entries = [], rangeStartMs, rangeEndMs, daySt
     const byUsefulness = emptyUsefulnessTotals()
     const byCategory = CATEGORY_ROWS.reduce((acc, key) => ({ ...acc, [key]: emptyUsefulnessTotals() }), {})
     const byDayTotals = new Map()
+    const byProject = new Map()
     let totalMs = 0
     let plannedBasisMs = 0
     let adjustedBasisMs = 0
@@ -251,6 +270,8 @@ const computeMeetingTimeStats = ({ entries = [], rangeStartMs, rangeEndMs, daySt
         totalMs += row.countedMs
         byUsefulness[row.usefulnessBucket] += row.countedMs
         byCategory[row.categoryRow][row.usefulnessBucket] += row.countedMs
+        if (!byProject.has(row.projectId)) byProject.set(row.projectId, emptyUsefulnessTotals())
+        byProject.get(row.projectId)[row.usefulnessBucket] += row.countedMs
         if (row.adjusted) adjustedBasisMs += row.countedMs
         else plannedBasisMs += row.countedMs
         overlapSplitMs += row.overlapMs
@@ -266,6 +287,19 @@ const computeMeetingTimeStats = ({ entries = [], rangeStartMs, rangeEndMs, daySt
     const categoryShares = toPercentShares(categoryRows.map(row => row.totalMs))
     categoryRows.forEach((row, index) => {
         row.sharePercent = categoryShares[index]
+    })
+
+    const projectRows = [...byProject.entries()]
+        .map(([key, totals]) => ({
+            key,
+            totalMs: USEFULNESS_BUCKETS.reduce((sum, bucket) => sum + totals[bucket], 0),
+            byUsefulness: totals,
+        }))
+        .filter(row => row.totalMs > 0)
+        .sort((a, b) => b.totalMs - a.totalMs || String(a.key).localeCompare(String(b.key)))
+    const projectShares = toPercentShares(projectRows.map(row => row.totalMs))
+    projectRows.forEach((row, index) => {
+        row.sharePercent = projectShares[index]
     })
 
     const usefulnessSegments = USEFULNESS_BUCKETS.map(key => ({ key, totalMs: byUsefulness[key] }))
@@ -293,6 +327,8 @@ const computeMeetingTimeStats = ({ entries = [], rangeStartMs, rangeEndMs, daySt
         limited: totalMs > 0 && ratedShare < MEETING_RATED_SHARE_WARNING_THRESHOLD,
         usefulnessSegments,
         categoryRows,
+        projectRows,
+        projectId: projectId || null,
         notHelpfulRange: { minMs: notHelpfulMinMs, maxMs: notHelpfulMaxMs },
         daysWithTime,
         averagePerDay:

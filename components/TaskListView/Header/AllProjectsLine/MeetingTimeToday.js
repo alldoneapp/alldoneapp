@@ -5,7 +5,7 @@ import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
 import { translate } from '../../../../i18n/TranslationService'
 import NavigationService from '../../../../utils/NavigationService'
-import { DV_TAB_SETTINGS_CUSTOMIZATIONS, DV_TAB_SETTINGS_INTEGRATIONS } from '../../../../utils/TabNavigationConstants'
+import { DV_TAB_SETTINGS_INTEGRATIONS, DV_TAB_SETTINGS_MEETING_TIME } from '../../../../utils/TabNavigationConstants'
 import SettingsHelper from '../../../SettingsView/SettingsHelper'
 import {
     MEETING_TIME_CALENDAR_LOADING,
@@ -28,7 +28,8 @@ import { CALENDAR_SYNC_FAILED, CALENDAR_SYNC_SYNCING } from '../../../../utils/c
  *
  * Nothing stands before the figure. The working hours ("9–18", or the assumed default) are not
  * shown in the line; the tooltip (`title`) and the accessibility label carry them together with
- * the full explanation, and the whole display opens the settings where they are edited.
+ * the full explanation, and the whole display opens Settings → Meeting time (the meeting
+ * statistics, AT-3145), which links on to the settings where the working hours are edited.
  *
  * Presentational only; `view` comes from `useMeetingTimeToday` (see utils/meetingTimeToday.js for
  * the rules). The large figure is the calendar-free time still AHEAD inside today's working hours
@@ -112,10 +113,11 @@ const buildTooltip = view => {
     return parts.join(' ')
 }
 
-// Settings > Customizations holds the meeting link settings (PublicBookingSettings) whose working
-// hours are used here.
-const openWorkingHoursSettings = () => {
-    SettingsHelper.processURLSettingsTab(NavigationService, DV_TAB_SETTINGS_CUSTOMIZATIONS)
+// AT-3145: the display leads to the meeting time statistics (categories and usefulness of the
+// meetings behind the figure). They link on to Settings > Customizations, where the working hours
+// used here are edited (meeting link settings, PublicBookingSettings).
+const openMeetingStatistics = () => {
+    SettingsHelper.processURLSettingsTab(NavigationService, DV_TAB_SETTINGS_MEETING_TIME)
 }
 
 // Calendars are account-level connections in Settings > Integrations since the July 2026
@@ -189,9 +191,9 @@ export default function MeetingTimeToday({ view, density = MEETING_TIME_DENSITY_
     }
 
     const pending = (syncing || loading) && localStyles.pending
-    // Without a calendar the display is the way to connect one; otherwise it leads to the working
-    // hours it is computed from.
-    const onPress = status === MEETING_TIME_NO_CALENDAR ? openCalendarConnection : openWorkingHoursSettings
+    // Without a calendar the display is the way to connect one; otherwise it leads to the meeting
+    // statistics (which link to the working hours it is computed from).
+    const onPress = status === MEETING_TIME_NO_CALENDAR ? openCalendarConnection : openMeetingStatistics
     const hasLines = !!(firstLine || secondLine)
 
     return (

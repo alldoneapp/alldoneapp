@@ -245,3 +245,72 @@ describe('computeMeetingTimeStats', () => {
         expect(categoryRow(stats, 'status').totalMs).toBe(0)
     })
 })
+
+describe('computeMeetingTimeStats — projects (AT-3145)', () => {
+    const entries = () => [
+        // p1: 9–10 worthwhile; p2: 9:30–10:30 not helpful (overlaps p1 for 30 min)
+        entry('a', at(9), at(10), rated('work', 'worthwhile')),
+        entry('b', at(9, 30), at(10, 30), { ...rated('status', 'not_helpful'), projectId: 'p2' }),
+        // p2: open, partly in the future at nowMs
+        entry('c', at(14), at(16), { projectId: 'p2', done: false }),
+        // p1: excluded and not attended rows stay listed in p1 only
+        entry('d', at(11), at(12), { excludedReason: 'declined' }),
+        entry('e', at(12), at(13), { attendance: 'not_attended', projectId: 'p2' }),
+    ]
+    const scoped = projectId =>
+        computeMeetingTimeStats({
+            entries: entries(),
+            rangeStartMs: DAY,
+            rangeEndMs: NEXT_DAY,
+            dayStartsMs: [DAY],
+            nowMs: at(15),
+            projectId,
+        })
+
+    it('breaks the total down by project, largest first, shares summing to 100', () => {
+        const stats = scoped(null)
+        expect(stats.projectRows.map(item => [item.key, minutes(item.totalMs)])).toEqual([
+            ['p2', 105],
+            ['p1', 45],
+        ])
+        expect(stats.projectRows.reduce((sum, item) => sum + item.sharePercent, 0)).toBe(100)
+        expect(minutes(stats.projectRows[0].byUsefulness.not_helpful)).toBe(45)
+        expect(minutes(stats.projectRows[0].byUsefulness[MEETING_UNRATED])).toBe(60)
+        expect(minutes(stats.projectRows[1].byUsefulness.worthwhile)).toBe(45)
+    })
+
+    it('a project scope keeps the overlap split with other projects, so project totals add up', () => {
+        const all = scoped(null)
+        const p1 = scoped('p1')
+        const p2 = scoped('p2')
+        // 'a' shares 30 minutes with p2's 'b': 45 minutes, not 60, also when only p1 is shown.
+        expect(minutes(p1.totalMs)).toBe(45)
+        expect(minutes(p2.totalMs)).toBe(105)
+        expect(minutes(p1.totalMs + p2.totalMs)).toBe(minutes(all.totalMs))
+        expect(p1.projectId).toBe('p1')
+        expect(p1.projectRows.map(item => item.key)).toEqual(['p1'])
+    })
+
+    it('a project scope lists and counts only that project’s appointments', () => {
+        const p1 = scoped('p1')
+        expect(p1.rows.map(item => item.id)).toEqual(['a', 'd'])
+        expect(row(p1, 'a').overlapWith).toEqual(['b'])
+        expect(row(p1, 'd').status).toBe(MEETING_ROW_EXCLUDED)
+        expect(p1.stillPlannedMs).toBe(0)
+        expect(segment(p1, 'not_helpful').totalMs).toBe(0)
+        expect(categoryRow(p1, 'work').sharePercent).toBe(100)
+
+        const p2 = scoped('p2')
+        expect(p2.rows.map(item => item.id)).toEqual(['b', 'e', 'c'])
+        expect(row(p2, 'e').status).toBe(MEETING_ROW_NOT_ATTENDED)
+        expect(minutes(p2.stillPlannedMs)).toBe(60)
+        expect(p2.daysWithTime).toBe(1)
+    })
+
+    it('an unknown project shows nothing instead of everything', () => {
+        const stats = scoped('nope')
+        expect(stats.totalMs).toBe(0)
+        expect(stats.rows).toEqual([])
+        expect(stats.projectRows).toEqual([])
+    })
+})

@@ -55,6 +55,8 @@ export const DV_TAB_PROJECT_UPDATES = 'PROJECT_UPDATES'
 export const DV_TAB_PROJECT_ASSISTANTS = 'PROJECT_ASSISTANTS'
 export const DV_TAB_PROJECT_CONTACT_STATUSES = 'PROJECT_CONTACT_STATUSES'
 export const DV_TAB_PROJECT_HAPPINESS = 'PROJECT_HAPPINESS'
+// AT-3145: the signed-in user's meeting time statistics narrowed to the project
+export const DV_TAB_PROJECT_MEETING_TIME = 'PROJECT_MEETING_TIME'
 export const DV_TAB_PROJECT_OKRS = 'PROJECT_OKRS'
 export const DV_TAB_PROJECT_WIKI = 'PROJECT_WIKI'
 
@@ -201,6 +203,7 @@ export const NAVBAR_ITEM_MAP = {
     [DV_TAB_PROJECT_ASSISTANTS]: 'AI Assistants',
     [DV_TAB_PROJECT_CONTACT_STATUSES]: 'Contact Statuses',
     [DV_TAB_PROJECT_HAPPINESS]: 'Happiness',
+    [DV_TAB_PROJECT_MEETING_TIME]: 'Meeting time',
     [DV_TAB_PROJECT_OKRS]: 'OKRs',
     [DV_TAB_PROJECT_WIKI]: 'Wiki',
     [DV_TAB_PROJECT_UPDATES]: 'Updates',

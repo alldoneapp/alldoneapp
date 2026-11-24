@@ -79,13 +79,30 @@ not use those fields.
   code) plus a bounded legacy query over the
   existing `(isPublicFor, inDone, userId, dueDate)` index for tasks synced before the new fields.
   Projects that fail are reported, never silently dropped.
+- **By project and in the project details (AT-3145, 2026-11-24).** Decided with the user: the
+  statistics stay their own tab (no merge into Settings → Statistics, layout unchanged) and gain a
+  project breakdown. Settings → Meeting time has a "By project" table; a row narrows the whole view
+  to that project (the table keeps listing every project). Project details → Meeting time
+  (`/project/{pid}/meeting-time`, `ProjectMeetingTimeView`, hidden without project access like
+  Statistics/Happiness) shows the same view fixed to the project. It is still the **caller's own
+  appointments and private ratings only**: other members of the project see their own, never
+  someone else's. `computeMeetingTimeStats({ projectId })` splits overlaps against **every**
+  project's appointments first and only then counts the scoped project, so per-project figures add
+  up to the all-projects total; that is why the app still loads all projects (no server-side
+  project filter in the callable). `projectRows` is the per-project breakdown.
+- **Navigation (AT-3145).** "Time to work" in the All projects line opens Settings → Meeting time
+  (it opened Settings → Customizations before); without a calendar it still opens Integrations.
+  The statistics show the working hours ("Arbeitsfenster", from `users/{uid}/bookingSettings/default`
+  via `resolveWorkingHours`, default labelled) with a link to Settings → Customizations, where they
+  are edited. No second working-hours setting.
 - **No composite index on purpose.** The first version filtered `userId ==` plus the range and
   declared a composite index; CI never creates indexes (`ci-cd.md`), so the master pipeline's
   `check:firestore:indexes:production` failed after the merge (pipeline 3104346584) and the query
   would have failed in production. A single-field range needs nothing deployed by hand. Keep it
   that way unless someone creates the index interactively first.
 
-Pinned by `functions/shared/meetingReview/*.test.js`, `functions/MeetingReview/meetingStatsData.test.js`,
+Pinned by `functions/shared/meetingReview/*.test.js` (project scope: the AT-3145 block in
+`meetingTimeStats.test.js`), `MeetingTimeToday.test.js` (click target), `functions/MeetingReview/meetingStatsData.test.js`,
 the AT-3137 cases in `calendarTasks.test.js`, `calendarProjectClassifier.test.js`,
 `calendarProjectRouting.test.js`, `CheckBoxWrapper.test.js`, `utils/meetingReview/*.test.js`,
 `components/MeetingReview/*.test.js` and `firestoreRequiredIndexes.test.js`.

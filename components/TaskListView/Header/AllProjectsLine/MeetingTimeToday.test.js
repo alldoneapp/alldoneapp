@@ -10,7 +10,7 @@ import MeetingTimeToday, {
 } from './MeetingTimeToday'
 import NavigationService from '../../../../utils/NavigationService'
 import SettingsHelper from '../../../SettingsView/SettingsHelper'
-import { DV_TAB_SETTINGS_CUSTOMIZATIONS, DV_TAB_SETTINGS_INTEGRATIONS } from '../../../../utils/TabNavigationConstants'
+import { DV_TAB_SETTINGS_INTEGRATIONS, DV_TAB_SETTINGS_MEETING_TIME } from '../../../../utils/TabNavigationConstants'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: (key, params) => (params ? `${key} ${JSON.stringify(params)}` : key),
@@ -133,16 +133,16 @@ describe('MeetingTimeToday (AT-3136)', () => {
         expect(textOf(render({ ...READY, workBlockCount: 2 }))).toBe(textOf(render(READY)))
     })
 
-    it('opens the working hours settings from the display, and names assumed default hours in the tooltip', () => {
+    it('opens the meeting time statistics from the display, and names assumed default hours in the tooltip', () => {
         const tree = render({ ...READY, workingHours: DEFAULT_HOURS, meetingMinutes: 0, freeMinutes: 480 })
         expect(tree.root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel).toContain(
             'meetingTime default working hours {"range":"9–17"}'
         )
-        // Settings > Customizations, where the meeting link working hours are edited.
+        // AT-3145: Settings > Meeting time (the statistics), which link on to the working hours.
         act(() => tree.root.findByProps({ testID: 'meeting-time-today' }).props.onPress())
         expect(SettingsHelper.processURLSettingsTab).toHaveBeenCalledWith(
             NavigationService,
-            DV_TAB_SETTINGS_CUSTOMIZATIONS
+            DV_TAB_SETTINGS_MEETING_TIME
         )
     })
 

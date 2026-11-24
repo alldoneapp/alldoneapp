@@ -116,3 +116,13 @@ export const fetchMeetingReviewsInRange = async (uid, fromMs, toMs) => {
 /** The caller's calendar tasks in a period (functions/MeetingReview/meetingStatsData.js). */
 export const fetchMeetingStatsTasks = (fromMs, toMs) =>
     runHttpsCallableFunction('getMeetingTimeStatsDataSecondGen', { fromMs, toMs }, { timeout: 60000 })
+
+/**
+ * AT-3145 — the working hours the "Time to work" figure uses (the meeting link settings doc, see
+ * utils/meetingTimeToday.js). Read once for the line in the statistics that links to where they
+ * are edited; null when the user never saved any (the default hours apply).
+ */
+export const fetchWorkingHoursSettings = async uid => {
+    const doc = await getDb().doc(`users/${uid}/bookingSettings/default`).get()
+    return doc.exists ? doc.data() || {} : null
+}
