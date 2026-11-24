@@ -130,6 +130,12 @@ meetings clipped to the window`, a column chart for week/month (scrolls on month
       no series, a hint instead; failed/truncated loads → "may be too high" warning.
     - Chart colours: free `#2a78d6`/`#3987e5`, meetings `#e87ba4`/`#d55181` (light/dark via
       `modeColor`), checked with the dataviz palette validator; every value is also printed.
+- **Header spacing (AT-3145 layout fix, 2026-11-24).** The title row ("Zeitstatistik" plus
+  Day/Week/Month) uses the header box of Settings → Statistics, Project → Statistics and Happiness
+  (`StatisticsHeader`, `StatisticsSectionHeader`, `UserHappiness`): min height 72, padding 32 on
+  top and 12 below, on mobile too (column, no vertical padding of its own). It had only the min
+  height with `flexWrap`, so the row packed to the top and sat on the tab divider. Pinned by "keeps
+  the Statistics tab spacing" in `MeetingTimeStatistics.test.js`.
 - **No composite index on purpose.** The first version filtered `userId ==` plus the range and
   declared a composite index; CI never creates indexes (`ci-cd.md`), so the master pipeline's
   `check:firestore:indexes:production` failed after the merge (pipeline 3104346584) and the query

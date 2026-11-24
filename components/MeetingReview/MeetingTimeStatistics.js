@@ -326,7 +326,7 @@ export default function MeetingTimeStatistics({ projectId = null }) {
 
     return (
         <View style={localStyles.container} testID="meeting-time-statistics">
-            <View style={[localStyles.header, mobile && localStyles.headerMobile]}>
+            <View style={[localStyles.header, mobile && localStyles.headerMobile]} testID="meeting-stats-header">
                 <Text style={[styles.title6, { color: colors.Text01 }]}>{translate('Meeting time statistics')}</Text>
                 <View style={localStyles.periodRow}>
                     {MEETING_STATS_PERIODS.map(value => (
@@ -760,8 +760,13 @@ const localStyles = StyleSheet.create({
     container: {
         paddingBottom: 64,
     },
+    // Same header box as the Statistics and Happiness tabs (StatisticsHeader, StatisticsSectionHeader,
+    // UserHappiness): 32 px above the title row, 12 px below, on desktop and mobile. Without the top
+    // padding the wrapping row packs to the top and sits on the tab divider (AT-3145 screenshot).
     header: {
         minHeight: 72,
+        paddingTop: 32,
+        paddingBottom: 12,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -771,7 +776,6 @@ const localStyles = StyleSheet.create({
     headerMobile: {
         flexDirection: 'column',
         alignItems: 'flex-start',
-        paddingVertical: 12,
     },
     periodRow: {
         flexDirection: 'row',

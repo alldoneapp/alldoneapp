@@ -6,9 +6,14 @@ const mockProjects = [
     { id: 'p2', name: 'Juno', color: '#07A873' },
 ]
 const mockLoggedUser = { uid: 'me' }
+const mockScreen = { small: false }
 jest.mock('react-redux', () => ({
     useSelector: selector =>
-        selector({ loggedUser: mockLoggedUser, smallScreenNavigation: false, loggedUserProjects: mockProjects }),
+        selector({
+            loggedUser: mockLoggedUser,
+            smallScreenNavigation: mockScreen.small,
+            loggedUserProjects: mockProjects,
+        }),
 }))
 jest.mock('../SettingsView/SettingsHelper', () => ({
     __esModule: true,
@@ -39,6 +44,7 @@ jest.mock('../../utils/meetingReview/meetingReviewBackend', () => ({
 }))
 
 import moment from 'moment'
+import { StyleSheet } from 'react-native'
 import MeetingTimeStatistics from './MeetingTimeStatistics'
 import {
     fetchMeetingReviewsInRange,
@@ -95,10 +101,27 @@ beforeEach(() => {
     jest.clearAllMocks()
     resetMeetingReviewStoreForTests()
     delete mockLoggedUser.apisConnected
+    mockScreen.small = false
     fetchWorkingHoursSettings.mockResolvedValue({ workingHoursStart: '09:00', workingHoursEnd: '18:00' })
 })
 
 describe('MeetingTimeStatistics', () => {
+    // AT-3145 layout fix: the title row sat directly on the tab divider. It uses the header box of
+    // the Statistics/Happiness tabs (32 px above, 12 px below), also on mobile.
+    it.each([
+        ['desktop', false],
+        ['mobile', true],
+    ])('keeps the Statistics tab spacing above the header row on %s', async (_label, small) => {
+        mockScreen.small = small
+        fetchMeetingStatsTasks.mockResolvedValue({ tasks: [], failedProjectIds: [] })
+        fetchMeetingReviewsInRange.mockResolvedValue({})
+        const { byId } = await render()
+        const header = StyleSheet.flatten(byId('meeting-stats-header').props.style)
+        expect(header).toEqual(expect.objectContaining({ minHeight: 72, paddingTop: 32, paddingBottom: 12 }))
+        expect(header.paddingVertical).toBeUndefined()
+        expect(header.flexDirection).toBe(small ? 'column' : 'row')
+    })
+
     it('shows the denominator, unrated time and the matrix; a cell opens the drill-down', async () => {
         fetchMeetingStatsTasks.mockResolvedValue({
             tasks: [
