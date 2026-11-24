@@ -185,17 +185,6 @@ this tag", but only once every project with unread chats has registered `loaded`
 first snapshots), so it does not flash while messages arrive. The single-project view keeps its
 header (it carries the page navigation) and the local line.
 
-**Unread comments are read by id, never as "the newest N" (AT-3149, 2026-11-24).** The chip said
-"Unread 2" and the list showed one email: `useGetUnreadChatMessages` read the newest "unread + 5"
-comments of the chat and kept the unread ones. In a "Daily emails" topic newer emails are read or
-archived (Gmail read sync, auto-archive) while an older one stays unread; in production the unread
-GameStar newsletter was the 8th newest of 38 comments, outside the window of 7, so it had no row (and
-no "Newsletters" chip) while the chip counted its notification. The hook now listens to exactly the
-unread comment ids (`utils/backends/Chats/watchCommentsByIds.js`, `documentId() in` chunks of 30,
-newest 100 per chat) and sorts them into thread order. The chat row previews under "All" use the same
-hook. Pinned by `hooks/Chats/useGetUnreadChatMessages.test.js`, whose fake Firestore offers only the
-by-id query.
-
 **An emptied tag moves on to the next tag with unread messages (AT-3120, 2026-11-20).** When the
 selected tag chip (e.g. "Ads") drops to zero, the next tag in `UNREAD_TAG_ORDER` that still has
 messages is selected, wrapping around to the start (Karsten: wrap, not back to "Unread"), whatever
