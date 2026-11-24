@@ -49,6 +49,7 @@ import { registerOpenTasksServerSyncListener } from '../performance/openTasksSer
 import { enqueueOpenTasksBackgroundHydration } from './openTasksBackgroundQueue'
 import { getRecentlyCompletedTasks, subscribeToRecentCompletions } from './Tasks/recentCompletionsPrefetch'
 import { scheduleTaskColdStartCachePersist } from '../InitialLoad/taskColdStartCache'
+import { getEmailTaskActivityTime, isEmailOriginTask } from '../Gmail/emailTaskOrigin'
 
 export const TODAY_DATE = '0'
 
@@ -67,14 +68,15 @@ export const ACTIVE_GOALS_INDEX = 9
 // follow-up tickets (AT-2259, AT-2270, AT-2351) then fought to place a meeting sensibly inside
 // a priority-sorted list, so the merge is reverted for calendar tasks.
 //
-// Inbox-summary EMAIL tasks are deliberately NOT restored to a bucket of their own: their old
-// bucket (11) rendered nowhere on the open-tasks board, so they were invisible outside a goal.
-// They stay in MAIN_TASK_INDEX.
+// Email tasks never got bucket 11 back (it rendered nowhere on the open-tasks board). Since AT-3151
+// every email-origin task goes to MESSAGE_TASK_INDEX below instead.
 export const CALENDAR_TASK_INDEX = 10
 export const EMPTY_SECTION_INDEX = 11
-// Conversations that need the user's reply (UNIFIED_INBOX_PLAN.md): a task carrying
-// `messageData.needsReply` gets its own "Messages" section, like meetings get the Calendar one.
-// Newest message first, never priority-sorted.
+// The "Messages" section (UNIFIED_INBOX_PLAN.md), like meetings get the Calendar one. AT-3151: it
+// holds EVERY task that came from an email (`gmailData`, the marker of the Email badge, see
+// utils/Gmail/emailTaskOrigin.js), whether or not `messageData.needsReply` is set - reply tasks,
+// no-reply email tasks, labeling follow-ups, legacy inbox-summary tasks and AT-3135 collection
+// to-dos alike. Newest email first, never priority-sorted.
 export const MESSAGE_TASK_INDEX = 12
 
 export const NOT_PARENT_GOAL_INDEX = '0'
@@ -1079,22 +1081,23 @@ const watchUserOpenTasks = (
 }
 
 export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode = false) => {
-    const { genericData, suggestedBy, userIds, calendarData, messageData } = task
+    const { genericData, suggestedBy, userIds, calendarData } = task
     if (areObservedTasks) return OBSERVED_TASKS_INDEX
     if (areStreamAndUserTasks) return STREAM_AND_USER_TASKS_INDEX
     // The assistant page intentionally has one timeline. A workflow task that is currently being
     // handled by this assistant must therefore render like a regular task even when its workflow
     // history already contains multiple reviewers.
     if (assistantProfileMode && task.workflowTask === true) return MAIN_TASK_INDEX
-    // A reply task stays in Messages even when the assistant suggested it: owing someone an answer
-    // is what the user needs to see, and the row keeps its suggestion controls.
-    if (!assistantProfileMode && messageData?.needsReply === true && userIds.length <= 1) return MESSAGE_TASK_INDEX
+    // AT-3151: every email task of the user goes to Messages, decided by its email origin and not by
+    // `messageData.needsReply` (which used to split email tasks between Messages and the main list).
+    // It stays there even when the assistant suggested it; the row keeps its suggestion controls.
+    // Shared workflow tasks (more than one user) keep their Workflow section, as decided for AT-3151.
+    if (!assistantProfileMode && isEmailOriginTask(task) && userIds.length <= 1) return MESSAGE_TASK_INDEX
     if (genericData) return MENTION_TASK_INDEX
     if (userIds.length > 1) return WORKFLOW_TASK_INDEX
     if (suggestedBy) return SUGGESTED_TASK_INDEX
     // AT-2377: a synced meeting belongs in the Calendar section, not in the priority-sorted list.
     if (calendarData) return CALENDAR_TASK_INDEX
-    // Inbox-summary email tasks stay here on purpose - see the EMAIL note by the constants.
     return MAIN_TASK_INDEX
 }
 
@@ -1421,9 +1424,10 @@ const sortTasksListThatHaveNewTasks = (storedTasks, listsToSort) => {
     }
 }
 
-// Newest conversation first; a task without a timestamp keeps its place at the end.
+// Newest conversation first; a task without a timestamp keeps its place at the end. Email tasks
+// without reply data (AT-3151) sort by their own email timestamps (getEmailTaskActivityTime).
 export const sortTasksByLastMessage = taskList =>
-    [...taskList].sort((a, b) => (b?.messageData?.lastMessageAt || 0) - (a?.messageData?.lastMessageAt || 0))
+    [...taskList].sort((a, b) => getEmailTaskActivityTime(b) - getEmailTaskActivityTime(a))
 
 const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDate, estimationByDate) => {
     const tasksByDateAndStep = Object.entries(storedTasks).sort((a, b) => a[0] - b[0])
@@ -2449,7 +2453,7 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
             const newTasksByDateEntry = [...originalTasksByDate] // Start with a shallow copy
 
             // Count every visible task type so projects containing only one of these sections remain visible.
-            // Inbox-summary email tasks are part of MAIN_TASK_INDEX and need no separate count.
+            // Email tasks (AT-3151) are all in MESSAGE_TASK_INDEX and counted with the messages.
             newTasksByDateEntry[AMOUNT_TASKS_INDEX] =
                 currentMainTasksCount +
                 currentSuggestedTasksCount +

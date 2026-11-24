@@ -5,7 +5,7 @@ Moved out of the root `CLAUDE.md` (2026-11-09); the index there says when to rea
 ## Gmail Follow-Up Tasks
 
 - Gmail follow-up tasks created from labeling prompts use `task.gmailData.origin === 'gmail_label_follow_up'`.
-- These tasks must stay in the normal task list, not the dedicated Gmail/email task bucket. Only inbox-summary Gmail tasks should be treated as email tasks.
+- Since AT-3151 every email task, these included, is listed under Messages on the open-tasks board (see "All email tasks under Messages" below). The old rule "follow-ups stay in the normal list" no longer holds.
 - Do not rewrite or sanitize the task title text for Gmail follow-up tasks. If the assistant-created title contains a Gmail link, leave it as-is.
 - In the task list row, the Gmail affordance should be rendered as an inline left tag/chip using `SocialText`'s `leftCustomElement`, not as an absolutely-positioned icon. This keeps wrapping correct so continuation lines align under the chip instead of under the first text token after it.
 - Opening a Gmail follow-up task from the chip should target the specific Gmail message and should prefer an account-aware URL flow. Current helpers live in `utils/Gmail/gmailTaskUtils.js` and `functions/Gmail/serverSideGmailLabelingSync.js`.
@@ -496,6 +496,39 @@ collects; the sender name of a relayed email is still the platform's display nam
 names the person. Pinned by `functions/Email/emailTaskBundle.test.js`, the AT-3135 blocks in
 `assistantHelper.test.js`, `serverSideGmailLabelingSync.test.js`, `toolSchemas.test.js` and
 `mcpServerSimple.test.js`.
+
+## All email tasks under Messages (AT-3151, 2026-11-24)
+
+Karsten saw email tasks with the Email badge in the normal list of a project while other email tasks
+of the same project were under Messages. Cause: `getTaskTypeIndex` (openTasks.js) routed only
+`messageData.needsReply === true` to `MESSAGE_TASK_INDEX`. The badge, however, reads `gmailData`. So
+every email task without a reply flag (classified "no reply", answered, created before reply data,
+legacy inbox summaries) and every AT-3135 collection to-do (no `messageData` by design) landed in the
+main list. AT-3131 only changed the classification, so it could not fix this.
+
+Rule now: **the section follows the email origin, not `needsReply`.** `isEmailOriginTask`
+(`utils/Gmail/emailTaskOrigin.js`) is `!!task.gmailData`, the same marker that shows the badge (both
+the inbox-summary chip and the follow-up chip in the title, Microsoft included). Precedence is
+unchanged from the reply rule, as decided with Karsten: own tasks only (`userIds.length <= 1`). Shared
+workflow, observed, workstream and assistant-profile boards keep their sections, and
+assistant-suggested and mention email tasks go to Messages. Each task maps to exactly one bucket, and
+a changed task is removed from the bucket its _old_ version maps to, so nothing is listed twice.
+`needsReply`/`messageData` keep their other meanings (Messages sort key, reply upgrade, email line
+counts).
+
+- Sort inside Messages: `getEmailTaskActivityTime`, the newest of `messageData.lastMessageAt`,
+  `gmailData.lastEmailReceivedAt`, `gmailData.bundle.lastItemAt` and `gmailData.receivedAt`, then
+  `created`. Tasks with none of these come last.
+- "Select all" in organize mode (`DateBarOrganizeModalItem`) now also selects Messages tasks, and
+  completing a Messages task counts like a main task for the goal reminder move
+  (`moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks`). Without these two changes, email tasks
+  would have lost both behaviours by leaving the main bucket.
+- The goal detail view (`openGoalTasks.js`) has no Messages section and keeps email tasks in its main
+  list (left unchanged on purpose).
+
+Pinned by the AT-3151 block in `utils/backends/openTasks.test.js` and by
+`utils/Gmail/emailTaskOrigin.test.js`. The second test checks that the helper agrees with the badge
+helpers.
 
 ## The email a task was created from opens the task's chat (AT-3022)
 

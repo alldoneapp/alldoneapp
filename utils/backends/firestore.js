@@ -219,7 +219,7 @@ import {
     getEstimationTagText,
 } from '../EstimationHelper'
 import Backend from '../BackendBridge'
-import { getTaskTypeIndex, MAIN_TASK_INDEX } from './openTasks'
+import { getTaskTypeIndex, MAIN_TASK_INDEX, MESSAGE_TASK_INDEX } from './openTasks'
 import { getHappinessDateKey, getHappinessDay, getHappinessTimestamp } from '../ProjectHappinessHelper'
 import { shouldProcessObjectLinkSnapshot } from './objectLinkSnapshot'
 import { setAnalyticsUser, trackEvent } from '../analytics/analytics'
@@ -1934,7 +1934,8 @@ export const moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks = async (proje
     const { dueDate, userId, parentGoalId } = task
     const endOfDay = moment().endOf('day').valueOf()
     const taskType = getTaskTypeIndex(task, false, false)
-    if (parentGoalId && dueDate <= endOfDay && taskType === MAIN_TASK_INDEX) {
+    // AT-3151: email tasks left the main list for Messages; they still count as the goal's own tasks.
+    if (parentGoalId && dueDate <= endOfDay && (taskType === MAIN_TASK_INDEX || taskType === MESSAGE_TASK_INDEX)) {
         const promises = []
         promises.push(Backend.getGoalData(projectId, parentGoalId))
         promises.push(getAllTasksFromGoalInBoardInTodayOrOverdue(projectId, parentGoalId, userId))

@@ -261,11 +261,8 @@ starts can: Eventarc caps at 540s, Cloud Tasks and Cloud Scheduler at 30 minutes
 So the run no longer happens in the Firestore trigger. `processWhatsAppInboundQueueItemSecondGen`
 only calls `enqueueWhatsAppQueueRun` (`whatsAppQueueDispatch.js`, task id per queued message, so a
 redelivered trigger does not dispatch twice), and the Cloud Tasks worker `runWhatsAppInboundQueue`
-(single attempt) drains the user's queue under the per-user lock. It deliberately has no `invoker`
-option (see `functions-runtime.md`); the Admin SDK SA enqueues through its project-level
-`cloudtasks.enqueuer` role. Its `run.invoker` binding was set when production created it (2026-11-24);
-a new environment needs `roles/run.invoker` on `runwhatsappinboundqueue` for that SA, as the
-heartbeat grant script does for its worker. A failed dispatch leaves the item pending for the recovery sweep.
+(single attempt, `invoker` set to the Admin SDK SA so the deploy manages its IAM) drains the user's
+queue under the per-user lock. A failed dispatch leaves the item pending for the recovery sweep.
 
 The whole drain shares one deadline. `whatsAppRunGuard` races context assembly and response
 collection against it and aborts the provider request. Check the guard before tools and response

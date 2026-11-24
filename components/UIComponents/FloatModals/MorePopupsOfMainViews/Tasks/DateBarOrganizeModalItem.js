@@ -10,6 +10,7 @@ import store from '../../../../../redux/store'
 import {
     MAIN_TASK_INDEX,
     MENTION_TASK_INDEX,
+    MESSAGE_TASK_INDEX,
     OBSERVED_TASKS_INDEX,
     STREAM_AND_USER_TASKS_INDEX,
     SUGGESTED_TASK_INDEX,
@@ -43,6 +44,8 @@ export default function DateBarOrganizeModalItem({
         const { selectedTasks, filteredOpenTasksStore, loggedUser } = store.getState()
         const mainTasks = filteredOpenTasksStore[instanceKey][dateIndex][MAIN_TASK_INDEX]
         const mentionTasks = filteredOpenTasksStore[instanceKey][dateIndex][MENTION_TASK_INDEX]
+        // AT-3151: email tasks moved from the main list to Messages; "select all" keeps selecting them.
+        const messageTasks = filteredOpenTasksStore[instanceKey][dateIndex][MESSAGE_TASK_INDEX] || []
         const suggestedTasks = filteredOpenTasksStore[instanceKey][dateIndex][SUGGESTED_TASK_INDEX]
         const receivedFrom = filteredOpenTasksStore[instanceKey][dateIndex][WORKFLOW_TASK_INDEX]
         const observedTasks = filteredOpenTasksStore[instanceKey][dateIndex][OBSERVED_TASKS_INDEX]
@@ -80,6 +83,7 @@ export default function DateBarOrganizeModalItem({
         addTasksInGroup(mainTasks, false)
         addTaskInNestedGroup(suggestedTasks, false)
         addTasksInGroup(mentionTasks, false)
+        addTasksInGroup(messageTasks, false)
         addTaskInNestedGroup(streamAndUserTasks, false)
         addTaskInNestedGroup(receivedFrom, false)
         addTaskInNestedGroup(observedTasks, true)

@@ -149,10 +149,10 @@ describe('calendar tasks in their own section', () => {
         expect(CALENDAR_TASK_INDEX).not.toBe(MAIN_TASK_INDEX)
     })
 
-    it('puts an inbox summary email task in the main task list', () => {
+    it('puts an inbox summary email task in the Messages section (AT-3151)', () => {
         const emailTask = { ...baseTask, gmailData: { messageId: 'message-1' } }
 
-        expect(getTaskTypeIndex(emailTask, false, false)).toBe(MAIN_TASK_INDEX)
+        expect(getTaskTypeIndex(emailTask, false, false)).toBe(MESSAGE_TASK_INDEX)
     })
 
     it('still routes mention, workflow and suggested tasks to their own sections', () => {
@@ -184,9 +184,9 @@ describe('reply tasks in the Messages section', () => {
         expect(getTaskTypeIndex({ ...replyTask, suggestedBy: 'assistant-1' }, false, false)).toBe(MESSAGE_TASK_INDEX)
     })
 
-    it('returns an answered reply task to the main list', () => {
+    it('keeps an answered email reply task in Messages: needsReply no longer decides the section (AT-3151)', () => {
         expect(getTaskTypeIndex({ ...replyTask, messageData: { needsReply: false } }, false, false)).toBe(
-            MAIN_TASK_INDEX
+            MESSAGE_TASK_INDEX
         )
     })
 
@@ -201,6 +201,18 @@ describe('reply tasks in the Messages section', () => {
 
     it('uses a slot no other section uses', () => {
         expect([CALENDAR_TASK_INDEX, EMPTY_SECTION_INDEX, MAIN_TASK_INDEX]).not.toContain(MESSAGE_TASK_INDEX)
+    })
+
+    it('sorts email tasks without reply data by their own email time', () => {
+        const sorted = sortTasksByLastMessage([
+            { id: 'reply', messageData: { lastMessageAt: 200 }, gmailData: { receivedAt: 200 } },
+            { id: 'plain', gmailData: { receivedAt: 300 } },
+            { id: 'bundle', gmailData: { receivedAt: 50, bundle: { lastItemAt: 400 } } },
+            { id: 'continued', gmailData: { receivedAt: 10, lastEmailReceivedAt: 250 } },
+            { id: 'legacy', gmailData: { messageId: 'm' }, created: 100 },
+            { id: 'undated', gmailData: { messageId: 'm' } },
+        ])
+        expect(sorted.map(task => task.id)).toEqual(['bundle', 'plain', 'continued', 'reply', 'legacy', 'undated'])
     })
 
     it('sorts the newest message first and keeps undated tasks last', () => {
@@ -297,5 +309,93 @@ describe('All Projects open task selection', () => {
             instanceKey,
             thereAreHiddenNotMainTasks: true,
         })
+    })
+})
+
+// AT-3151 - every email task belongs in Messages, whatever `messageData.needsReply` says. Before,
+// only `needsReply === true` routed there, so email tasks with the Email badge were split between
+// Messages and the main list. Synthetic fixtures only; no real mail content is needed.
+describe('AT-3151: all email tasks in the Messages section', () => {
+    const baseTask = { genericData: null, suggestedBy: null, calendarData: null, gmailData: null, userIds: ['user-1'] }
+    const followUpGmailData = {
+        origin: 'gmail_label_follow_up',
+        messageId: 'msg-1',
+        threadId: 'thread-1',
+        gmailEmail: 'owner@example.com',
+        receivedAt: 1000,
+    }
+    const followUpTask = { ...baseTask, gmailData: followUpGmailData }
+
+    it.each([
+        ['needsReply true', { needsReply: true, lastMessageAt: 1000 }],
+        ['needsReply false', { needsReply: false, lastMessageAt: 1000 }],
+        ['needsReply missing in messageData', { lastMessageAt: 1000 }],
+        ['no messageData at all', undefined],
+        ['messageData null', null],
+    ])('routes a labeling follow-up email task with %s to Messages', (label, messageData) => {
+        expect(getTaskTypeIndex({ ...followUpTask, messageData }, false, false)).toBe(MESSAGE_TASK_INDEX)
+    })
+
+    it('routes a legacy inbox-summary email task (badge without origin) to Messages', () => {
+        const legacy = { ...baseTask, gmailData: { gmailEmail: 'owner@example.com', unreadMails: 3 } }
+        expect(getTaskTypeIndex(legacy, false, false)).toBe(MESSAGE_TASK_INDEX)
+    })
+
+    it('routes a Microsoft mailbox email task to Messages', () => {
+        const outlook = { ...baseTask, gmailData: { provider: 'microsoft', messageId: 'ms-1', webUrl: 'https://x' } }
+        expect(getTaskTypeIndex(outlook, false, false)).toBe(MESSAGE_TASK_INDEX)
+    })
+
+    it('routes an email collection to-do (AT-3135 bundle, no messageData) to Messages', () => {
+        const bundleTodo = {
+            ...baseTask,
+            gmailData: {
+                ...followUpGmailData,
+                threadIds: ['thread-1', 'thread-2'],
+                bundle: { id: 'b1', key: 'buyer-inquiries', label: 'Marketplace', itemCount: 2, lastItemAt: 2000 },
+            },
+        }
+        expect(getTaskTypeIndex(bundleTodo, false, false)).toBe(MESSAGE_TASK_INDEX)
+    })
+
+    it('routes an assistant-suggested email task to Messages, reply or not', () => {
+        expect(getTaskTypeIndex({ ...followUpTask, suggestedBy: 'assistant-1' }, false, false)).toBe(MESSAGE_TASK_INDEX)
+    })
+
+    it('routes an email task that also carries mention data to Messages', () => {
+        expect(getTaskTypeIndex({ ...followUpTask, genericData: { type: 'mention' } }, false, false)).toBe(
+            MESSAGE_TASK_INDEX
+        )
+    })
+
+    it('keeps shared workflow, observed, stream and assistant-board email tasks where they were', () => {
+        expect(getTaskTypeIndex({ ...followUpTask, userIds: ['user-1', 'user-2'] }, false, false)).toBe(
+            WORKFLOW_TASK_INDEX
+        )
+        expect(getTaskTypeIndex(followUpTask, true, false)).toBe(OBSERVED_TASKS_INDEX)
+        expect(getTaskTypeIndex(followUpTask, false, true)).toBe(STREAM_AND_USER_TASKS_INDEX)
+        expect(getTaskTypeIndex(followUpTask, false, false, true)).toBe(MAIN_TASK_INDEX)
+    })
+
+    it('leaves non-email tasks unchanged, even when they carry message data', () => {
+        expect(getTaskTypeIndex(baseTask, false, false)).toBe(MAIN_TASK_INDEX)
+        expect(getTaskTypeIndex({ ...baseTask, messageData: { needsReply: false } }, false, false)).toBe(
+            MAIN_TASK_INDEX
+        )
+        expect(getTaskTypeIndex({ ...baseTask, suggestedBy: 'assistant-1' }, false, false)).toBe(SUGGESTED_TASK_INDEX)
+        expect(getTaskTypeIndex({ ...baseTask, genericData: { type: 'mention' } }, false, false)).toBe(
+            MENTION_TASK_INDEX
+        )
+        expect(getTaskTypeIndex({ ...baseTask, calendarData: { eventId: 'e1' } }, false, false)).toBe(
+            CALENDAR_TASK_INDEX
+        )
+        expect(getTaskTypeIndex({ ...baseTask, userIds: ['user-1', 'user-2'] }, false, false)).toBe(WORKFLOW_TASK_INDEX)
+    })
+
+    it('does not change the section when needsReply flips on an email task', () => {
+        const before = getTaskTypeIndex({ ...followUpTask, messageData: { needsReply: true } }, false, false)
+        const after = getTaskTypeIndex({ ...followUpTask, messageData: { needsReply: false } }, false, false)
+        expect(before).toBe(MESSAGE_TASK_INDEX)
+        expect(after).toBe(before)
     })
 })

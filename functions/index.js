@@ -8321,15 +8321,12 @@ exports.processWhatsAppInboundQueueItemSecondGen = onDocumentCreated(
 
 // Drains one user's WhatsApp queue under the user's queue lock. Single attempt: a reply whose tools
 // may already have run is reported as failed, never replayed.
-// No `invoker` option: firebase-tools 13.29.3 then sets the queue's enqueuer binding, and on a new
-// queue (whose IAM policy has no `bindings`) that crashes with "Cannot read properties of undefined
-// (reading 'filter')" and fails the deploy, on every later deploy too (pipeline 3110083515). The Admin
-// SDK SA enqueues through its project-level cloudtasks.enqueuer role, like runAssistantCommentReply.
 exports.runWhatsAppInboundQueue = onTaskDispatched(
     {
         region: 'europe-west1',
         timeoutSeconds: WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB',
+        ...(adminSdkRuntimeServiceAccount ? { invoker: adminSdkRuntimeServiceAccount } : {}),
         retryConfig: { maxAttempts: 1 },
         rateLimits: { maxConcurrentDispatches: 50, maxDispatchesPerSecond: 20 },
     },

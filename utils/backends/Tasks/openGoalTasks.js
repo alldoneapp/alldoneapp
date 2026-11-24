@@ -189,7 +189,8 @@ const getTaskTypeIndex = task => {
     if (suggestedBy) return SUGGESTED_TASK_INDEX
     // AT-2377: meetings render in the goal's own Calendar section.
     if (calendarData) return CALENDAR_TASK_INDEX
-    // Inbox-summary email tasks deliberately stay in the main list.
+    // Email tasks stay in the main list here: the goal view has no Messages section (kept that way
+    // for AT-3151, decided with Karsten); only the open-tasks board groups them under Messages.
     return MAIN_TASK_INDEX
 }
 

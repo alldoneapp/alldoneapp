@@ -30,8 +30,8 @@ import {
 const NO_MESSAGE_TASKS = []
 
 /**
- * The "Messages" section of one day on the open-tasks board (UNIFIED_INBOX_PLAN.md): conversations
- * that need the user's reply, one task each. Grouped by goal like the main list; inside a group the
+ * The "Messages" section of one day on the open-tasks board (UNIFIED_INBOX_PLAN.md): every task that
+ * came from an email (AT-3151: decided by `gmailData`, not by `messageData.needsReply`), one task each. Grouped by goal like the main list; inside a group the
  * newest message comes first (sorted in openTasks.js, never by priority).
  *
  * AT-3027 - collapsed to the first `COLLAPSED_SECTION_TASK_LIMIT` messages, with its own chevron

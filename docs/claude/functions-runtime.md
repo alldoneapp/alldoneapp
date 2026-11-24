@@ -39,18 +39,6 @@ Uses Firebase Functions v2 syntax:
 
 **The failure is silent and partial.** `firebase deploy` reports overall success while the one offending function is rejected with `CreateFunction … "The timeout for functions with an event trigger cannot exceed 540 seconds."`, so its producer keeps queueing work that nothing consumes. This cost a full production outage of the AI workflow-step worker: `onUpdateTask` kept writing `workflowAiRuns` docs that piled up as `pending` for hours, because the worker had never been created. To find it: `gcloud logging read 'protoPayload.methodName:"CreateFunction" AND severity>=ERROR' --project=<projectId> --freshness=2d`. After any deploy that adds a function, confirm it exists (`gcloud functions list --project=<projectId> | grep <name>`) rather than trusting the deploy summary.
 
-**A new `onTaskDispatched` function must not declare `invoker` (firebase-tools 13.29.3).** With
-`invoker` set, the deploy calls `cloudtasks.setEnqueuer`, which reads `existing.bindings.filter`; a
-freshly created queue's IAM policy has no `bindings` field, so the deploy fails with "Cannot read
-properties of undefined (reading 'filter')" / "Unable to set the invoker for the IAM policy", and
-every later deploy fails the same way because the policy stays empty. The function itself is created
-and the other functions in the batch are updated, so production can run new code while the
-pipeline is red. This happened to `runWhatsAppInboundQueue` (pipeline 3110083515, 2026-11-24).
-The existing `invoker` workers (`runManualTaskProjectMove`, `runManualObjectProjectMove`) are fine
-because their queue policies already carry the binding. Leave `invoker` out and rely on the Admin
-SDK SA's project-level `roles/cloudtasks.enqueuer`; grant `roles/run.invoker` on the new service
-once per environment (as `grant-heartbeat-task-worker.sh` does).
-
 ## IAM for firebase-admin GCP calls — use the Firebase Admin SDK SA, not the compute SA
 
 This is a repo-wide gotcha, learned the hard way. Gen2 Functions are configured through `setGlobalOptions` to run as the environment's `firebase-adminsdk-*@<project>.iam.gserviceaccount.com` service account, and `functions/firebaseConfig*.js` uses application-default credentials in that managed runtime. Therefore **every firebase-admin call that hits a Google Cloud API authenticates as the firebase-adminsdk service account — NOT the `<projectNumber>-compute@developer.gserviceaccount.com` default runtime SA**. So when a function needs a new GCP IAM permission (Cloud Tasks, Pub/Sub, etc.), grant the role to the **firebase-adminsdk SA**. Granting the compute SA looks right but does nothing. The old CI service-account JSON files may still be prepared for legacy tooling, but Functions no longer depend on baking that long-lived key into Cloud Run revisions. IAM changes also take up to ~7 min to propagate — wait before re-testing.
