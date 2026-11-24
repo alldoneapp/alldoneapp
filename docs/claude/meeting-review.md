@@ -136,6 +136,14 @@ meetings clipped to the window`, a column chart for week/month (scrolls on month
   top and 12 below, on mobile too (column, no vertical padding of its own). It had only the min
   height with `flexWrap`, so the row packed to the top and sat on the tab divider. Pinned by "keeps
   the Statistics tab spacing" in `MeetingTimeStatistics.test.js`.
+- **Memory: 512MiB, not 256MiB (AT-3145 incident, 2026-11-24).** At 256MiB the callable was
+  killed with "Memory limit of 256 MiB exceeded" (258-271 MiB) at 12:32, 12:48 and 14:26 UTC, before
+  and after !946, so the app showed "Die Statistik konnte nicht geladen werden". It fans out three
+  task queries per member project (`Promise.all`, 141 projects = 423 queries for the reporting user)
+  on top of the whole `functions/index.js` loaded at cold start; the 256MiB functions of this
+  codebase have little headroom (other 256MiB functions log the same OOM occasionally). Do not lower
+  it again; if it grows, project a field mask or bound the per-project concurrency first. Pinned by
+  "deployment configuration" in `meetingStatsData.test.js`.
 - **No composite index on purpose.** The first version filtered `userId ==` plus the range and
   declared a composite index; CI never creates indexes (`ci-cd.md`), so the master pipeline's
   `check:firestore:indexes:production` failed after the merge (pipeline 3104346584) and the query

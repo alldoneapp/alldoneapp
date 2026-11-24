@@ -147,3 +147,18 @@ describe('getMeetingStatsData', () => {
         expect(result.tasks).toEqual([])
     })
 })
+
+// AT-3145 production incident (2026-11-24): the callable hit "Memory limit of 256 MiB exceeded"
+// (258-271 MiB) on the week view and the app showed "Die Statistik konnte nicht geladen werden".
+describe('getMeetingTimeStatsDataSecondGen deployment configuration', () => {
+    test('allocates 512MiB, not the 256MiB that ran out in production', () => {
+        const source = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8')
+        const registration = source.match(
+            /exports\.getMeetingTimeStatsDataSecondGen\s*=\s*onCall\(\s*\{(?<options>.*?)\}\s*,/s
+        )
+
+        expect(registration).not.toBeNull()
+        expect(registration.groups.options).toMatch(/memory:\s*'512MiB'/)
+        expect(registration.groups.options).not.toMatch(/memory:\s*'256MiB'/)
+    })
+})

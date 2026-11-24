@@ -321,7 +321,9 @@ exports.setDefaultProjectSecondGen = onCall(
 exports.getMeetingTimeStatsDataSecondGen = onCall(
     {
         timeoutSeconds: 60,
-        memory: '256MiB',
+        // AT-3145: 256MiB ran out of memory in production (258-271 MiB, the week view on a fresh
+        // instance, users with many projects) and the app showed "could not be loaded".
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
