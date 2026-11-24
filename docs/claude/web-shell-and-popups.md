@@ -284,6 +284,13 @@ showSwitch`) and carries Alldone's `HomeButton` with the open-task count in its 
   `AllProjectsLine` draws it (required on use, so the line's many importers do not load the tab
   header), and MainViewsContainer leaves its own out for those tabs and keeps the 24px gap above the
   line. Artifacts has no such line and keeps the card on top.
+- **Section icon (AT-3155, 2026-11-24)**: the name in that card is led by the section's icon, the
+  glyph the sidebar items and the picker show for it (one map, `utils/sectionIcons.js`; a section
+  without one falls back to Tasks, like the name). 20px, accent blue `Primary100` (chosen by the
+  user over a neutral `Text01`; it reads on the light and the dark card), 8px before the name,
+  `flexShrink: 0`; icon, name and arrow stay one centred unit on a phone. Only this mode's card;
+  the tab rows of the other modes have no icons. Pinned by `MainSectionTabsHeaderCompact.test.js`;
+  `browser-tests/at3155` measures alignment, gap, centring and truncation in Chromium.
 - **Picker arrows**: the section's name in that card opens the section picker (`ChangeObjectListModal`
   with `withArtifacts` and `withWiki`, All projects included; a bottom sheet on a phone). In this
   mode the wiki has the card too, "Wiki" without a toggle (`RootSectionNavigation`; the project wiki
