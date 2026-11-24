@@ -1,12 +1,25 @@
 import {
     ASSUMED_MEETING_OPTIONS,
     DESTINATION_SOMEDAY,
+    MILESTONE_AT_RISK_WORKDAYS,
+    MILESTONE_KIND_DATED,
+    MILESTONE_KIND_PERIOD,
+    MILESTONE_NONE,
+    MILESTONE_OVERDUE,
+    MILESTONE_OVERDUE_GRACE_DAYS,
+    MILESTONE_STALE,
+    MILESTONE_UNKNOWN,
+    MILESTONE_UPCOMING,
     PLAN_FILL_SHARE,
     RULE_DO_LATER,
     RULE_FOCUS,
+    RULE_GOAL,
+    RULE_MILESTONE_AT_RISK,
     RULE_NO_ROOM,
+    RULE_RANKED,
     RULE_YOU,
     RULE_YOUR_MUST,
+    RULE_YOUR_PRIORITY,
     TIER_COULD,
     TIER_LATER,
     TIER_MUST,
@@ -15,19 +28,28 @@ import {
     buildApplyTasks,
     buildPlanCandidates,
     buildPostponeView,
+    compareByFit,
     computePlanCapacity,
+    countWorkdaysLeft,
     formatPlanDuration,
     getDestinationDate,
     getDestinationKey,
+    getMilestonesAtRisk,
     groupPlanByProject,
+    isDefaultTicked,
+    isMilestoneImminent,
     proposePlan,
+    resolveTaskMilestone,
     suggestOverloadMoves,
     summarizePlan,
     toggleTicks,
 } from './dailyPlanModel'
 
+// Monday 23 Nov 2026, 9:00 local time.
 const NOW = new Date(2026, 10, 23, 9, 0).getTime()
 const END_OF_DAY = new Date(2026, 10, 23, 23, 59, 59, 999).getTime()
+// Milestones are stored at noon of their day (like the real goalsMilestones documents).
+const dayAt = (month, day) => new Date(2026, month, day, 12, 0).getTime()
 const DAY = 24 * 60 * 60 * 1000
 
 const readyView = (meetingMinutes, windowMinutes = 540) => ({
@@ -56,8 +78,20 @@ const build = (openTasksMap, extra = {}) =>
         projectOrder: ['product', 'client', 'private'],
         userId: 'u1',
         endOfDay: END_OF_DAY,
+        nowMs: NOW,
         ...extra,
     })
+
+// A goal as mapGoalData returns it: completionMilestoneDate is the milestone it is due at.
+const goal = (id, completionMilestoneDate, fields = {}) => ({
+    id,
+    startingMilestoneDate: completionMilestoneDate,
+    completionMilestoneDate,
+    scheduleMode: 'fixed',
+    progress: 'DYNAMIC_PERCENT',
+    dynamicProgress: 0,
+    ...fields,
+})
 
 const plan = (openTasksMap, capacity, { tierOverrides = {}, estimateOverrides = {}, extra } = {}) => {
     const { candidates, projectIds, meetingCount } = build(openTasksMap, extra)
@@ -138,21 +172,35 @@ describe('candidates', () => {
         expect(projectIds).toEqual(['product', 'client'])
     })
 
-    it('flags unknown estimates (counted as 30m) and protected goal work', () => {
+    it('flags unknown estimates (counted as 30m); a goal link alone gives no flag or protection', () => {
         const { candidates } = build({
             product: {
                 unknown: task('unknown', { estimations: {} }),
                 zero: task('zero', { estimations: { [-1]: 0 } }),
                 old: task('old', { parentGoalId: 'g1', timesPostponed: 3 }),
-                young: task('young', { parentGoalId: 'g1', timesPostponed: 2 }),
+                plain: task('plain'),
             },
         })
         const byId = Object.fromEntries(candidates.map(candidate => [candidate.taskId, candidate]))
         expect(byId.unknown).toMatchObject({ estimateKnown: false, storedEstimate: 0 })
         expect(byId.zero.estimateKnown).toBe(false)
-        expect(byId.old.protected).toBe(true)
-        expect(byId.young.protected).toBe(false)
+        expect(byId.old).not.toHaveProperty('protected')
+        expect(byId.old).toMatchObject({ goalLinked: true, goalKey: 'product:g1' })
+        // No goal data handed in for the project: the milestone is unknown, never invented.
+        expect(byId.old.milestone).toEqual({ status: MILESTONE_UNKNOWN })
+        expect(byId.plain.milestone).toEqual({ status: MILESTONE_NONE })
         expect(UNKNOWN_ESTIMATE_MINUTES).toBe(30)
+    })
+
+    it('ranks by the project-list order, which can differ from the display order of the groups', () => {
+        const { candidates, projectIds } = build(
+            { product: { p: task('p') }, client: { c: task('c') } },
+            { projectOrder: ['client', 'product'], projectPriorityOrder: ['product', 'client'] }
+        )
+        expect(projectIds).toEqual(['client', 'product']) // display: e.g. focus project on top
+        const byId = Object.fromEntries(candidates.map(candidate => [candidate.taskId, candidate]))
+        expect(byId.p.projectRank).toBe(0)
+        expect(byId.c.projectRank).toBe(1)
     })
 })
 
@@ -182,23 +230,23 @@ describe('proposal', () => {
         expect(summary.selectedMinutes).toBeLessThanOrEqual(capacity.budgetMinutes)
     })
 
-    it('ranks set priorities, then protected goal work, goal work, most postponed, oldest', () => {
+    it('inside a project: Should, Could, then the rest; goal work without a milestone gets no bonus', () => {
         const capacity = computePlanCapacity(readyView(540 - 75)) // free 75, budget 60
         const { proposal } = plan(
             {
                 product: {
-                    a: task('a', { dueDate: NOW - 9 * DAY }),
+                    a: task('a'),
                     b: task('b', { parentGoalId: 'g', timesPostponed: 4 }),
                     c: task('c', { priority: 'could_do' }),
-                    d: task('d', { parentGoalId: 'g' }),
+                    s: task('s', { priority: 'should_do' }),
                 },
             },
             capacity
         )
-        expect(proposal['product:c'].tier).toBe(TIER_COULD)
-        expect(proposal['product:b'].tier).toBe(TIER_SHOULD)
-        expect(proposal['product:d'].tier).toBe(TIER_LATER)
+        expect(proposal['product:s']).toEqual({ tier: TIER_SHOULD, rule: RULE_YOUR_PRIORITY })
+        expect(proposal['product:c']).toEqual({ tier: TIER_COULD, rule: RULE_YOUR_PRIORITY })
         expect(proposal['product:a'].tier).toBe(TIER_LATER)
+        expect(proposal['product:b'].tier).toBe(TIER_LATER)
     })
 
     it('a re-proposal keeps the user’s own tier decisions and fills around them', () => {
@@ -356,7 +404,7 @@ describe('postpone confirmation', () => {
         expect(getDestinationDate(DESTINATION_SOMEDAY, NOW)).toBe(Number.MAX_SAFE_INTEGER)
     })
 
-    it('groups destination first, project second; Someday and protected tasks are opt-in', () => {
+    it('groups destination first, project second; only Someday is opt-in (no protection for postponed goal work)', () => {
         const { summary, projectIds } = plan(openTasksMap, capacity)
         const view = buildPostponeView(summary, projectIds)
         expect(view.groups.map(group => group.key)).toEqual(['3d', '1w', '6m', 'someday'])
@@ -364,8 +412,9 @@ describe('postpone confirmation', () => {
         const someday = view.groups.find(group => group.isSomeday)
         expect(someday.projects.map(project => project.projectId)).toEqual(['product', 'client'])
         expect(someday.tickedCount).toBe(0)
-        expect(view.groups.find(group => group.key === '6m').tickedCount).toBe(0) // protected goal task
-        expect(view.totals).toEqual({ planned: 0, postponed: 4, stays: 3, all: 7 })
+        // The goal task postponed 4× is ticked like any other task.
+        expect(view.groups.find(group => group.key === '6m').tickedCount).toBe(1)
+        expect(view.totals).toEqual({ planned: 0, postponed: 5, stays: 2, all: 7 })
     })
 
     it('reconciles planned + postponed + stays = due today per project and overall after toggles', () => {
@@ -381,8 +430,8 @@ describe('postpone confirmation', () => {
         expect(view.totals.planned + view.totals.postponed + view.totals.stays).toBe(view.totals.all)
         expect(view.perProject.find(project => project.projectId === 'product')).toMatchObject({
             planned: 1,
-            postponed: 2,
-            stays: 1,
+            postponed: 3,
+            stays: 0,
         })
 
         // Opting back out removes the explicit tick again.
@@ -409,9 +458,369 @@ describe('postpone confirmation', () => {
         expect(byKey['client:c6']).toMatchObject({ decision: 'postpone', confirmSomeday: true })
         expect(byKey['product:t1']).toMatchObject({ decision: 'postpone', confirmSomeday: false })
         expect(byKey['product:t6'].decision).toBe('keep')
-        expect(byKey['product:prot'].decision).toBe('keep')
+        expect(byKey['product:prot']).toMatchObject({ decision: 'postpone', confirmSomeday: false })
         expect(byKey['private:obs']).toMatchObject({ decision: 'postpone', isObservedTask: true })
         expect(tasks).toHaveLength(summary.allCount)
+    })
+})
+
+describe('project-list order is a real priority', () => {
+    const budget60 = computePlanCapacity(readyView(540 - 75)) // free 75, budget 60
+
+    it('a higher project outranks a lower one, even against a Should or Could set there', () => {
+        const { proposal } = plan(
+            {
+                product: { p1: task('p1'), p2: task('p2') },
+                client: { cs: task('cs', { priority: 'should_do' }) },
+                private: { pc: task('pc', { priority: 'could_do' }) },
+            },
+            budget60
+        )
+        expect(proposal['product:p1'].tier).toBe(TIER_SHOULD)
+        expect(proposal['product:p2'].tier).toBe(TIER_SHOULD)
+        expect(proposal['client:cs']).toEqual({ tier: TIER_LATER, rule: RULE_NO_ROOM })
+        expect(proposal['private:pc']).toEqual({ tier: TIER_LATER, rule: RULE_NO_ROOM })
+    })
+
+    it('lower projects fill what is left, in order, while it fits', () => {
+        const { proposal, summary } = plan(
+            {
+                product: {
+                    big: task('big', { estimations: { [-1]: 45 } }),
+                    huge: task('huge', { estimations: { [-1]: 60 } }),
+                },
+                client: { small: task('small', { estimations: { [-1]: 15 } }) },
+            },
+            budget60
+        )
+        expect(proposal['product:big'].tier).toBe(TIER_SHOULD)
+        expect(proposal['product:huge'].rule).toBe(RULE_NO_ROOM)
+        expect(proposal['client:small']).toEqual({ tier: TIER_SHOULD, rule: RULE_RANKED })
+        expect(summary.selectedMinutes).toBe(60)
+    })
+})
+
+describe('postponing never promotes or protects', () => {
+    const budget30 = computePlanCapacity(readyView(540 - 38)) // free 38, budget 30
+
+    it('at otherwise equal rank the less postponed task comes first', () => {
+        const { proposal } = plan(
+            {
+                product: {
+                    often: task('often', { timesPostponed: 5 }), // created first: higher list position
+                    fresh: task('fresh', { timesPostponed: 0 }),
+                },
+            },
+            budget30
+        )
+        expect(proposal['product:fresh'].tier).toBe(TIER_SHOULD)
+        expect(proposal['product:often']).toEqual({ tier: TIER_LATER, rule: RULE_NO_ROOM })
+    })
+
+    it('goal work postponed 3× or more gets no bonus (the old protected rule is gone)', () => {
+        const { proposal } = plan(
+            { product: { goalOld: task('goalOld', { parentGoalId: 'g', timesPostponed: 3 }), plain: task('plain') } },
+            budget30
+        )
+        expect(proposal['product:plain'].tier).toBe(TIER_SHOULD)
+        expect(proposal['product:goalOld'].tier).toBe(TIER_LATER)
+    })
+
+    it('being overdue longer is not a reason to rank higher (no aging): the list order decides', () => {
+        const { proposal } = plan(
+            {
+                product: {
+                    recent: task('recent', { dueDate: NOW - DAY }), // created first: higher list position
+                    ancient: task('ancient', { dueDate: NOW - 60 * DAY }),
+                },
+            },
+            budget30
+        )
+        expect(proposal['product:recent'].tier).toBe(TIER_SHOULD)
+        expect(proposal['product:ancient'].tier).toBe(TIER_LATER)
+    })
+
+    it('project order still wins over the postpone count, which is only a tie-breaker', () => {
+        const { proposal } = plan(
+            { product: { p: task('p', { timesPostponed: 5 }) }, client: { c: task('c') } },
+            budget30
+        )
+        expect(proposal['product:p'].tier).toBe(TIER_SHOULD)
+        expect(proposal['client:c'].tier).toBe(TIER_LATER)
+    })
+
+    it('a frequently postponed goal task is ticked for postponing like any other; only Someday is opt-in', () => {
+        const row = destinationKey => ({
+            key: 'k',
+            rule: RULE_NO_ROOM,
+            candidate: { destinationKey, timesPostponed: 5, goalLinked: true },
+        })
+        expect(isDefaultTicked(row('1y'))).toBe(true)
+        expect(isDefaultTicked(row(DESTINATION_SOMEDAY))).toBe(false)
+    })
+})
+
+describe('milestones from the real goal data', () => {
+    const WED = dayAt(10, 25)
+    const resolve = (goalsById, { goalId = 'g', openMilestones } = {}) =>
+        resolveTaskMilestone({ goalId, goalsById, openMilestones, nowMs: NOW })
+
+    it('uses the goal’s completion milestone: dated (fixed) or period (dynamic), with workdays left', () => {
+        expect(MILESTONE_AT_RISK_WORKDAYS).toBe(3)
+        expect(MILESTONE_OVERDUE_GRACE_DAYS).toBe(14)
+        expect(resolve({ g: goal('g', WED) })).toEqual({
+            status: MILESTONE_UPCOMING,
+            kind: MILESTONE_KIND_DATED,
+            date: WED,
+            overdueDays: 0,
+            workdaysLeft: 3, // Mon (today), Tue, Wed
+        })
+        // "1 Nov – 30 Nov" monthly milestone: Mon 23 … Mon 30 = 6 workdays (the weekend does not count).
+        expect(resolve({ g: goal('g', dayAt(10, 30), { scheduleMode: 'dynamic' }) })).toMatchObject({
+            status: MILESTONE_UPCOMING,
+            kind: MILESTONE_KIND_PERIOD,
+            workdaysLeft: 6,
+        })
+    })
+
+    it('missing or neutral data never invents a deadline', () => {
+        expect(resolve({ g: goal('g', WED) }, { goalId: null })).toEqual({ status: MILESTONE_NONE })
+        expect(resolve(undefined)).toEqual({ status: MILESTONE_UNKNOWN }) // goals of the project not loaded
+        expect(resolve({ other: goal('other', WED) })).toEqual({ status: MILESTONE_UNKNOWN }) // goal not readable
+        expect(resolve({ g: goal('g', Number.MAX_SAFE_INTEGER) })).toEqual({ status: MILESTONE_NONE }) // Backlog
+        expect(resolve({ g: goal('g', WED, { progress: 100 }) })).toEqual({ status: MILESTONE_NONE })
+        expect(resolve({ g: goal('g', WED, { dynamicProgress: 100 }) })).toEqual({ status: MILESTONE_NONE })
+        // Open milestones loaded and none on that date: the milestone was closed.
+        expect(resolve({ g: goal('g', WED) }, { openMilestones: [{ date: dayAt(10, 30) }] })).toEqual({
+            status: MILESTONE_NONE,
+        })
+        expect(resolve({ g: goal('g', WED) }, { openMilestones: [{ date: WED }] }).status).toBe(MILESTONE_UPCOMING)
+    })
+
+    it('up to 14 days overdue counts as due today; older open milestones are stale and neutral', () => {
+        expect(resolve({ g: goal('g', dayAt(10, 18)) })).toMatchObject({
+            status: MILESTONE_OVERDUE,
+            overdueDays: 5,
+            workdaysLeft: 1,
+        })
+        expect(resolve({ g: goal('g', dayAt(10, 9)) }).status).toBe(MILESTONE_OVERDUE) // 14 days
+        expect(resolve({ g: goal('g', dayAt(10, 8)) }).status).toBe(MILESTONE_STALE) // 15 days
+    })
+
+    it('counts workdays Mon–Fri, today always included', () => {
+        expect(countWorkdaysLeft(dayAt(10, 23), NOW)).toBe(1)
+        expect(countWorkdaysLeft(dayAt(10, 28), NOW)).toBe(5) // Saturday: through Friday
+        expect(countWorkdaysLeft(dayAt(10, 30), new Date(2026, 10, 27, 9).getTime())).toBe(2) // Fri → Mon
+    })
+
+    it('only a dated milestone at most 3 workdays away (or overdue ≤ 14 days) is imminent', () => {
+        const dated = { kind: MILESTONE_KIND_DATED, status: MILESTONE_UPCOMING }
+        expect(isMilestoneImminent({ ...dated, workdaysLeft: 3 })).toBe(true)
+        expect(isMilestoneImminent({ ...dated, workdaysLeft: 4 })).toBe(false)
+        expect(isMilestoneImminent({ ...dated, status: MILESTONE_OVERDUE, workdaysLeft: 1 })).toBe(true)
+        expect(isMilestoneImminent({ ...dated, status: MILESTONE_STALE })).toBe(false)
+        expect(isMilestoneImminent({ kind: MILESTONE_KIND_PERIOD, status: MILESTONE_UPCOMING, workdaysLeft: 1 })).toBe(
+            false
+        )
+        expect(isMilestoneImminent({ status: MILESTONE_UNKNOWN })).toBe(false)
+    })
+
+    it('inside a project: nearer milestone first, then more goal work per workday; Should still leads', () => {
+        const dynamic = { scheduleMode: 'dynamic' }
+        const { candidates } = build(
+            {
+                product: {
+                    plain: task('plain'),
+                    far: task('far', { parentGoalId: 'gFar' }),
+                    near: task('near', { parentGoalId: 'gNear' }),
+                    small: task('small', { parentGoalId: 'gSmall' }),
+                    big1: task('big1', { parentGoalId: 'gBig' }),
+                    big2: task('big2', { parentGoalId: 'gBig' }),
+                    should: task('should', { priority: 'should_do' }),
+                },
+            },
+            {
+                goalsByProject: {
+                    product: {
+                        gFar: goal('gFar', dayAt(11, 31), dynamic),
+                        gNear: goal('gNear', dayAt(10, 27), dynamic),
+                        gSmall: goal('gSmall', dayAt(10, 30), dynamic),
+                        gBig: goal('gBig', dayAt(10, 30), dynamic),
+                    },
+                },
+            }
+        )
+        const order = [...candidates].sort(compareByFit).map(candidate => candidate.taskId)
+        expect(order).toEqual(['should', 'near', 'big1', 'big2', 'small', 'far', 'plain'])
+        expect(candidates.find(candidate => candidate.taskId === 'big1').goalEffortMinutes).toBe(60)
+    })
+
+    it('a remote dated milestone does not override the project order', () => {
+        const { proposal } = plan(
+            { product: { p1: task('p1'), p2: task('p2') }, client: { g1: task('g1', { parentGoalId: 'g' }) } },
+            computePlanCapacity(readyView(540 - 75)),
+            { extra: { goalsByProject: { client: { g: goal('g', dayAt(11, 31)) } } } }
+        )
+        expect(proposal['product:p1'].tier).toBe(TIER_SHOULD)
+        expect(proposal['client:g1']).toEqual({ tier: TIER_LATER, rule: RULE_NO_ROOM })
+    })
+})
+
+describe('imminent milestone may override the project order', () => {
+    const budget60 = computePlanCapacity(readyView(540 - 75)) // budget 60
+    // Product (top project) has 4 ordinary tasks; Private (bottom) has 3 tasks of goal g.
+    const tasks = () => ({
+        product: { p1: task('p1'), p2: task('p2'), p3: task('p3'), p4: task('p4') },
+        private: {
+            g1: task('g1', { parentGoalId: 'g' }),
+            g2: task('g2', { parentGoalId: 'g' }),
+            g3: task('g3', { parentGoalId: 'g' }),
+        },
+    })
+    const withGoal = (completion, fields) => ({
+        extra: { goalsByProject: { private: { g: goal('g', completion, fields) } } },
+    })
+
+    it('pulls in today’s share (goal work ÷ workdays left) ahead of the project order, with the numbers', () => {
+        const { proposal, summary } = plan(tasks(), budget60, withGoal(dayAt(10, 25))) // Wed: 3 workdays
+        const detail = { shareMinutes: 30, effortMinutes: 90, workdaysLeft: 3 }
+        expect(proposal['private:g1']).toEqual({ tier: TIER_SHOULD, rule: RULE_MILESTONE_AT_RISK, detail })
+        expect(proposal['product:p1'].tier).toBe(TIER_SHOULD)
+        expect(proposal['product:p2'].tier).toBe(TIER_LATER)
+        // The rest of the goal is beyond today's share: it competes normally and shows the risk.
+        expect(proposal['private:g2']).toEqual({ tier: TIER_LATER, rule: RULE_NO_ROOM, detail })
+        expect(summary.rows.find(row => row.key === 'private:g1').detail).toEqual(detail)
+        expect(getMilestonesAtRisk(summary.rows.map(row => row.candidate))).toHaveLength(1)
+    })
+
+    it('otherwise the project order applies: 4 workdays away, a period milestone, stale or missing data', () => {
+        const cases = [
+            withGoal(dayAt(10, 26)), // Thu: 4 workdays
+            withGoal(dayAt(10, 25), { scheduleMode: 'dynamic' }), // monthly period
+            withGoal(dayAt(10, 1)), // 22 days overdue: stale
+            { extra: { goalsByProject: {} } }, // goals of the project not loaded
+        ]
+        cases.forEach(options => {
+            const { proposal } = plan(tasks(), budget60, options)
+            expect(proposal['product:p1'].tier).toBe(TIER_SHOULD)
+            expect(proposal['product:p2'].tier).toBe(TIER_SHOULD)
+            expect(proposal['private:g1']).toEqual({ tier: TIER_LATER, rule: RULE_NO_ROOM })
+        })
+    })
+
+    it('an overdue milestone (≤ 14 days) needs all of its due work today, as far as it fits', () => {
+        const { proposal } = plan(tasks(), budget60, withGoal(dayAt(10, 20)))
+        expect(proposal['private:g1'].rule).toBe(RULE_MILESTONE_AT_RISK)
+        expect(proposal['private:g2'].rule).toBe(RULE_MILESTONE_AT_RISK)
+        expect(proposal['private:g1'].detail).toEqual({ shareMinutes: 90, effortMinutes: 90, workdaysLeft: 1 })
+        expect(proposal['private:g3'].tier).toBe(TIER_LATER)
+        expect(proposal['product:p1'].tier).toBe(TIER_LATER)
+    })
+
+    it('the share follows the estimates, including the ones edited in the review', () => {
+        const { candidates } = build(tasks(), withGoal(dayAt(10, 25)).extra)
+        const estimateOverrides = { 'private:g1': 15, 'private:g2': 120, 'private:g3': 15 } // 150 → 50 today
+        const proposal = proposePlan(candidates, 300, { estimateOverrides })
+        expect(proposal['private:g1']).toMatchObject({ rule: RULE_MILESTONE_AT_RISK, detail: { shareMinutes: 50 } })
+        expect(proposal['private:g2'].rule).toBe(RULE_MILESTONE_AT_RISK) // 15 + 120 ≥ 50
+        expect(proposal['private:g3'].rule).toBe(RULE_GOAL) // planned later by the normal order
+    })
+
+    it('the nearer of two imminent milestones goes first', () => {
+        const { proposal } = plan(
+            { client: { c: task('c', { parentGoalId: 'gc' }) }, private: { v: task('v', { parentGoalId: 'gv' }) } },
+            computePlanCapacity(readyView(540 - 38)), // budget 30
+            {
+                extra: {
+                    goalsByProject: {
+                        client: { gc: goal('gc', dayAt(10, 25)) },
+                        private: { gv: goal('gv', dayAt(10, 24)) },
+                    },
+                },
+            }
+        )
+        expect(proposal['private:v'].rule).toBe(RULE_MILESTONE_AT_RISK)
+        expect(proposal['client:c']).toMatchObject({ tier: TIER_LATER, rule: RULE_NO_ROOM })
+    })
+})
+
+describe('your Must tasks and the focus task stay foremost', () => {
+    it('Must and focus come before milestones at risk and the project order', () => {
+        const { proposal } = plan(
+            {
+                product: { p1: task('p1') },
+                client: { focus: task('focus') },
+                private: {
+                    must: task('must', { priority: 'must_do', estimations: { [-1]: 60 } }),
+                    g1: task('g1', { parentGoalId: 'g' }),
+                },
+            },
+            computePlanCapacity(readyView(540 - 75)), // budget 60
+            {
+                extra: {
+                    focusTaskId: 'focus',
+                    focusProjectId: 'client',
+                    goalsByProject: { private: { g: goal('g', dayAt(10, 24)) } },
+                },
+            }
+        )
+        expect(proposal['private:must']).toEqual({ tier: TIER_MUST, rule: RULE_YOUR_MUST })
+        expect(proposal['client:focus']).toEqual({ tier: TIER_SHOULD, rule: RULE_FOCUS })
+        expect(proposal['private:g1'].tier).toBe(TIER_LATER) // at risk, but today is full
+        expect(proposal['product:p1'].tier).toBe(TIER_LATER)
+    })
+
+    it('a Must task of the goal counts towards today’s share', () => {
+        const { proposal } = plan(
+            {
+                product: { p1: task('p1'), p2: task('p2'), p3: task('p3') },
+                private: {
+                    gm: task('gm', { priority: 'must_do', parentGoalId: 'g' }),
+                    g1: task('g1', { parentGoalId: 'g' }),
+                    g2: task('g2', { parentGoalId: 'g' }),
+                },
+            },
+            computePlanCapacity(readyView(540 - 113)), // free 113, budget 90
+            { extra: { goalsByProject: { private: { g: goal('g', dayAt(10, 25)) } } } } // share 30 = gm
+        )
+        expect(proposal['private:gm'].rule).toBe(RULE_YOUR_MUST)
+        expect(proposal['private:g1'].tier).toBe(TIER_LATER)
+        expect(proposal['product:p1'].tier).toBe(TIER_SHOULD)
+        expect(proposal['product:p2'].tier).toBe(TIER_SHOULD)
+    })
+})
+
+describe('arithmetic stays consistent with the new ranking', () => {
+    it('totals, project subtotals, reconciliation and overload suggestions add up; at-risk rows are suggested last', () => {
+        const capacity = computePlanCapacity(readyView(540 - 75)) // budget 60
+        const openTasksMap = {
+            product: { p1: task('p1'), p2: task('p2') },
+            client: { c1: task('c1', { timesPostponed: 2 }) },
+            private: { g1: task('g1', { parentGoalId: 'g' }), g2: task('g2', { parentGoalId: 'g' }) },
+        }
+        const extra = { goalsByProject: { private: { g: goal('g', dayAt(10, 24)) } } } // Tue: 2 workdays → 30
+        const { summary, projectIds } = plan(openTasksMap, capacity, {
+            tierOverrides: { 'product:p2': TIER_SHOULD },
+            extra,
+        })
+        expect(summary.rows.find(row => row.key === 'private:g1').rule).toBe(RULE_MILESTONE_AT_RISK)
+        expect(summary.selectedMinutes).toBe(90)
+        expect(summary.selectedCount + summary.laterCount).toBe(summary.allCount)
+        const grouped = groupPlanByProject(summary, projectIds)
+        expect(grouped.totals).toMatchObject({
+            selectedCount: summary.selectedCount,
+            selectedMinutes: summary.selectedMinutes,
+            laterCount: summary.laterCount,
+            allCount: summary.allCount,
+        })
+        const view = buildPostponeView(summary, projectIds)
+        view.perProject.forEach(project =>
+            expect(project.planned + project.postponed + project.stays).toBe(project.all)
+        )
+        expect(view.totals.planned + view.totals.postponed + view.totals.stays).toBe(view.totals.all)
+        const { moves } = suggestOverloadMoves(summary)
+        expect(moves.map(row => row.key)).toEqual(['product:p2'])
+        expect(buildApplyTasks(summary, view)).toHaveLength(summary.allCount)
     })
 })
 

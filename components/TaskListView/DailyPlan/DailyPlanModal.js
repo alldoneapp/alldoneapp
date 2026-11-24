@@ -37,22 +37,33 @@ const STEP_POSTPONE = 'postpone'
  */
 export const takePlanSnapshot = (state, nowMs = Date.now()) => {
     const loggedUser = state.loggedUser || {}
-    const projectOrder = ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
-        loggedUser.projectIds || [],
-        loggedUser.guideProjectIds || [],
-        loggedUser.archivedProjectIds || [],
-        loggedUser.templateProjectIds || [],
-        state.loggedUserProjectsMap || {},
-        loggedUser.uid,
-        loggedUser.inFocusTaskProjectId
-    )
+    const sortedProjectIds = inFocusTaskProjectId =>
+        ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
+            loggedUser.projectIds || [],
+            loggedUser.guideProjectIds || [],
+            loggedUser.archivedProjectIds || [],
+            loggedUser.templateProjectIds || [],
+            state.loggedUserProjectsMap || {},
+            loggedUser.uid,
+            inFocusTaskProjectId
+        )
+    // Groups are shown as on Today (focus project on top); the RANKING uses the plain project-list
+    // order of the sidebar, so having the focus task in a project does not promote its other tasks.
+    const projectOrder = sortedProjectIds(loggedUser.inFocusTaskProjectId)
+    const projectPriorityOrder = sortedProjectIds(null)
     const { candidates, projectIds, meetingCount } = buildPlanCandidates({
         openTasksMap: state.openTasksMap || {},
         projectOrder,
+        projectPriorityOrder,
         userId: loggedUser.uid,
         endOfDay: moment(nowMs).endOf('day').valueOf(),
+        nowMs,
         focusTaskId: loggedUser.inFocusTaskId || null,
         focusProjectId: loggedUser.inFocusTaskProjectId || null,
+        // Loaded per project by the Today list (watchAllGoals / watchAllMilestones); a project
+        // without them has no milestone data and is ranked without milestones.
+        goalsByProject: state.goalsByProjectInTasks || {},
+        openMilestonesByProject: state.openMilestonesByProjectInTasks || {},
     })
     return { candidates, projectIds, meetingCount, projectsById: state.loggedUserProjectsMap || {}, nowMs }
 }

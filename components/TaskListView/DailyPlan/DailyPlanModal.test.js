@@ -21,7 +21,12 @@ jest.mock('react-redux', () => ({
 jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     __esModule: true,
     default: {
-        getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop: () => ['product', 'client', 'home'],
+        // Sidebar order product, client, home; the focus task's project is moved to the top for display.
+        getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop: (...args) => {
+            const focusProjectId = args[6]
+            const order = ['product', 'client', 'home']
+            return focusProjectId ? [focusProjectId, ...order.filter(id => id !== focusProjectId)] : order
+        },
     },
 }))
 // Key plus its parameters, so the tests can read the numbers the UI shows.
@@ -76,7 +81,7 @@ const readyView = meetingMinutes => ({
     freeMinutes: 540 - meetingMinutes,
 })
 
-const buildState = openTasksMap => ({
+const buildState = (openTasksMap, extra = {}) => ({
     loggedUser: {
         uid: 'u1',
         projectIds: ['product', 'client', 'home'],
@@ -94,6 +99,9 @@ const buildState = openTasksMap => ({
     smallScreenNavigation: false,
     taskPriorityFilters: [],
     openTasksMap,
+    goalsByProjectInTasks: {},
+    openMilestonesByProjectInTasks: {},
+    ...extra,
 })
 
 // Normal day: 9–18, 1h 30m meetings → time to work 7h 30m, plan up to 6h.
@@ -315,9 +323,10 @@ describe('DailyPlanDialog — missing calendar', () => {
         expect(exists(tree, 'daily-plan-repropose')).toBe(false)
         expect(exists(tree, 'daily-plan-overload')).toBe(false)
         expect(findAll(tree, 'daily-plan-row-home:h1').length).toBe(0) // still out (Not today collapsed)
-        // 6h × 80% = 4h 48m: Must, b, c1, c2, a fit (4h 30m); unknown no longer does.
-        expect(textOf(tree, 'daily-plan-planned')).toBe('4h 30m')
-        expect(textOf(tree, 'daily-plan-remaining')).toContain('dailyPlan left in plan {"duration":"18m"}')
+        // 6h × 80% = 4h 48m in project order: Product (Must, b, a, unknown = 3h), then Client c1 (1h);
+        // c2 (1h) no longer fits.
+        expect(textOf(tree, 'daily-plan-planned')).toBe('4h')
+        expect(textOf(tree, 'daily-plan-remaining')).toContain('dailyPlan left in plan {"duration":"48m"}')
     })
 
     it('waits for a loading calendar but lets the user plan without it', () => {
@@ -329,13 +338,14 @@ describe('DailyPlanDialog — missing calendar', () => {
 })
 
 describe('DailyPlanDialog — postpone confirmation and apply', () => {
-    it('groups destination first, project second; Someday and protected work are opt-in; reconciles', () => {
+    it('groups destination first, project second; only Someday is opt-in; reconciles', () => {
         const tree = render()
         press(tree, 'daily-plan-next')
         expect(exists(tree, 'daily-plan-postpone')).toBe(true)
         const reconciliation = params(textOf(tree, 'daily-plan-reconciliation'), 'dailyPlan reconciliation')
-        // 9 tasks due (the meeting is not part of the plan): 7 planned, 2 not today: old (Someday) and goal (protected).
-        expect(reconciliation).toEqual({ planned: 7, postponed: 0, stays: 2, all: 9 })
+        // 9 tasks due (the meeting is not part of the plan): 7 planned, 2 not today: old (Someday, opt-in)
+        // and goal (postponed 3× — no longer protected, so ticked).
+        expect(reconciliation).toEqual({ planned: 7, postponed: 1, stays: 1, all: 9 })
         expect(exists(tree, 'daily-plan-destination-someday')).toBe(true)
         expect(exists(tree, 'daily-plan-destination-3m')).toBe(true)
 
@@ -343,8 +353,8 @@ describe('DailyPlanDialog — postpone confirmation and apply', () => {
         press(tree, 'daily-plan-destination-project-someday-client')
         expect(params(textOf(tree, 'daily-plan-reconciliation'), 'dailyPlan reconciliation')).toEqual({
             planned: 7,
-            postponed: 1,
-            stays: 1,
+            postponed: 2,
+            stays: 0,
             all: 9,
         })
         const total = textOf(tree, 'daily-plan-reconcile-total')
@@ -377,7 +387,8 @@ describe('DailyPlanDialog — postpone confirmation and apply', () => {
             projectId: 'home',
             taskId: 'goal',
             isObservedTask: false,
-            decision: 'keep',
+            decision: 'postpone',
+            confirmSomeday: false,
         })
         expect(byKey['product:meeting']).toBeUndefined()
         expect(onApplied).toHaveBeenCalledWith(
@@ -399,6 +410,99 @@ describe('DailyPlanDialog — postpone confirmation and apply', () => {
         })
         expect(textOf(tree, 'daily-plan-error')).toBe('dailyPlan offline')
         expect(onClose).not.toHaveBeenCalled()
+    })
+})
+
+describe('DailyPlanDialog — ranking and milestone explanation', () => {
+    const atNoon = days => moment().startOf('day').add(days, 'days').add(12, 'hours').valueOf()
+    // Product (top) fills the 1h budget on its own; Home (bottom) has a goal due today.
+    const state = (goalFields = {}, extra = {}) =>
+        buildState(
+            {
+                product: {
+                    p1: task('p1', { estimations: { [-1]: 30 } }),
+                    p2: task('p2', { estimations: { [-1]: 30 } }),
+                },
+                home: {
+                    g1: task('g1', { parentGoalId: 'g', estimations: { [-1]: 30 } }),
+                    g2: task('g2', { parentGoalId: 'g', estimations: { [-1]: 30 } }),
+                },
+            },
+            {
+                goalsByProjectInTasks: {
+                    home: {
+                        g: {
+                            id: 'g',
+                            startingMilestoneDate: atNoon(0),
+                            completionMilestoneDate: atNoon(0),
+                            scheduleMode: 'fixed',
+                            progress: 'DYNAMIC_PERCENT',
+                            dynamicProgress: 0,
+                            ...goalFields,
+                        },
+                    },
+                },
+                ...extra,
+            }
+        )
+    const budgetOneHour = readyView(540 - 75)
+
+    it('explains a milestone at risk that is planned ahead of the project order', () => {
+        mockState = state()
+        const tree = render({ meetingView: budgetOneHour })
+        expect(exists(tree, 'daily-plan-row-home:g1')).toBe(true)
+        const reason = textOf(tree, 'daily-plan-reason-home:g1')
+        // Due today: 1 workday left, so all 1h of goal work is needed today.
+        expect(reason).toContain('dailyPlan reason milestone at risk')
+        expect(reason).toContain('"days":1,"share":"1h","effort":"1h"')
+        expect(reason).toContain('dailyPlan milestone date')
+        expect(reason).toContain('dailyPlan reason ahead of project order')
+        expect(textOf(tree, 'daily-plan-order-note')).toContain('dailyPlan order note')
+        expect(params(textOf(tree, 'daily-plan-order-note'), 'dailyPlan ahead count')).toEqual({ count: 2 })
+        // Product was pushed out and says why.
+        press(tree, 'daily-plan-later-toggle-product')
+        expect(textOf(tree, 'daily-plan-reason-product:p1')).toContain('dailyPlan reason no room')
+    })
+
+    it('without milestone data the project order applies and nothing claims a risk', () => {
+        mockState = state({}, { goalsByProjectInTasks: {} })
+        const tree = render({ meetingView: budgetOneHour })
+        expect(exists(tree, 'daily-plan-row-product:p1')).toBe(true)
+        expect(exists(tree, 'daily-plan-row-product:p2')).toBe(true)
+        expect(exists(tree, 'daily-plan-row-home:g1')).toBe(false)
+        expect(textOf(tree, 'daily-plan-order-note')).not.toContain('dailyPlan ahead count')
+    })
+
+    it('warns in the postpone check when a task of a milestone at risk would be postponed', () => {
+        mockState = state()
+        const tree = render({ meetingView: readyView(540 - 38) }) // budget 30: only g1 fits
+        press(tree, 'daily-plan-next')
+        press(tree, 'daily-plan-destination-expand-3d')
+        expect(textOf(tree, 'daily-plan-postpone-risk-home:g2')).toContain('dailyPlan postpone milestone warning')
+        expect(exists(tree, 'daily-plan-postpone-risk-product:p1')).toBe(false)
+    })
+
+    it('the focus project is shown on top but does not outrank the project order for its other tasks', () => {
+        mockState = buildState({
+            product: { p1: task('p1', { estimations: { [-1]: 30 } }) },
+            home: {
+                focus: task('focus', { estimations: { [-1]: 30 } }),
+                h2: task('h2', { estimations: { [-1]: 30 } }),
+            },
+        })
+        mockState.loggedUser.inFocusTaskId = 'focus'
+        mockState.loggedUser.inFocusTaskProjectId = 'home'
+        const tree = render({ meetingView: budgetOneHour })
+        const projects = tree.root
+            .findAll(
+                node => typeof node.props.testID === 'string' && /^daily-plan-project-[a-z]+$/.test(node.props.testID)
+            )
+            .map(node => node.props.testID)
+            .filter((id, index, list) => list.indexOf(id) === index)
+        expect(projects).toEqual(['daily-plan-project-home', 'daily-plan-project-product'])
+        expect(exists(tree, 'daily-plan-row-home:focus')).toBe(true)
+        expect(exists(tree, 'daily-plan-row-product:p1')).toBe(true)
+        expect(exists(tree, 'daily-plan-row-home:h2')).toBe(false)
     })
 })
 

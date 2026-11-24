@@ -368,6 +368,23 @@ async function main() {
             await page.close()
         })
 
+        await check('milestone at risk: planned ahead of the project order with a visible reason', async () => {
+            const page = await openPage(browser, base, 'scenario=milestone', { width: 1280, height: 900 }, problems)
+            await page.click(tid('daily-plan-open'))
+            await page.waitForSelector(tid('daily-plan-review'))
+            const reason = await text(page, 'daily-plan-reason-home:home-5')
+            assert.match(reason, /^Milestone .+ at risk · workdays left: 1 · 4h of 4h goal work needed today/)
+            assert.match(reason, /ahead of project order/)
+            assert.match(
+                await text(page, 'daily-plan-order-note'),
+                /Planned ahead of the project order for milestones at risk: 1\./
+            )
+            await assertSubtotalsAddUp(page, 'milestone')
+            await noHorizontalOverflow(page, 'milestone desktop')
+            await shot(page, '8-milestone-desktop')
+            await page.close()
+        })
+
         await check('phone width 390 px: review and postpone check fit, no horizontal overflow', async () => {
             const page = await openPage(browser, base, 'scenario=normal&mobile', { width: 390, height: 844 }, problems)
             await page.click(tid('daily-plan-open'))

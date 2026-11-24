@@ -6,18 +6,25 @@
  * opens, so the list never re-flows under the user while they review; the server
  * (`functions/Tasks/dailyPlanService.js`) re-checks every task and computes the real postpone dates.
  *
- * Decisions agreed for v1 (see docs/claude/daily-plan.md):
+ * Decisions (see docs/claude/daily-plan.md):
  *   - Capacity: "Time to work" (AT-3136: working hours minus merged meetings) × 80%; the other 20%
  *     stays unplanned buffer. Without a connected/readable calendar the user picks an assumed
  *     meeting time and the capacity is marked provisional.
- *   - Proposal: deterministic rules, no model call. Your Must tasks are always in (never dropped,
- *     even when they alone exceed the budget); the focus task is in; then the rest is ranked
- *     (priority, protected goal work, goal-linked, times postponed, oldest due date, list order)
- *     and filled while it fits. Do later tasks are never proposed.
+ *   - Proposal: deterministic rules, no model call. In this order:
+ *       1. your Must tasks (never dropped, even when they alone exceed the budget),
+ *       2. the focus task,
+ *       3. milestones at risk: a goal whose DATED (fixed) milestone is at most 3 workdays away (or
+ *          up to 14 days overdue) gets today's share of its due work (work ÷ workdays left) ahead
+ *          of the project order, with a visible reason,
+ *       4. everything else in the user's project-list order (sidebar, `sortIndexByUser`); inside a
+ *          project: Should → Could → none, then the nearer goal milestone, then FEWER postpones,
+ *          then the list order.
+ *     Filled while it fits. Do later tasks are never proposed. How often a task was postponed never
+ *     promotes or protects it; at otherwise equal rank the more postponed task comes later.
  *   - Unknown estimates count as 30 minutes and are flagged.
  *   - Meetings (calendar tasks) are already subtracted as meeting time, so they are neither counted
  *     nor postponed. Tasks waiting for an assistant are not on the user's Today at all.
- *   - Nothing is written until Apply. Someday is opt-in; protected tasks are unticked by default.
+ *   - Nothing is written until Apply. Someday is opt-in.
  */
 
 import moment from 'moment'
@@ -31,10 +38,14 @@ import {
 
 export const PLAN_FILL_SHARE = 0.8
 export const UNKNOWN_ESTIMATE_MINUTES = 30
-export const PROTECTED_POSTPONE_COUNT = 3
+// Milestone urgency (agreed with the product owner 2026-11-24).
+export const MILESTONE_AT_RISK_WORKDAYS = 3 // today + the next 2 workdays (Mon–Fri)
+export const MILESTONE_OVERDUE_GRACE_DAYS = 14 // older open milestones are treated as stale
 export const ASSUMED_MEETING_OPTIONS = [0, 60, 120, 180]
 export const ESTIMATE_OPTIONS = [15, 30, 60, 120, 240]
 const BACKLOG_DATE = Number.MAX_SAFE_INTEGER
+const DYNAMIC_PERCENT = 'DYNAMIC_PERCENT' // GoalsHelper.DYNAMIC_PERCENT
+const GOAL_SCHEDULE_MODE_DYNAMIC = 'dynamic' // GoalMilestonesHelper
 const OPEN_STEP = -1
 
 export const TIER_MUST = 'must'
@@ -55,12 +66,22 @@ const TIER_ORDER = { [TIER_MUST]: 0, [TIER_SHOULD]: 1, [TIER_COULD]: 2, [TIER_LA
 export const RULE_YOUR_MUST = 'yourMust'
 export const RULE_FOCUS = 'focus'
 export const RULE_YOUR_PRIORITY = 'yourPriority'
-export const RULE_PROTECTED = 'protected'
+export const RULE_MILESTONE_AT_RISK = 'milestoneAtRisk'
 export const RULE_GOAL = 'goal'
 export const RULE_RANKED = 'ranked'
 export const RULE_NO_ROOM = 'noRoom'
 export const RULE_DO_LATER = 'doLater'
 export const RULE_YOU = 'you'
+
+// Milestone of a goal-linked task (candidate.milestone.status).
+export const MILESTONE_NONE = 'none' // no goal, goal in Backlog, goal complete, milestone closed
+export const MILESTONE_UNKNOWN = 'unknown' // goal data not loaded / not readable: neutral
+export const MILESTONE_UPCOMING = 'upcoming'
+export const MILESTONE_OVERDUE = 'overdue' // ≤ MILESTONE_OVERDUE_GRACE_DAYS past: counts as due today
+export const MILESTONE_STALE = 'stale' // longer overdue: neutral
+// candidate.milestone.kind
+export const MILESTONE_KIND_DATED = 'dated' // fixed goal schedule: a real date, may override project order
+export const MILESTONE_KIND_PERIOD = 'period' // dynamic goal schedule (e.g. "1 Nov – 30 Nov"): ranks inside its project only
 
 // The existing auto-postpone ladder (autoPostponeTasksCloud.getDateToMoveTaskInAutoPostpone).
 export const DESTINATIONS = [
@@ -122,7 +143,7 @@ export const computePlanCapacity = (view, assumedMeetingMinutes = 0) => {
     }
 }
 
-// ---------------------------------------------------------------- candidates
+// ---------------------------------------------------------------- today tasks
 
 const getEffectiveDueDate = (task, userId) =>
     task.isObservedTask ? task.dueDateByObserversIds?.[userId] : task.dueDate
@@ -138,20 +159,90 @@ export const getStoredEstimateMinutes = task => {
     return Number.isFinite(value) && value > 0 ? Math.round(value) : 0
 }
 
+// ---------------------------------------------------------------- milestones
+
+const startOfLocalDay = ms => moment(ms).startOf('day')
+
+/** Workdays (Mon–Fri) from today through the milestone's day; today always counts as 1. */
+export const countWorkdaysLeft = (milestoneDate, nowMs) => {
+    const today = startOfLocalDay(nowMs)
+    const target = startOfLocalDay(milestoneDate)
+    let workdays = 1
+    const day = today.clone().add(1, 'day')
+    while (!day.isAfter(target)) {
+        const weekday = day.isoWeekday()
+        if (weekday <= 5) workdays++
+        day.add(1, 'day')
+    }
+    return workdays
+}
+
+const isGoalComplete = goal =>
+    goal.progress === 100 || (goal.progress === DYNAMIC_PERCENT && Number(goal.dynamicProgress) === 100)
+
+const NO_MILESTONE = { status: MILESTONE_NONE }
+
+/**
+ * The milestone a goal-linked task works towards, from the real data: the task's `parentGoalId`
+ * goal (`goals/{projectId}/items`, redux `goalsByProjectInTasks`) and that goal's
+ * `completionMilestoneDate` — the milestone the goal is due at. A goal with a fixed schedule has a
+ * dated milestone; a dynamic one sits in a rolling period milestone (e.g. "1 Nov – 30 Nov"). When the
+ * project's open milestones are loaded (`openMilestonesByProjectInTasks`) and none is on that date,
+ * the milestone was closed and the task is neutral. Tasks never get a deadline of their own here.
+ */
+export const resolveTaskMilestone = ({ goalId, goalsById, openMilestones, nowMs }) => {
+    if (!goalId) return NO_MILESTONE
+    if (!goalsById) return { status: MILESTONE_UNKNOWN }
+    const goal = goalsById[goalId]
+    if (!goal) return { status: MILESTONE_UNKNOWN }
+    const date = Number(goal.completionMilestoneDate)
+    if (!Number.isFinite(date) || date <= 0 || date >= BACKLOG_DATE || isGoalComplete(goal)) return NO_MILESTONE
+    if (Array.isArray(openMilestones) && !openMilestones.some(milestone => milestone && milestone.date === date)) {
+        return NO_MILESTONE
+    }
+    const kind = goal.scheduleMode === GOAL_SCHEDULE_MODE_DYNAMIC ? MILESTONE_KIND_PERIOD : MILESTONE_KIND_DATED
+    const overdueDays = startOfLocalDay(nowMs).diff(startOfLocalDay(date), 'days')
+    if (overdueDays > MILESTONE_OVERDUE_GRACE_DAYS) return { status: MILESTONE_STALE, kind, date, overdueDays }
+    if (overdueDays > 0) return { status: MILESTONE_OVERDUE, kind, date, overdueDays, workdaysLeft: 1 }
+    return { status: MILESTONE_UPCOMING, kind, date, overdueDays: 0, workdaysLeft: countWorkdaysLeft(date, nowMs) }
+}
+
+const hasActiveMilestone = candidate =>
+    candidate.milestone?.status === MILESTONE_UPCOMING || candidate.milestone?.status === MILESTONE_OVERDUE
+
+/** Dated milestone today … in 2 more workdays, or up to 14 days overdue: may override project order. */
+export const isMilestoneImminent = milestone =>
+    !!milestone &&
+    milestone.kind === MILESTONE_KIND_DATED &&
+    (milestone.status === MILESTONE_OVERDUE ||
+        (milestone.status === MILESTONE_UPCOMING && milestone.workdaysLeft <= MILESTONE_AT_RISK_WORKDAYS))
+
+// ---------------------------------------------------------------- candidates
+
 /**
  * The Today tasks of all projects, frozen into plan candidates. `openTasksMap` is the redux map
  * `{ [projectId]: { [taskId]: task } }` the task lists already load (the same source as the
- * existing Auto-postpone modal). `projectOrder` is the sidebar order.
+ * existing Auto-postpone modal). `projectOrder` is the display order of the project groups;
+ * `projectPriorityOrder` is the user's project-list order used for ranking (defaults to
+ * `projectOrder`). `goalsByProject` / `openMilestonesByProject` are the redux maps the Today list
+ * loads per project; a project without them simply has no milestone data (neutral).
  */
 export const buildPlanCandidates = ({
     openTasksMap,
     projectOrder = [],
+    projectPriorityOrder = null,
     userId,
     endOfDay,
+    nowMs = Date.now(),
     focusTaskId = null,
     focusProjectId = null,
+    goalsByProject = {},
+    openMilestonesByProject = {},
 }) => {
     const rank = new Map(projectOrder.map((projectId, index) => [projectId, index]))
+    const priorityRankMap = new Map(
+        (projectPriorityOrder || projectOrder).map((projectId, index) => [projectId, index])
+    )
     const candidates = []
     let meetingCount = 0
     Object.keys(openTasksMap || {}).forEach(projectId => {
@@ -163,7 +254,7 @@ export const buildPlanCandidates = ({
             }
             const storedEstimate = getStoredEstimateMinutes(task)
             const timesPostponed = Number(task.timesPostponed) || 0
-            const goalLinked = !!task.parentGoalId
+            const goalId = task.parentGoalId || null
             candidates.push({
                 key: `${projectId}:${task.id}`,
                 projectId,
@@ -174,14 +265,27 @@ export const buildPlanCandidates = ({
                 storedEstimate,
                 estimateKnown: storedEstimate > 0,
                 timesPostponed,
-                goalLinked,
-                protected: goalLinked && timesPostponed >= PROTECTED_POSTPONE_COUNT,
+                goalLinked: !!goalId,
+                goalKey: goalId ? `${projectId}:${goalId}` : null,
+                milestone: resolveTaskMilestone({
+                    goalId,
+                    goalsById: goalsByProject?.[projectId],
+                    openMilestones: openMilestonesByProject?.[projectId],
+                    nowMs,
+                }),
+                projectRank: priorityRankMap.has(projectId) ? priorityRankMap.get(projectId) : Number.MAX_SAFE_INTEGER,
                 isFocus: task.id === focusTaskId && (!focusProjectId || focusProjectId === projectId),
                 dueDate: getEffectiveDueDate(task, userId),
                 sortIndex: Number(task.sortIndex) || 0,
                 destinationKey: getDestinationKey(timesPostponed, !!task.isObservedTask),
             })
         })
+    })
+    // Static goal effort (stored estimates) for the order inside a project; the proposal recomputes
+    // it with the user's estimate edits.
+    const effort = computeGoalEffort(candidates)
+    candidates.forEach(candidate => {
+        candidate.goalEffortMinutes = candidate.goalKey ? effort.get(candidate.goalKey) || 0 : 0
     })
     const projectRank = projectId => (rank.has(projectId) ? rank.get(projectId) : Number.MAX_SAFE_INTEGER)
     const projectIds = [...new Set(candidates.map(candidate => candidate.projectId))].sort(
@@ -201,32 +305,89 @@ const PROPOSAL_PRIORITY_RANK = {
 }
 const priorityRank = priority => PROPOSAL_PRIORITY_RANK[priority] || PROPOSAL_PRIORITY_RANK.none
 
-/** Best fit first. Also the order of each project's Not today list. */
-export const compareByFit = (a, b) =>
-    priorityRank(b.priority) - priorityRank(a.priority) ||
-    Number(b.protected) - Number(a.protected) ||
-    Number(b.goalLinked) - Number(a.goalLinked) ||
-    b.timesPostponed - a.timesPostponed ||
-    (a.dueDate || 0) - (b.dueDate || 0) ||
-    b.sortIndex - a.sortIndex ||
-    a.name.localeCompare(b.name)
-
 export const getEstimate = (candidate, estimateOverrides = {}) =>
     estimateOverrides[candidate.key] || candidate.storedEstimate || UNKNOWN_ESTIMATE_MINUTES
+
+/** Minutes of due work per goal (Do later excluded): `Map(goalKey → minutes)`. */
+export const computeGoalEffort = (candidates, estimateOverrides = {}) => {
+    const effort = new Map()
+    candidates.forEach(candidate => {
+        if (!candidate.goalKey || candidate.priority === TASK_PRIORITY_DO_LATER) return
+        effort.set(candidate.goalKey, (effort.get(candidate.goalKey) || 0) + getEstimate(candidate, estimateOverrides))
+    })
+    return effort
+}
+
+// Inside a project: an active milestone first, the fewest workdays left first, then the goal that
+// needs more work per remaining workday, then the earlier date.
+const compareMilestones = (a, b) => {
+    const activeA = hasActiveMilestone(a)
+    const activeB = hasActiveMilestone(b)
+    if (activeA !== activeB) return activeA ? -1 : 1
+    if (!activeA) return 0
+    return (
+        a.milestone.workdaysLeft - b.milestone.workdaysLeft ||
+        (b.goalEffortMinutes || 0) / b.milestone.workdaysLeft - (a.goalEffortMinutes || 0) / a.milestone.workdaysLeft ||
+        a.milestone.date - b.milestone.date
+    )
+}
+
+/**
+ * Best fit first. Also the order of each project's Not today list and (reversed) of the overload
+ * suggestions. Project-list order first, then priority, milestone, fewer postpones, list order.
+ * The due date is deliberately not a key: being overdue longer is not a reason to rank higher.
+ */
+export const compareByFit = (a, b) =>
+    (a.projectRank ?? Number.MAX_SAFE_INTEGER) - (b.projectRank ?? Number.MAX_SAFE_INTEGER) ||
+    priorityRank(b.priority) - priorityRank(a.priority) ||
+    compareMilestones(a, b) ||
+    a.timesPostponed - b.timesPostponed ||
+    b.sortIndex - a.sortIndex ||
+    a.name.localeCompare(b.name)
 
 const tierFromPriority = priority =>
     priority === TASK_PRIORITY_MUST_DO ? TIER_MUST : priority === TASK_PRIORITY_COULD_DO ? TIER_COULD : TIER_SHOULD
 
 /**
- * Anna's proposal: `{ [key]: { tier, rule } }`. Runs when the review opens and on an explicit
- * "Re-propose"; the user's own edits are overrides on top and are never re-flowed silently.
+ * Goals whose dated milestone is imminent: `[{ goalKey, milestone, effortMinutes, workdaysLeft,
+ * shareMinutes }]`, nearest milestone first, then project-list order. `shareMinutes` = the goal's due
+ * work spread evenly over the workdays left (rounded up): what has to happen today so that further
+ * delay does not jeopardize the milestone.
+ */
+export const getMilestonesAtRisk = (candidates, estimateOverrides = {}) => {
+    const effort = computeGoalEffort(candidates, estimateOverrides)
+    const byGoal = new Map()
+    candidates.forEach(candidate => {
+        if (!candidate.goalKey || byGoal.has(candidate.goalKey) || !isMilestoneImminent(candidate.milestone)) return
+        const effortMinutes = effort.get(candidate.goalKey) || 0
+        if (effortMinutes <= 0) return
+        const workdaysLeft = candidate.milestone.workdaysLeft
+        byGoal.set(candidate.goalKey, {
+            goalKey: candidate.goalKey,
+            projectRank: candidate.projectRank ?? Number.MAX_SAFE_INTEGER,
+            milestone: candidate.milestone,
+            effortMinutes,
+            workdaysLeft,
+            shareMinutes: Math.ceil(effortMinutes / workdaysLeft),
+        })
+    })
+    return [...byGoal.values()].sort(
+        (a, b) =>
+            a.milestone.date - b.milestone.date || a.projectRank - b.projectRank || a.goalKey.localeCompare(b.goalKey)
+    )
+}
+
+/**
+ * Anna's proposal: `{ [key]: { tier, rule, detail? } }`. Runs when the review opens and on an
+ * explicit "Re-propose"; the user's own edits are overrides on top and are never re-flowed silently.
  * `keepTiers` (the user's overrides) are honoured first so a re-proposal fills around them.
+ * `detail` (milestone rows): `{ shareMinutes, effortMinutes, workdaysLeft }` for the visible reason.
  */
 export const proposePlan = (candidates, budgetMinutes, { estimateOverrides = {}, keepTiers = {} } = {}) => {
     const proposal = {}
     let used = 0
-    const take = (candidate, tier, rule) => {
-        proposal[candidate.key] = { tier, rule }
+    const take = (candidate, tier, rule, detail) => {
+        proposal[candidate.key] = detail ? { tier, rule, detail } : { tier, rule }
         if (tier !== TIER_LATER) used += getEstimate(candidate, estimateOverrides)
     }
 
@@ -242,23 +403,59 @@ export const proposePlan = (candidates, budgetMinutes, { estimateOverrides = {},
         .filter(candidate => candidate.isFocus && candidate.priority !== TASK_PRIORITY_DO_LATER)
         .forEach(candidate => take(candidate, tierFromPriority(candidate.priority), RULE_FOCUS))
 
+    // Milestones at risk: today's share of the goal's due work, ahead of the project order.
+    const atRisk = getMilestonesAtRisk(candidates, estimateOverrides)
+    const riskByGoal = new Map(atRisk.map(goal => [goal.goalKey, goal]))
+    atRisk.forEach(goal => {
+        const goalCandidates = candidates.filter(candidate => candidate.goalKey === goal.goalKey)
+        let needed =
+            goal.shareMinutes -
+            goalCandidates
+                .filter(candidate => proposal[candidate.key] && proposal[candidate.key].tier !== TIER_LATER)
+                .reduce((total, candidate) => total + getEstimate(candidate, estimateOverrides), 0)
+        const detail = {
+            shareMinutes: goal.shareMinutes,
+            effortMinutes: goal.effortMinutes,
+            workdaysLeft: goal.workdaysLeft,
+        }
+        goalCandidates
+            .filter(candidate => !proposal[candidate.key] && candidate.priority !== TASK_PRIORITY_DO_LATER)
+            .sort(compareByFit)
+            .forEach(candidate => {
+                if (needed <= 0) return
+                const estimate = getEstimate(candidate, estimateOverrides)
+                if (used + estimate > budgetMinutes) return
+                take(candidate, tierFromPriority(candidate.priority), RULE_MILESTONE_AT_RISK, detail)
+                needed -= estimate
+            })
+    })
+
     open()
         .filter(candidate => candidate.priority !== TASK_PRIORITY_DO_LATER)
         .sort(compareByFit)
         .forEach(candidate => {
             const estimate = getEstimate(candidate, estimateOverrides)
+            const risk = candidate.goalKey ? riskByGoal.get(candidate.goalKey) : null
             if (used + estimate > budgetMinutes) {
-                proposal[candidate.key] = { tier: TIER_LATER, rule: RULE_NO_ROOM }
+                proposal[candidate.key] = risk
+                    ? {
+                          tier: TIER_LATER,
+                          rule: RULE_NO_ROOM,
+                          detail: {
+                              shareMinutes: risk.shareMinutes,
+                              effortMinutes: risk.effortMinutes,
+                              workdaysLeft: risk.workdaysLeft,
+                          },
+                      }
+                    : { tier: TIER_LATER, rule: RULE_NO_ROOM }
                 return
             }
             const rule =
                 candidate.priority === TASK_PRIORITY_SHOULD_DO || candidate.priority === TASK_PRIORITY_COULD_DO
                     ? RULE_YOUR_PRIORITY
-                    : candidate.protected
-                      ? RULE_PROTECTED
-                      : candidate.goalLinked
-                        ? RULE_GOAL
-                        : RULE_RANKED
+                    : candidate.goalLinked
+                      ? RULE_GOAL
+                      : RULE_RANKED
             take(candidate, tierFromPriority(candidate.priority), rule)
         })
 
@@ -285,6 +482,7 @@ export const summarizePlan = ({ candidates, proposal, tierOverrides = {}, estima
             tier,
             proposedTier: proposed.tier,
             rule: override && override !== proposed.tier ? RULE_YOU : proposed.rule,
+            detail: override && override !== proposed.tier ? null : proposed.detail || null,
             estimate: getEstimate(candidate, estimateOverrides),
             estimateKnown: !!estimateOverrides[candidate.key] || candidate.estimateKnown,
             selected: tier !== TIER_LATER,
@@ -324,14 +522,19 @@ export const summarizePlan = ({ candidates, proposal, tierOverrides = {}, estima
 
 /**
  * Overload help: the selected tasks Anna suggests moving out to get back within the budget —
- * weakest fit first, Could before Should. Your Must tasks and the focus task are never suggested;
+ * weakest fit first (lowest project first), Could before Should, milestone-at-risk rows last. Your Must tasks and the focus task are never suggested;
  * `remainingOverMinutes` is what is still over when they alone exceed the budget.
  */
 export const suggestOverloadMoves = summary => {
     if (!summary.isOverBudget) return { moves: [], remainingOverMinutes: 0 }
     const movable = summary.rows
         .filter(row => row.selected && row.tier !== TIER_MUST && !row.candidate.isFocus)
-        .sort((a, b) => TIER_ORDER[b.tier] - TIER_ORDER[a.tier] || compareByFit(b.candidate, a.candidate))
+        .sort(
+            (a, b) =>
+                Number(a.rule === RULE_MILESTONE_AT_RISK) - Number(b.rule === RULE_MILESTONE_AT_RISK) ||
+                TIER_ORDER[b.tier] - TIER_ORDER[a.tier] ||
+                compareByFit(b.candidate, a.candidate)
+        )
     const moves = []
     let over = summary.overMinutes
     for (const row of movable) {
@@ -393,12 +596,11 @@ export const groupPlanByProject = (summary, projectIds, query = '') => {
 
 // ---------------------------------------------------------------- postpone confirmation
 
-/** Default tick in the postpone check: Someday is opt-in, protected work stays unless you moved it. */
-export const isDefaultTicked = row => {
-    if (row.candidate.destinationKey === DESTINATION_SOMEDAY) return false
-    if (row.candidate.protected && row.rule !== RULE_YOU) return false
-    return true
-}
+/**
+ * Default tick in the postpone check: only Someday is opt-in. How often a task was postponed gives
+ * it no protection; a task whose milestone is at risk is ticked too but shows the warning.
+ */
+export const isDefaultTicked = row => row.candidate.destinationKey !== DESTINATION_SOMEDAY
 
 export const isRowTicked = (row, ticks = {}) =>
     Object.prototype.hasOwnProperty.call(ticks, row.key) ? !!ticks[row.key] : isDefaultTicked(row)

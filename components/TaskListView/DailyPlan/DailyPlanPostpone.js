@@ -4,9 +4,9 @@ import { Text, TouchableOpacity, View } from 'react-native'
 import Icon from '../../Icon'
 import { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
-import { isRowTicked } from '../../../utils/dailyPlan/dailyPlanModel'
+import { isMilestoneImminent, isRowTicked } from '../../../utils/dailyPlan/dailyPlanModel'
 import { planStyles as s } from './dailyPlanStyles'
-import { getDestinationDateText, getDestinationLabel } from './dailyPlanText'
+import { getDestinationDateText, getDestinationLabel, getMilestoneText } from './dailyPlanText'
 
 function Checkbox({ checked, partial, testID }) {
     return (
@@ -124,10 +124,13 @@ export function DestinationGroup({ group, projectsById, expanded, onToggleExpand
                                             <Text style={s.taskName} numberOfLines={1}>
                                                 {row.candidate.name}
                                             </Text>
-                                            {row.candidate.protected && (
-                                                <Text style={s.reason}>
-                                                    {translate('dailyPlan reason protected', {
-                                                        count: row.candidate.timesPostponed,
+                                            {isMilestoneImminent(row.candidate.milestone) && (
+                                                <Text
+                                                    style={[s.reason, s.warning]}
+                                                    testID={`daily-plan-postpone-risk-${row.key}`}
+                                                >
+                                                    {translate('dailyPlan postpone milestone warning', {
+                                                        milestone: getMilestoneText(row.candidate, nowMs),
                                                     })}
                                                 </Text>
                                             )}

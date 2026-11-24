@@ -9,6 +9,7 @@ import {
     ESTIMATE_OPTIONS,
     PLAN_FILL_SHARE,
     PLAN_TIERS,
+    RULE_MILESTONE_AT_RISK,
     TIER_COULD,
     TIER_LATER,
     TIER_SHOULD,
@@ -33,6 +34,7 @@ export function CapacityCard({
     proposalStale,
 }) {
     const used = summary.selectedMinutes
+    const aheadCount = summary.rows.filter(row => row.selected && row.rule === RULE_MILESTONE_AT_RISK).length
     const budget = capacity.budgetMinutes
     const fillRatio = budget > 0 ? Math.min(1, used / budget) : used > 0 ? 1 : 0
     const over = summary.isOverBudget
@@ -84,6 +86,10 @@ export function CapacityCard({
                 {summary.unknownEstimateCount > 0
                     ? ` · ${translate('dailyPlan unknown estimates', { count: summary.unknownEstimateCount })}`
                     : ''}
+            </Text>
+            <Text style={s.capacityDetail} testID="daily-plan-order-note">
+                {translate('dailyPlan order note')}
+                {aheadCount > 0 ? ` ${translate('dailyPlan ahead count', { count: aheadCount })}` : ''}
             </Text>
             {grouped.projects.length > 1 && (
                 <Text style={s.capacityDetail} testID="daily-plan-per-project-line">
@@ -203,7 +209,7 @@ function PlanRow({ row, onSetTier, onSetEstimate, compact }) {
                 <Text style={s.taskName} numberOfLines={compact ? 2 : 1}>
                     {row.candidate.name}
                 </Text>
-                <Text style={s.reason} numberOfLines={1}>
+                <Text style={s.reason} numberOfLines={2} testID={`daily-plan-reason-${row.key}`}>
                     {selected
                         ? getRowReason(row)
                         : `${getRowReason(row)} · ${getDestinationLabel(row.candidate.destinationKey)}`}

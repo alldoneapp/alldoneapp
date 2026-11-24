@@ -6,7 +6,7 @@ import moment from 'moment'
 import DailyPlanEntry from '../../components/TaskListView/DailyPlan/DailyPlanEntry'
 import store from './store'
 
-// Synthetic data only. ?scenario=normal|overload|nocal, ?mobile for the phone layout.
+// Synthetic data only. ?scenario=normal|overload|nocal|milestone, ?mobile for the phone layout.
 const params = new URLSearchParams(window.location.search)
 const scenario = params.get('scenario') || 'normal'
 const mobile = params.has('mobile')
@@ -135,6 +135,30 @@ const views = {
         workingHours: { start: '09:00', end: '18:00', isDefault: true },
         windowMinutes: 540,
     },
+}
+
+// "milestone": the bottom project's goal has a dated milestone today, so its work is planned ahead of
+// the project order with a visible reason.
+views.milestone = views.normal
+const milestoneToday = moment().startOf('day').add(12, 'hours').valueOf()
+if (scenario === 'milestone') {
+    store.dispatch({
+        type: 'harness/merge',
+        state: {
+            goalsByProjectInTasks: {
+                home: {
+                    'goal-1': {
+                        id: 'goal-1',
+                        startingMilestoneDate: milestoneToday,
+                        completionMilestoneDate: milestoneToday,
+                        scheduleMode: 'fixed',
+                        progress: 'DYNAMIC_PERCENT',
+                        dynamicProgress: 0,
+                    },
+                },
+            },
+        },
+    })
 }
 
 store.dispatch({ type: 'harness/openTasksMap', openTasksMap: build() })
