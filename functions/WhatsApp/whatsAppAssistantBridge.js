@@ -236,7 +236,9 @@ async function processWhatsAppAssistantMessage(
     runGuard?.assertActive()
     markStage('storeAssistantMessageInTopic', storeAssistantStart)
 
-    if (responseText) {
+    // The summary is optional and the next run compacts if it must; with the clock nearly spent it
+    // would only risk aborting a run whose answer is already stored but not yet sent.
+    if (responseText && !runGuard?.shouldWrapUp?.()) {
         try {
             await runAutomaticThreadCompaction({ ...compactionArgs, hardOnly: false })
         } catch (error) {

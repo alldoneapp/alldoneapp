@@ -31,9 +31,14 @@ const WRITING_PROMPT_MAX_RUN_WALL_CLOCK_MS = 3 * 60 * 1000
 const WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS =
     WRITING_ROUTING_MAX_RUN_WALL_CLOCK_MS + WRITING_PROMPT_MAX_RUN_WALL_CLOCK_MS
 
-// WhatsApp replies run inline in an Eventarc worker. Stop the entire drain before the transport
-// expires so it can mark failures and deliver a useful error instead of silently losing the reply.
-const WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS = 4 * 60 * 1000
+// WhatsApp replies get the same budget as every other run the server starts on its own (comment
+// replies, heartbeats): 25 minutes, delivered through Cloud Tasks (runWhatsAppInboundQueue), whose
+// 30-minute dispatch deadline is the longest any server-started transport allows. Browser chats keep
+// 55 minutes only because the browser holds the onCall request open. Until 2026-11-24 WhatsApp ran
+// inline in the Firestore trigger with 4 minutes (Eventarc caps at 540s), and research-heavy requests
+// were aborted unanswered. The whole queue drain shares this deadline; the run wraps up 90 seconds
+// before it (whatsAppRunGuard.js) and is aborted at it, so failures are still reported.
+const WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS = HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS
 
 // Context assembly happens before the run and result posting after it, so the transport has to
 // outlive the run itself.

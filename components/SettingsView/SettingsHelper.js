@@ -9,7 +9,6 @@ import URLsSettings, {
     URL_SETTINGS_SHORTCUTS,
     URL_SETTINGS_STATISTICS,
     URL_SETTINGS_HAPPINESS,
-    URL_SETTINGS_MEETING_TIME,
     URL_SETTINGS_PROFILE,
     URL_SETTINGS_EXPORT,
     URL_SETTINGS_INTEGRATIONS,
@@ -58,9 +57,6 @@ class SettingsHelper {
                 break
             case URL_SETTINGS_HAPPINESS:
                 URLsSettings.replace(URL_SETTINGS_HAPPINESS)
-                break
-            case URL_SETTINGS_MEETING_TIME:
-                URLsSettings.replace(URL_SETTINGS_MEETING_TIME)
                 break
             case URL_SETTINGS_SHORTCUTS:
                 URLsSettings.replace(URL_SETTINGS_SHORTCUTS)

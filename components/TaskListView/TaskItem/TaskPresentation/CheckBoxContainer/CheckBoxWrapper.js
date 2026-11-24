@@ -26,7 +26,6 @@ import RecurringTaskDateBasisModal, {
 import EmailTaskCompletionModal from './EmailTaskCompletionModal'
 import { completeEmailLinkedTask } from './emailTaskCompletion'
 import { translate } from '../../../../../i18n/TranslationService'
-import { offerMeetingReviewAfterCompletion } from '../../../../../utils/meetingReview/offerMeetingReview'
 
 function CheckBoxWrapper(
     {
@@ -200,7 +199,6 @@ function CheckBoxWrapper(
                     checkBoxIdRef.current,
                     recurrenceBaseDateOverride
                 )
-                if (stepToMoveId === DONE_STEP) offerMeetingReviewAfterCompletion(task, projectId)
             } catch (error) {
                 await rollbackOptimisticCheck(error)
             } finally {

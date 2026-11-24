@@ -125,9 +125,7 @@ service cloud.firestore {
     // The gold ledger and its idempotency claims are server-written; a client that could write
     // them could forge a charge to refund or delete a claim to collect a reward twice.
     function isServerOwnedUserCollection(collectionName) {
-      // dailyPlans (AT-3142): written by applyDailyPlanSecondGen only; the nightly auto-postpone
-      // reads its Someday holds, so the owner may read but not forge it.
-      return collectionName in ['goldTransactions', 'goldRewardClaims', 'goldChangeClaims', 'dailyPlans'];
+      return collectionName in ['goldTransactions', 'goldRewardClaims', 'goldChangeClaims'];
     }
 
     function ownerUpdatePreservesProjectMembership() {

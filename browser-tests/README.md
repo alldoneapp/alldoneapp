@@ -711,28 +711,3 @@ filtered row selects exactly that row.
 ```bash
 node browser-tests/at3100/run.js
 ```
-
-### `at3140/` — deleting the text line under an image keeps the image
-
-Mounts the real `CustomTextInput3` with the chat composer's formats and the REAL
-`customImageFormat` / `videoFormat` blots, drops a real image (or video) file on the editor and
-types below it. Shift+Home then Backspace / Delete / typing must remove only that text, and Home
-must put the caret after the image; extending past the line start (Shift+Left), Shift+Up, and
-Backspace at the start of the text line must still delete the image. It also checks that the media
-embed adds no empty line above or below the picture. `--unfixed` turns the AT-3140 CSS rule off
-in the page and expects the five defect cases to reproduce.
-
-```bash
-node browser-tests/at3140/run.js
-```
-
-### `at3142/` — "Plan my day" review, postpone check, apply and undo
-
-The real `DailyPlanEntry` → `DailyPlanModal` → Today pill chain with real translations, against
-synthetic tasks; only the store, the project helper and the callable wrapper are faked
-(`dailyPlanBackend.js`), and every request leaving 127.0.0.1 fails the run. Asserts in the DOM that
-project subtotals add up to the cross-project capacity, rows are Must → Should → Could per project,
-the postpone check is destination-first with Someday unticked and reconciles, Apply sends one
-consistent payload and switches Today to the plan filter, Undo restores, the overload and
-missing-calendar states, and no horizontal overflow at 390 px. `--screenshots` writes PNGs to
-`at3142/.build/screenshots/`.

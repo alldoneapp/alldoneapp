@@ -42,23 +42,6 @@
     margin-top: 0;
 }
 
-/*
- * AT-3140: an image or video embed always renders as a full-width block, but it sits INLINE in
- * the same Quill line as the text typed after it. While the embed span stayed inline, Chromium
- * put the start of the visual text line BEFORE the embed, so Shift+Home (Cmd+Shift+Left on a
- * Mac) followed by Backspace also deleted the image above. As a block, the line start falls after
- * the embed; extending the selection past it (Shift+Left, Shift+Up) still selects the image.
- * line-height: 0 collapses the line boxes of Quill's two cursor-guard characters, which would
- * otherwise add an empty line above and below the media. Text inside the media (react-native-web
- * <Text>) resets line-height through its own `font` shorthand.
- * Pinned by textLineDeleteKeepsMedia.test.js and browser-tests/at3140.
- */
-.ql-textInputContainer > .ql-editor .ql-customImageFormat,
-.ql-textInputContainer > .ql-editor .ql-videoFormat {
-    display: block;
-    line-height: 0;
-}
-
 .ql-textInputContainer > .ql-editor.ql-blank::before {
     top: 5px;
     left: 0 !important;

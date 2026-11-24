@@ -28,7 +28,6 @@ import URLsProjects, {
     URL_PROJECT_DETAILS_BACKLINKS_TASKS,
     URL_PROJECT_DETAILS_FEED,
     URL_PROJECT_DETAILS_HAPPINESS,
-    URL_PROJECT_DETAILS_MEETING_TIME,
     URL_PROJECT_DETAILS_OKRS,
     URL_PROJECT_DETAILS_WIKI,
     URL_PROJECT_DETAILS_MEMBERS,
@@ -44,7 +43,6 @@ import {
     DV_TAB_PROJECT_STATISTICS,
     DV_TAB_PROJECT_ASSISTANTS,
     DV_TAB_PROJECT_HAPPINESS,
-    DV_TAB_PROJECT_MEETING_TIME,
     DV_TAB_PROJECT_OKRS,
     DV_TAB_PROJECT_WIKI,
 } from '../../../utils/TabNavigationConstants'
@@ -642,9 +640,6 @@ class ProjectHelper {
                 break
             case DV_TAB_PROJECT_HAPPINESS:
                 urlConstant = URL_PROJECT_DETAILS_HAPPINESS
-                break
-            case DV_TAB_PROJECT_MEETING_TIME:
-                urlConstant = URL_PROJECT_DETAILS_MEETING_TIME
                 break
             case DV_TAB_PROJECT_OKRS:
                 urlConstant = URL_PROJECT_DETAILS_OKRS

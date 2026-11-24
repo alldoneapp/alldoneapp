@@ -25,7 +25,6 @@ jest.mock('../components/UIComponents/GlobalModalsContainerApp', () => () => (
 ))
 jest.mock('../components/Analytics/AnalyticsConsentManager', () => () => null)
 jest.mock('../components/Undo/UndoActionBar', () => () => null)
-jest.mock('../components/MeetingReview/MeetingReviewHost', () => () => null)
 jest.mock('../AppNavigator', () => ({
     AppContainer: require('react').forwardRef(() => <button>Assistant sidebar</button>),
 }))

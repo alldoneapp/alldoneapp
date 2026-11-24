@@ -41,12 +41,8 @@ const SCHEDULE_TRIGGER_MAX_TIMEOUT_SECONDS = 1800
 // there. Add a function here when it starts executing prompts; the assertions below then hold it to
 // a transport that can actually carry that run.
 const ASSISTANT_RUN_HOSTS = [
-    {
-        name: 'processWhatsAppInboundQueueItemSecondGen',
-        maxRunWallClockMs: WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS,
-        boundedEventTrigger: true,
-    },
-    { name: 'recoverWhatsAppInboundQueues', maxRunWallClockMs: WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS },
+    // WhatsApp replies: the trigger and the recovery sweep only dispatch to this Cloud Tasks worker.
+    { name: 'runWhatsAppInboundQueue', maxRunWallClockMs: WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS },
     {
         name: 'processMenubarWritingRunSecondGen',
         maxRunWallClockMs: WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS,
@@ -108,6 +104,15 @@ describe('assistant run limits', () => {
         expect(SCHEDULED_FUNCTION_TIMEOUT_SECONDS).toBe(
             transportTimeoutSecondsFor(SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS)
         )
+    })
+
+    it('gives WhatsApp the budget of every other server-started run, within the Cloud Tasks deadline', () => {
+        // Decision 2026-11-24: no WhatsApp-only limit. Only a browser-held onCall can carry 55 minutes.
+        expect(WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS).toBe(HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS)
+        expect(WHATSAPP_FUNCTION_TIMEOUT_SECONDS).toBe(
+            transportTimeoutSecondsFor(WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS)
+        )
+        expect(WHATSAPP_FUNCTION_TIMEOUT_SECONDS).toBeLessThanOrEqual(1800)
     })
 
     it('fits consecutive project routing and writing within the Eventarc transport', () => {

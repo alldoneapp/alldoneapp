@@ -221,6 +221,22 @@ describe('WhatsApp assistant attachment handoff', () => {
         expect(loadAssistantActivityContext).toHaveBeenCalledWith(expect.anything(), 'u1')
     })
 
+    test('skips the optional post-answer summary when the run is in its wrap-up window', async () => {
+        prepareMessage()
+        const runGuard = createWhatsAppRunGuard(Date.now() + 30000)
+        try {
+            const reply = await processWhatsAppAssistantMessage('u1', 'p1', 'today', 'latest request', 'a1', null, {
+                runGuard,
+            })
+            expect(reply).toBe('Done.')
+            expect(storeAssistantMessageInTopic).toHaveBeenCalled()
+            expect(runAutomaticThreadCompaction).toHaveBeenCalledTimes(1)
+            expect(runAutomaticThreadCompaction).toHaveBeenCalledWith(expect.objectContaining({ hardOnly: true }))
+        } finally {
+            await runGuard.run(async () => {})
+        }
+    })
+
     test('does not silently drop older messages if required compaction fails', async () => {
         prepareMessage()
         runAutomaticThreadCompaction.mockResolvedValueOnce({ hard: true, compacted: false, reason: 'in_progress' })

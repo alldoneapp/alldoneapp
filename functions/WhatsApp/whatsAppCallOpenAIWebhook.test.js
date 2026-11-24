@@ -113,7 +113,7 @@ describe('OpenAI incoming Live SIP call webhook (phone and WhatsApp)', () => {
         updateCallSession.mockResolvedValue()
     })
 
-    test('accepts the SIP call as a gpt-live-1.1 session and queues the shared Live controller', async () => {
+    test('accepts the SIP call as a gpt-live-1 session and queues the shared Live controller', async () => {
         await call()
 
         expect(consumeRoutingToken).toHaveBeenCalledWith(expect.objectContaining({ openAiCallId: 'live_1' }))
@@ -122,7 +122,7 @@ describe('OpenAI incoming Live SIP call webhook (phone and WhatsApp)', () => {
             expect.objectContaining({
                 openAiSessionId: 'live_1',
                 voiceProvider: 'gpt-live',
-                voiceModel: 'gpt-live-1.1',
+                voiceModel: 'gpt-live-1',
                 voiceGoldPerMinute: 40,
                 realtimeModel: null,
             })
@@ -132,7 +132,7 @@ describe('OpenAI incoming Live SIP call webhook (phone and WhatsApp)', () => {
         expect(session).toEqual(
             expect.objectContaining({
                 type: 'live',
-                model: 'gpt-live-1.1',
+                model: 'gpt-live-1',
                 store: false,
                 delegation: { type: 'client' },
                 audio: { output: { voice: 'cedar' } },

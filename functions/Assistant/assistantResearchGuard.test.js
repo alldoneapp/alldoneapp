@@ -6,6 +6,7 @@ const {
     isMcpLookupTool,
     isMcpActionTool,
     MAX_RESEARCH_CALLS,
+    TIME_BUDGET_REPLY_INSTRUCTION,
 } = require('./assistantResearchGuard')
 const { buildConversationSafeToolResult } = require('./attachmentToolHandoff')
 
@@ -45,6 +46,18 @@ describe('shared assistant research safeguards', () => {
         expect(prepared.stopReason).toBe('repeated_search_results')
         expect(prepared.messages.at(-1).content).toContain('matches')
         expect(prepared.messages.slice(0, 2)).toEqual(request)
+    })
+
+    test('a spent wall clock makes the next request the final reply, even after a write', () => {
+        // 2026-11-24: a WhatsApp briefing request made 19 new, non-repeating lookups until the four-minute
+        // limit aborted it, so the user got only a timeout notice. Nothing in the history stops it.
+        const prompt = [...request, ...round(1, 'fetch_url'), ...round(2, 'web_search'), ...round(3, 'update_task')]
+        expect(prepareResearchRequest(prompt).stopReason).toBeNull()
+        const prepared = prepareResearchRequest(prompt, { timeBudgetSpent: true })
+        expect(prepared.stopReason).toBe('time_budget')
+        expect(prepared.messages.at(-1)).toEqual({ role: 'system', content: TIME_BUDGET_REPLY_INSTRUCTION })
+        expect(TIME_BUDGET_REPLY_INSTRUCTION).toContain('Do not call more research or lookup tools.')
+        expect(prepareResearchRequest(request, { timeBudgetSpent: true }).stopReason).toBe('time_budget')
     })
 
     test('stops an exact duplicate read without applying this rule to mutations', () => {

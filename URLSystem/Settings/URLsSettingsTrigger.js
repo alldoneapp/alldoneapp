@@ -9,7 +9,6 @@ import {
     URL_SETTINGS_SHORTCUTS,
     URL_SETTINGS_STATISTICS,
     URL_SETTINGS_HAPPINESS,
-    URL_SETTINGS_MEETING_TIME,
     URL_SETTINGS_OKRS,
     URL_SETTINGS_PROFILE,
     URL_SETTINGS_EXPORT,
@@ -25,7 +24,6 @@ import {
     DV_TAB_SETTINGS_SHORTCUTS,
     DV_TAB_SETTINGS_STATISTICS,
     DV_TAB_SETTINGS_HAPPINESS,
-    DV_TAB_SETTINGS_MEETING_TIME,
     DV_TAB_SETTINGS_OKRS,
     DV_TAB_SETTINGS_CUSTOMIZATIONS,
     DV_TAB_SETTINGS_PROFILE,
@@ -52,7 +50,6 @@ class URLsSettingsTrigger {
             [URL_SETTINGS_INVITATIONS]: new RegExp('^/settings/invitations$'),
             [URL_SETTINGS_STATISTICS]: new RegExp('^/settings/statistics$'),
             [URL_SETTINGS_HAPPINESS]: new RegExp('^/settings/happiness$'),
-            [URL_SETTINGS_MEETING_TIME]: new RegExp('^/settings/meeting-time$'),
             [URL_SETTINGS_OKRS]: new RegExp('^/settings/okrs$'),
             [URL_SETTINGS_SHORTCUTS]: new RegExp('^/settings/shortcuts$'),
             [URL_SETTINGS_PREMIUM]: new RegExp('^/settings/premium$'),
@@ -97,8 +94,6 @@ class URLsSettingsTrigger {
                 return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_STATISTICS)
             case URL_SETTINGS_HAPPINESS:
                 return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_HAPPINESS)
-            case URL_SETTINGS_MEETING_TIME:
-                return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_MEETING_TIME)
             case URL_SETTINGS_OKRS:
                 return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_OKRS)
             case URL_SETTINGS_SHORTCUTS:

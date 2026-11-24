@@ -317,32 +317,6 @@ exports.setDefaultProjectSecondGen = onCall(
     }
 )
 
-// AT-3137: the caller's own calendar tasks in a period, for the private meeting time statistics.
-exports.getMeetingTimeStatsDataSecondGen = onCall(
-    {
-        timeoutSeconds: 60,
-        // AT-3145: 256MiB ran out of memory in production (258-271 MiB, the week view on a fresh
-        // instance, users with many projects) and the app showed "could not be loaded".
-        memory: '512MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated')
-
-        const { getMeetingStatsData, MeetingStatsDataError } = require('./MeetingReview/meetingStatsData')
-        try {
-            return await getMeetingStatsData(admin.firestore(), request.auth.uid, {
-                fromMs: Number(request.data?.fromMs),
-                toMs: Number(request.data?.toMs),
-            })
-        } catch (error) {
-            if (error instanceof MeetingStatsDataError) throw new HttpsError(error.code, error.message)
-            throw error
-        }
-    }
-)
-
 exports.copyProjectMoveChatSecondGen = onCall(
     {
         timeoutSeconds: 120,
@@ -6834,24 +6808,6 @@ exports.postponeProjectTasksWithUndoSecondGen = onCall(
     }
 )
 
-// AT-3142: apply "Today's plan" — priorities of the planned tasks, postpones along the existing
-// ladder (Someday only when confirmed) and one undo record, in one transaction.
-exports.applyDailyPlanSecondGen = onCall(
-    { timeoutSeconds: 120, memory: '512MiB', region: 'europe-west1', cors: true },
-    async request => {
-        if (!request.auth) throw new HttpsError('permission-denied', 'Authentication required')
-        try {
-            const { executeApplyDailyPlan } = require('./Tasks/dailyPlanService')
-            return await executeApplyDailyPlan({ actorUserId: request.auth.uid, data: request.data })
-        } catch (error) {
-            const supportedCodes = new Set(['invalid-argument', 'permission-denied', 'failed-precondition'])
-            const code = supportedCodes.has(error.code) ? error.code : 'internal'
-            console.error('[applyDailyPlanSecondGen] Failed', { userId: request.auth.uid, code, error: error.message })
-            throw new HttpsError(code, code === 'internal' ? 'Failed to apply the plan' : error.message)
-        }
-    }
-)
-
 exports.postponeGoalWithUndoSecondGen = onCall(
     {
         timeoutSeconds: 60,
@@ -8298,25 +8254,49 @@ exports.cleanupStaleWhatsAppCalls = onSchedule(
     }
 )
 
-// WHATSAPP INBOUND QUEUE PROCESSOR - Async processing for inbound webhook items
+// WHATSAPP INBOUND QUEUE - a queued webhook item only dispatches the user's queue to the Cloud Tasks
+// worker below. The reply itself needs the 25-minute assistant budget, which no Firestore trigger
+// (540s) can carry.
 exports.processWhatsAppInboundQueueItemSecondGen = onDocumentCreated(
     {
         document: 'whatsAppInboundQueue/{userId}/items/{messageSid}',
-        timeoutSeconds: WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
-        memory: '1GiB',
+        timeoutSeconds: 60,
+        memory: '256MiB',
         region: 'europe-west1',
     },
     async event => {
+        const { enqueueWhatsAppQueueRun } = require('./WhatsApp/whatsAppQueueDispatch')
+        try {
+            await enqueueWhatsAppQueueRun(event.params.userId, `message:${event.params.messageSid}`)
+        } catch (error) {
+            // The item stays pending; recoverWhatsAppInboundQueues dispatches it within two minutes.
+            console.error('WhatsApp Queue: Dispatch failed', { userId: event.params.userId, error: error.message })
+        }
+    }
+)
+
+// Drains one user's WhatsApp queue under the user's queue lock. Single attempt: a reply whose tools
+// may already have run is reported as failed, never replayed.
+exports.runWhatsAppInboundQueue = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
+        memory: '1GiB',
+        ...(adminSdkRuntimeServiceAccount ? { invoker: adminSdkRuntimeServiceAccount } : {}),
+        retryConfig: { maxAttempts: 1 },
+        rateLimits: { maxConcurrentDispatches: 50, maxDispatchesPerSecond: 20 },
+    },
+    async req => {
         const { processWhatsAppInboundQueueItem } = require('./WhatsApp/whatsAppInboundQueueProcessor')
-        await processWhatsAppInboundQueueItem(event)
+        await processWhatsAppInboundQueueItem({ params: { userId: req.data?.userId } })
     }
 )
 
 exports.recoverWhatsAppInboundQueues = onSchedule(
     {
         schedule: 'every 2 minutes',
-        timeoutSeconds: WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
-        memory: '1GiB',
+        timeoutSeconds: 120,
+        memory: '256MiB',
         region: 'europe-west1',
     },
     async () => {

@@ -381,7 +381,7 @@ export default function OpenTasksViewAllProjects() {
             ]}
         >
             {/* The assistant below supplies the remaining 8 px of the shared 16 px gap. */}
-            <AllProjectsLine bottomSpacing={8} showMeetingTime />
+            <AllProjectsLine bottomSpacing={8} />
             <AllProjectsAssistantLine />
             {/* AT-2262: the empty-inbox congrats sits directly UNDER the assistant line
                 (which also renders the latest comment) and above the email line and the

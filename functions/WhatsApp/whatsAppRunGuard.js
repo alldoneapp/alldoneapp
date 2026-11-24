@@ -1,6 +1,11 @@
 const { WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS } = require('../Assistant/assistantRunLimits')
 
 const WHATSAPP_TIMEOUT_CODE = 'WHATSAPP_ASSISTANT_TIMEOUT'
+// Time kept back for the final reply. Once less than this is left, the next model request gets no
+// lookup tools and must answer (assistantResearchGuard.js). It covers one more tool already under
+// way (a browser page load took 13s), the final answer, storing it and the gold deduction; the
+// whole run is still aborted at the deadline.
+const WHATSAPP_WRAP_UP_WINDOW_MS = 90 * 1000
 
 function createWhatsAppRunGuard(deadlineAt = Date.now() + WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS) {
     const controller = new AbortController()
@@ -16,6 +21,9 @@ function createWhatsAppRunGuard(deadlineAt = Date.now() + WHATSAPP_PROMPT_MAX_RU
         assertActive() {
             if (Date.now() >= deadlineAt && !controller.signal.aborted) controller.abort(timeoutError)
             if (controller.signal.aborted) throw timeoutError
+        },
+        shouldWrapUp() {
+            return Date.now() >= deadlineAt - WHATSAPP_WRAP_UP_WINDOW_MS
         },
         markToolStarted() {
             guard.assertActive()
@@ -66,4 +74,9 @@ function getWhatsAppTimeoutMessage(language, interrupted = false) {
         : 'Your request took too long and was stopped. Please try again. If you requested an action, check Alldone first to see whether it already completed.'
 }
 
-module.exports = { createWhatsAppRunGuard, WHATSAPP_TIMEOUT_CODE, getWhatsAppTimeoutMessage }
+module.exports = {
+    createWhatsAppRunGuard,
+    WHATSAPP_TIMEOUT_CODE,
+    WHATSAPP_WRAP_UP_WINDOW_MS,
+    getWhatsAppTimeoutMessage,
+}

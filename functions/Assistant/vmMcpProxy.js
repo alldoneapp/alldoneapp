@@ -27,7 +27,6 @@ const { mintProxyToken, verifyProxyToken, isProxyEnabled, getProxyBaseUrl } = re
 const { serverAllowsMcpTool, readMcpToolApp, MAX_MCP_TOOLS } = require('./mcpAppGroups')
 const { isManagedMcpServer } = require('../Assistants/managedMcpServers')
 const { isProjectMemberData } = require('../shared/privacyAccess')
-const { BROWSER_TOOL_NAMES } = require('./browser/browserToolContract')
 
 const REGION = 'europe-west1'
 const FUNCTION_NAME = 'vmMcpProxy'
@@ -265,70 +264,9 @@ function summarizeVmMcpTools(targets) {
     return Array.from(apps.values())
 }
 
-// ----- The shared Alldone browser (AT-3141) -----
-
-// Alldone's own MCP endpoint (`<base>/mcpServer`, see index.js). Its browser_* tools drive the
-// shared browser the user can watch and take over; a session is bound to a task with `taskId`.
-const ALLDONE_MCP_PATH = '/mcpServer'
-
-const toOrigin = url => {
-    try {
-        return new URL(String(url || '').trim()).origin
-    } catch (_) {
-        return null
-    }
-}
-
-/** The origins Alldone's own MCP server answers on in this environment. */
-function getAlldoneMcpOrigins(env = process.env) {
-    const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
-    return Array.from(new Set([toOrigin(getBaseUrl()), toOrigin(env.MCP_BASE_URL)].filter(Boolean)))
-}
-
-/** Pure: whether `url` is Alldone's own MCP endpoint on one of `origins`. */
-function isAlldoneMcpServerUrl(url, origins) {
-    let parsed
-    try {
-        parsed = new URL(String(url || ''))
-    } catch (_) {
-        return false
-    }
-    if (!['https:', 'http:'].includes(parsed.protocol)) return false
-    if (!(Array.isArray(origins) ? origins : []).includes(parsed.origin)) return false
-    return parsed.pathname.replace(/\/+$/, '') === ALLDONE_MCP_PATH
-}
-
-/**
- * Pure. The shared Alldone browser among a run's project tools, or null.
- *
- * Only a tool name is not enough: other MCP servers (Playwright MCP, for one) also call their tools
- * browser_navigate, browser_click, …, and they start a browser nobody can watch. So the shared
- * browser counts as available only when Alldone's own MCP server offers the complete browser_*
- * family and every one of those tools takes the `taskId` that binds the session to the task. A
- * partial family fails closed: a browser that can click but not look is not a usable shared browser.
- *
- * Returns { toolNames }: the names the agent sees (a clashing name carries a server prefix), in
- * BROWSER_TOOL_NAMES order.
- */
-function findSharedBrowserTools(targets, origins) {
-    const byRemoteName = new Map()
-    for (const target of Array.isArray(targets) ? targets : []) {
-        if (!target || !BROWSER_TOOL_NAMES.includes(target.remoteName)) continue
-        if (!isAlldoneMcpServerUrl(target.server?.url, origins)) continue
-        const properties = target.definition?.inputSchema?.properties
-        if (!isObject(properties) || !isObject(properties.taskId)) continue
-        if (!byRemoteName.has(target.remoteName)) byRemoteName.set(target.remoteName, target.name)
-    }
-    if (!BROWSER_TOOL_NAMES.every(name => byRemoteName.has(name))) return null
-    return { toolNames: BROWSER_TOOL_NAMES.map(name => byRemoteName.get(name)) }
-}
-
 /**
  * At launch: what this run's project tools are, for the prompt and to decide whether the agent gets
  * the MCP server at all. Never throws: a failure means a run without project tools.
- *
- * `sharedBrowser` is set only when the shared Alldone browser is really among them
- * (findSharedBrowserTools); the VM prompt points the agent at it only then.
  */
 async function describeVmProjectTools({ projectId, assistantId, requestUserId, db = admin.firestore(), deps = {} }) {
     try {
@@ -337,19 +275,11 @@ async function describeVmProjectTools({ projectId, assistantId, requestUserId, d
         if (!servers.length) return null
         const targets = await listVmMcpTools({ servers, projectId, requestUserId, deps })
         if (!targets.length) return null
-        let sharedBrowser = null
-        try {
-            const origins = deps.alldoneMcpOrigins || getAlldoneMcpOrigins()
-            sharedBrowser = findSharedBrowserTools(targets, origins)
-        } catch (error) {
-            console.warn('🔌 VM MCP: could not check for the shared browser', { projectId, error: error.message })
-        }
         return {
             enabled: true,
             serverName: VM_MCP_SERVER_NAME,
             toolCount: targets.length,
             apps: summarizeVmMcpTools(targets),
-            sharedBrowser,
         }
     } catch (error) {
         console.warn('🔌 VM MCP: could not describe project tools', { projectId, error: error.message })
@@ -578,9 +508,6 @@ module.exports = {
     selectVmMcpServers,
     listVmMcpTools,
     summarizeVmMcpTools,
-    findSharedBrowserTools,
-    isAlldoneMcpServerUrl,
-    getAlldoneMcpOrigins,
     loadActiveJob,
     mintVmMcpToken,
     verifyVmMcpToken,

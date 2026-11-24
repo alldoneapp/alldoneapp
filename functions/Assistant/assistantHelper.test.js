@@ -869,6 +869,26 @@ describe('project wiki wiring', () => {
         )
     })
 
+    test('a WhatsApp run in its wrap-up window answers without lookup tools but keeps the ones that act', async () => {
+        mockResponsesCreate.mockResolvedValue([])
+        const whatsAppRunGuard = { assertActive: jest.fn(), shouldWrapUp: jest.fn(() => true) }
+
+        await interactWithChatStream(
+            [['user', 'gib mir ein Briefing']],
+            'MODEL_GPT6_SOL',
+            'TEMPERATURE_NORMAL',
+            ['web_search', 'fetch_url', 'create_task'],
+            { projectId: 'p1', requestUserId: 'u1', disableToolSearch: true, whatsAppRunGuard }
+        )
+
+        const request = mockResponsesCreate.mock.calls[0][0]
+        const toolNames = (request.tools || []).map(tool => tool.name)
+        expect(toolNames).toContain('create_task')
+        expect(toolNames).not.toContain('web_search')
+        expect(toolNames).not.toContain('fetch_url')
+        expect(JSON.stringify(request.input)).toContain('the time for this reply is nearly used up')
+    })
+
     test('lets the wiki decide whether a wiki tool call runs, whatever the assistant’s toggles say', async () => {
         const runtime = { projectId: 'p1', requestUserId: 'u1' }
         mockKnowledgeBase.isKnowledgeBaseToolAllowed.mockResolvedValueOnce(true)
@@ -10705,11 +10725,6 @@ describe('execute_task_in_vm existing task routing', () => {
                 threadContext: expect.stringContaining('tracked by the existing Alldone task task-1'),
             })
         )
-        // AT-3141: the browsing rules come from the runner, which knows whether the shared browser
-        // really reaches the run; the brief no longer names it unconditionally.
-        const { threadContext } = startVmJobSpy.mock.calls[startVmJobSpy.mock.calls.length - 1][0]
-        expect(threadContext).not.toContain('shared Alldone browser')
-        expect(threadContext).not.toContain('unshared browser')
     })
 
     test('joins an existing delegated workflow instead of dispatching a duplicate VM', async () => {

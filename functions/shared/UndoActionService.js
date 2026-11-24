@@ -292,16 +292,7 @@ async function reverseAction({ db, userId, actionId, direction }) {
             if (!isVisibleTo(userId, getResultingIsPublicFor(snapshot.data(), replacement, replacementMissingFields))) {
                 throw createPermissionError('Undo action would leave an object the caller cannot access')
             }
-            if (!matchesFields(snapshot.data(), expected, expectedMissingFields)) {
-                // AT-3142: a batch (the daily plan) opts in per operation to leave an object that was
-                // edited since alone instead of failing the whole action, so one later edit neither
-                // blocks the undo of the other changes nor gets overwritten by it. Nothing is written.
-                if (operation.skipIfChanged === true) {
-                    skippedOperationIndexes.push(index)
-                    return
-                }
-                throw createConflictError()
-            }
+            if (!matchesFields(snapshot.data(), expected, expectedMissingFields)) throw createConflictError()
             mutations.push(() => transaction.update(objectRef, buildReplacement(replacement, replacementMissingFields)))
         })
 

@@ -13,12 +13,7 @@ const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
 const { canAccessObject, isProjectMemberData } = require('../shared/privacyAccess')
 const { getLiveConfigurationError, getLiveSessionDefaults } = require('./assistantLiveConfig')
 const { buildLiveSession } = require('./assistantLiveProtocol')
-const {
-    LIVE_MODEL,
-    LIVE_GOLD_PER_MINUTE,
-    LIVE_INITIALIZATION_SECONDS,
-    calculateLiveVoiceGold,
-} = require('./assistantLivePricing')
+const { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS, calculateLiveVoiceGold } = require('./assistantLivePricing')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { createDirectCallSessionWithLease, finalizeCallSession, updateCallSession } = require('./whatsAppCallSessions')
 
@@ -250,7 +245,7 @@ async function startAssistantBrowserCall(data, auth) {
         if ([401, 403, 404].includes(error.status))
             throw new HttpsError(
                 'unavailable',
-                `GPT-Live is unavailable. Ask Alldone support to verify the configured OpenAI key and ${LIVE_MODEL} access.`
+                'GPT-Live is unavailable. Ask Alldone support to verify the configured OpenAI key and gpt-live-1 access.'
             )
         throw new HttpsError('internal', 'The browser assistant call could not be started.')
     }

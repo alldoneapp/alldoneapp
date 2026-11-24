@@ -7,7 +7,6 @@ import {
     URL_PROJECT_DETAILS_MEMBERS,
     URL_PROJECT_DETAILS_PROPERTIES,
     URL_PROJECT_DETAILS_HAPPINESS,
-    URL_PROJECT_DETAILS_MEETING_TIME,
     URL_PROJECT_DETAILS_OKRS,
     URL_PROJECT_DETAILS_STATISTICS,
     URL_PROJECT_DETAILS_WORKSTREAMS,
@@ -26,7 +25,6 @@ import {
     DV_TAB_PROJECT_ASSISTANTS,
     DV_TAB_PROJECT_CONTACT_STATUSES,
     DV_TAB_PROJECT_HAPPINESS,
-    DV_TAB_PROJECT_MEETING_TIME,
     DV_TAB_PROJECT_OKRS,
     DV_TAB_PROJECT_WIKI,
 } from '../../utils/TabNavigationConstants'
@@ -43,7 +41,6 @@ class URLsProjectsTrigger {
             [URL_PROJECT_DETAILS_FEED]: new RegExp('^/project/(?<projectId>[\\w-]+)/updates$'),
             [URL_PROJECT_DETAILS_STATISTICS]: new RegExp('^/project/(?<projectId>[\\w-]+)/statistics$'),
             [URL_PROJECT_DETAILS_HAPPINESS]: new RegExp('^/project/(?<projectId>[\\w-]+)/happiness$'),
-            [URL_PROJECT_DETAILS_MEETING_TIME]: new RegExp('^/project/(?<projectId>[\\w-]+)/meeting-time$'),
             [URL_PROJECT_DETAILS_OKRS]: new RegExp('^/project/(?<projectId>[\\w-]+)/okrs$'),
             [URL_PROJECT_DETAILS_WIKI]: new RegExp('^/project/(?<projectId>[\\w-]+)/wiki-settings$'),
             [URL_PROJECT_DETAILS_ASSISTANTS]: new RegExp('^/project/(?<projectId>[\\w-]+)/assistants$'),
@@ -109,12 +106,6 @@ class URLsProjectsTrigger {
                 )
             case URL_PROJECT_DETAILS_HAPPINESS:
                 return ProjectHelper.processURLProjectDetailsTab(navigation, DV_TAB_PROJECT_HAPPINESS, params.projectId)
-            case URL_PROJECT_DETAILS_MEETING_TIME:
-                return ProjectHelper.processURLProjectDetailsTab(
-                    navigation,
-                    DV_TAB_PROJECT_MEETING_TIME,
-                    params.projectId
-                )
             case URL_PROJECT_DETAILS_OKRS:
                 return ProjectHelper.processURLProjectDetailsTab(navigation, DV_TAB_PROJECT_OKRS, params.projectId)
             case URL_PROJECT_DETAILS_WIKI:

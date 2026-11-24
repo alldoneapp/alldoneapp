@@ -42,6 +42,15 @@ const FINAL_REPLY_INSTRUCTION =
     'evidence from tentative matches. Explain any unfinished work briefly and ask for a specific detail only if ' +
     'needed. Do not claim that an unexecuted action succeeded.'
 
+// A run with a hard wall clock (WhatsApp: whatsAppRunGuard.js) stops researching shortly before it,
+// so the user gets an answer built from the evidence so far instead of only a timeout notice
+// (2026-11-24: a WhatsApp "gib mir ein Briefing" request made 19 lookups in four minutes, was aborted
+// twice and never answered).
+const TIME_BUDGET_REPLY_INSTRUCTION =
+    'Research has stopped because the time for this reply is nearly used up. ' +
+    FINAL_REPLY_INSTRUCTION.slice(FINAL_REPLY_INSTRUCTION.indexOf('Do not call more research')) +
+    ' Keep the answer short and say in one sentence what you could not check yet, so the user can ask you to continue.'
+
 // Tools that only look things up. Once research has stopped the final reply is offered every other
 // tool the run has, so the requested change can still be made, but none of these.
 const LOOKUP_TOOL_PREFIX = /^(get|read|search|list|find|fetch)_|^browser_/
@@ -316,7 +325,9 @@ function isWorkflowProgress(toolName, result) {
 
 // All channel-specific loops pass their tool history through interactWithChatStream.
 // Deriving state from that history also keeps concurrent runs isolated without runtime globals.
-function prepareResearchRequest(conversation) {
+// options.timeBudgetSpent: the caller's wall clock is nearly spent, so this request must be the final
+// reply whatever the tool history says.
+function prepareResearchRequest(conversation, options = {}) {
     if (!Array.isArray(conversation)) return { messages: conversation, stopReason: null, fallback: () => '' }
     const guard = createResearchGuard()
     const callsById = new Map()
@@ -341,11 +352,15 @@ function prepareResearchRequest(conversation) {
         if (isWorkflowProgress(call.name, result)) stopReason = null
         stopReason ||= callStopReason || resultStopReason
     }
+    if (options.timeBudgetSpent) stopReason = 'time_budget'
     let messages = guard.compactIfNeeded(conversation)
     if (stopReason) {
         messages = [
             ...compactResearchConversation(messages, true),
-            { role: 'system', content: FINAL_REPLY_INSTRUCTION },
+            {
+                role: 'system',
+                content: stopReason === 'time_budget' ? TIME_BUDGET_REPLY_INSTRUCTION : FINAL_REPLY_INSTRUCTION,
+            },
         ]
         console.warn('Assistant: Finalizing bounded research', { reason: stopReason })
     }
@@ -356,6 +371,7 @@ module.exports = {
     prepareResearchRequest,
     compactResearchConversation,
     FINAL_REPLY_INSTRUCTION,
+    TIME_BUDGET_REPLY_INSTRUCTION,
     toolsForFinalReply,
     mcpToolsForFinalReply,
     isMcpLookupTool,

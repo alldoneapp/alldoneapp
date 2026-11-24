@@ -1,7 +1,7 @@
 const { getEnvFunctions } = require('../envFunctionsHelper')
 
 const REGION = 'europe-west1'
-const DEFAULT_REALTIME_MODEL = 'gpt-realtime-2.1'
+const DEFAULT_REALTIME_MODEL = 'gpt-realtime-2'
 const DEFAULT_TRANSCRIPTION_MODEL = 'gpt-realtime-whisper'
 const DEFAULT_REALTIME_VOICE = 'marin'
 const DEFAULT_REASONING_EFFORT = 'medium'

@@ -21,7 +21,6 @@ import {
     DV_TAB_PROJECT_ASSISTANTS,
     DV_TAB_PROJECT_CONTACT_STATUSES,
     DV_TAB_PROJECT_HAPPINESS,
-    DV_TAB_PROJECT_MEETING_TIME,
     DV_TAB_PROJECT_OKRS,
     DV_TAB_PROJECT_WIKI,
 } from '../../utils/TabNavigationConstants'
@@ -37,7 +36,6 @@ import ContactStatusSettings from './ProjectProperties/ContactStatusSettings/Con
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH, CONTENT_MARGIN, CONTENT_MARGIN_TABLET } from '../styles/global'
 import ProjectHappinessView from './Happiness/ProjectHappinessView'
-import ProjectMeetingTimeView from './MeetingTime/ProjectMeetingTimeView'
 import ProjectOKRsView from './OKRs/ProjectOKRsView'
 import ProjectWikiSettings from './Wiki/ProjectWikiSettings'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
@@ -71,7 +69,6 @@ const ProjectDetailedView = ({ navigation }) => {
         DV_TAB_PROJECT_PROPERTIES,
         DV_TAB_PROJECT_STATISTICS,
         DV_TAB_PROJECT_HAPPINESS,
-        DV_TAB_PROJECT_MEETING_TIME,
         DV_TAB_PROJECT_OKRS,
         DV_TAB_PROJECT_WIKI,
         DV_TAB_PROJECT_BACKLINKS,
@@ -88,8 +85,6 @@ const ProjectDetailedView = ({ navigation }) => {
         navigationTabs.splice(indexST, 1)
         const indexHP = navigationTabs.indexOf(DV_TAB_PROJECT_HAPPINESS)
         navigationTabs.splice(indexHP, 1)
-        const indexMT = navigationTabs.indexOf(DV_TAB_PROJECT_MEETING_TIME)
-        navigationTabs.splice(indexMT, 1)
         const indexOKR = navigationTabs.indexOf(DV_TAB_PROJECT_OKRS)
         navigationTabs.splice(indexOKR, 1)
         const indexWiki = navigationTabs.indexOf(DV_TAB_PROJECT_WIKI)
@@ -163,8 +158,6 @@ const ProjectDetailedView = ({ navigation }) => {
                                         )
                                     case DV_TAB_PROJECT_HAPPINESS:
                                         return <ProjectHappinessView project={project} userId={loggedUser.uid} />
-                                    case DV_TAB_PROJECT_MEETING_TIME:
-                                        return <ProjectMeetingTimeView project={project} userId={loggedUser.uid} />
                                     case DV_TAB_PROJECT_OKRS:
                                         return <ProjectOKRsView project={project} userId={loggedUser.uid} />
                                     case DV_TAB_PROJECT_WIKI:

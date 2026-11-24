@@ -139,27 +139,4 @@ describe('Required Firestore indexes', () => {
             indexes: [],
         })
     })
-
-    it('AT-3137: meeting time statistics need no composite index for the period query (meetingStatsData.js)', () => {
-        // The period query is a range on calendarData.startMs alone (automatic single-field index),
-        // so nothing has to be created by hand; it must not be exempted from indexing either.
-        expect(
-            indexConfig.indexes.some(index => index.fields.some(field => field.fieldPath === 'calendarData.startMs'))
-        ).toBe(false)
-        expect(
-            indexConfig.fieldOverrides.some(
-                override => override.collectionGroup === 'tasks' && /^calendarData/.test(override.fieldPath)
-            )
-        ).toBe(false)
-        // the legacy fallback reuses an index production already has
-        const asc = fieldPath => ({ fieldPath, order: 'ASCENDING' })
-        expect(
-            hasExactIndex('tasks', [
-                { fieldPath: 'isPublicFor', arrayConfig: 'CONTAINS' },
-                asc('inDone'),
-                asc('userId'),
-                asc('dueDate'),
-            ])
-        ).toBe(true)
-    })
 })
