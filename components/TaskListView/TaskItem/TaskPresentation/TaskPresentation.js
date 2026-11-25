@@ -51,6 +51,7 @@ import { publishProjectTaskCompletion } from '../../OpenTasksView/projectTaskCom
 import useSwipeCloseGuard from '../../../../hooks/useSwipeCloseGuard'
 import { useTaskHierarchy, useTaskHierarchyBackground } from '../../TaskHierarchy'
 import ProjectMoveIndicator from '../../../UIComponents/ProjectMoveIndicator'
+import { isIncomingTaskProjectMovePending } from '../../../../utils/backends/Tasks/localTaskProjectMoves'
 
 function TaskPresentation(
     {
@@ -405,7 +406,11 @@ function TaskPresentation(
                 and all); collapsing anything inner would leave its wrapper holding the space open
                 and the list would not close the gap. `completionRowStyle` is undefined except
                 during those ~260ms, so an ordinary row is never pinned to a measured height. */}
+            {/* AT-3156 — a task that is still arriving from another project is shown at once, but
+                its document may not exist here yet, so the row takes no taps or swipes until the
+                server has finished the move (the move spinner says so). */}
             <Animated.View
+                pointerEvents={isIncomingTaskProjectMovePending(task, projectId) ? 'none' : undefined}
                 style={[isLocked && !inParentGoal && localStyles.blurry, completionRowStyle]}
                 onLayout={onCompletionRowLayout}
                 testID="task-completion-row"

@@ -7,7 +7,7 @@ jest.mock('./firestore', () => ({
     runHttpsCallableFunction: (...args) => mockRunHttpsCallableFunction(...args),
 }))
 
-import { queueObjectProjectMove, waitForProjectMoveCompletion } from './projectMoves'
+import { PROJECT_MOVE_CALLABLE_TIMEOUT_MS, queueObjectProjectMove, waitForProjectMoveCompletion } from './projectMoves'
 
 describe('client project move contract', () => {
     beforeEach(() => {
@@ -19,11 +19,38 @@ describe('client project move contract', () => {
 
         await queueObjectProjectMove('project-a', 'project-b', 'skill', 'skill-1')
 
-        expect(mockRunHttpsCallableFunction).toHaveBeenCalledWith('moveObjectToProjectSecondGen', {
-            sourceProjectId: 'project-a',
-            targetProjectId: 'project-b',
-            objectType: 'skill',
-            objectId: 'skill-1',
+        expect(mockRunHttpsCallableFunction).toHaveBeenCalledWith(
+            'moveObjectToProjectSecondGen',
+            {
+                sourceProjectId: 'project-a',
+                targetProjectId: 'project-b',
+                objectType: 'skill',
+                objectId: 'skill-1',
+            },
+            // Longer than a cold start, so the SDK does not report a move the server then completes.
+            { timeout: PROJECT_MOVE_CALLABLE_TIMEOUT_MS }
+        )
+        expect(PROJECT_MOVE_CALLABLE_TIMEOUT_MS).toBeGreaterThan(120000)
+    })
+
+    it('stops waiting when the caller cancels', async () => {
+        mockGet.mockImplementation(async () => ({ exists: false, data: () => undefined }))
+
+        await expect(
+            waitForProjectMoveCompletion('project-a', 'project-b', 'task', 'task-1', 100, { isCancelled: () => true })
+        ).rejects.toMatchObject({ code: 'cancelled' })
+    })
+
+    it('marks a failed move so callers can tell it from a timeout', async () => {
+        mockGet.mockImplementation(async path => ({
+            exists: true,
+            data: () => (path.includes('project-a') ? { projectMove: { status: 'failed' } } : {}),
+        }))
+
+        await expect(
+            waitForProjectMoveCompletion('project-a', 'project-b', 'task', 'task-1', 100)
+        ).rejects.toMatchObject({
+            code: 'move-failed',
         })
     })
 

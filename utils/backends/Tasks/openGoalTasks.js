@@ -14,6 +14,7 @@ import {
     OPTIMISTIC_TASK_SETTLED,
     subscribeToOptimisticTaskCreates,
 } from './optimisticTaskCreate'
+import { isTaskMovingOutOfProject, subscribeLocalTaskProjectMoves } from './localTaskProjectMoves'
 
 export const DATE_TASK_INDEX = 0
 export const AMOUNT_TASKS_INDEX = 1
@@ -69,7 +70,9 @@ export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
                 confirmOptimisticTaskForSubscriber(projectId, taskId, handleOptimisticTaskChange)
             }
         })
-        const docs = pendingDocsById.size > 0 ? [...latestDocs, ...pendingDocsById.values()] : latestDocs
+        const allDocs = pendingDocsById.size > 0 ? [...latestDocs, ...pendingDocsById.values()] : latestDocs
+        // AT-3156: a task on its way to another project leaves this list as soon as the move starts.
+        const docs = allDocs.filter(doc => !isTaskMovingOutOfProject(projectId, doc.id, doc.data()))
         const { openTasksArray } = processTasks(projectId, docs)
         store.dispatch(setGoalOpenTasksData(openTasksArray))
     }
@@ -106,6 +109,9 @@ export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
     }
 
     const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, handleOptimisticTaskChange)
+    const unsubLocalMoves = subscribeLocalTaskProjectMoves(({ move }) => {
+        if (move.sourceProjectId === projectId && hasRealSnapshot) emit()
+    })
 
     const unsub = query.onSnapshot(snapshot => {
         latestDocs = snapshot.docs
@@ -115,6 +121,7 @@ export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
 
     globalWatcherUnsub[watcherKey] = () => {
         unsubOptimistic()
+        unsubLocalMoves()
         unsub()
     }
 }

@@ -20,11 +20,21 @@ describe('AT-2533 background task project move', () => {
     })
 
     it('shows a visible failure after the picker has closed when the enqueue is rejected', () => {
-        expect(taskBranch).toMatch(/\.catch\(\(\) => \{[\s\S]*showConfirmPopup\(/)
+        expect(taskBranch).toMatch(/const rejectMove = \(\) => \{[\s\S]*?optimisticMove\.rollback\(\)/)
         expect(taskBranch).toMatch(/onTaskProjectMoveEnqueueFailed/)
         expect(taskBranch).toMatch(/trigger: CONFIRM_POPUP_TRIGGER_INFO/)
         expect(taskBranch).toMatch(/headerText: 'Task could not be moved'/)
         expect(taskBranch).toMatch(/headerQuestion: 'No changes were made\. Please try again\.'/)
+    })
+
+    it('shows the move at once and asks the server before reporting an ambiguous failure', () => {
+        // 2026-11-25: a cold start outlasted the SDK's deadline and the user was told "No changes
+        // were made" for a move the server completed a minute later.
+        expect(taskBranch).toMatch(/startOptimisticTaskProjectMove\(/)
+        expect(taskBranch).toMatch(
+            /isAmbiguousCallableFailure\(error\)[\s\S]*didServerAcceptTaskMove\([\s\S]*accepted === false[\s\S]*rejectMove\(\)/
+        )
+        expect(taskBranch).toMatch(/followServerMove\(\)/)
     })
 
     it('reports the accepted request id to the open detail-view handoff', () => {

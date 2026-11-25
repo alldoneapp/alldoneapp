@@ -321,3 +321,37 @@ goes through the handoff, so the old owner gets a new focus task instead of an e
 parallel `clearUserTaskInFocusIfMatch` for that case: the clear wins the race and the handoff then
 skips the replacement. Subtasks (skipped by the handoff) still use the plain clear. Pinned by the
 AT-3124 blocks in `workflowFocusHandoff.test.js` and `onUpdateTaskFunctions.test.js`.
+
+## A task project move shows its outcome first; the worker catches up (AT-3156)
+
+Manual moves run through `moveObjectToProjectSecondGen` (marks the source, enqueues) and the Cloud
+Tasks worker `runManualObjectProjectMove` (creates the destination, deletes the source). On
+2026-11-25 a cold start took 79s for the callable's CORS preflight and 48s for the worker. The
+Functions SDK's 70s default deadline fired first (`functions/deadline-exceeded`; a 504 from a proxy
+maps to the same code) and the picker said "No changes were made", while the SDK, which does not
+cancel the request, let the server enqueue and complete the move a minute later.
+
+What the client does now (`utils/backends/Tasks/optimisticTaskProjectMove.js`,
+`localTaskProjectMoves.js`):
+
+- The callable gets a 5 minute timeout (`PROJECT_MOVE_CALLABLE_TIMEOUT_MS`).
+- Picking a project registers a local move: the open-board, My Day and goal watchers drop the row
+  (and its subtasks) from the source project at once, and the destination copy is published on the
+  AT-2342 optimistic-create bus, shaped like `prepareManualTaskMove`. Keep
+  `buildOptimisticMovedTaskDoc` in step with that worker function.
+- The same check (`isTaskMovingOutOfProject`) hides a source document carrying the server's
+  `projectMove.status === 'moving'` marker, for at most `SERVER_MOVE_MARKER_HIDE_WINDOW_MS`, so a
+  second tab hides it too and a worker that died without a terminal state cannot hide a task
+  forever. The destination copy carries the same `projectMove` but with the other
+  `sourceProjectId`, so it is never hidden.
+- The open-board watcher records rows it hid in `hiddenMovingIds` and drops Firestore's later
+  `removed` for them: `deleteTask` is not idempotent, the same reason as the completion prefetch.
+- An ambiguous callable failure (`deadline-exceeded`, `internal`, `unavailable`, `unknown`) is not
+  reported as a failure until a server read of the source document says the move was not accepted.
+  The completion wait starts only after acceptance, because a source left `failed` by an earlier
+  attempt would otherwise end the new one at once.
+- The arriving row shows the move spinner and takes no taps (`isIncomingTaskProjectMovePending`):
+  its document may not exist in the destination yet, and the task DV would treat that as no access.
+
+Not covered: workstream boards (`watchStreamAndUserOpenTasksInBatches`) and other lists that do not
+subscribe to the optimistic bus still update when the server's documents change.

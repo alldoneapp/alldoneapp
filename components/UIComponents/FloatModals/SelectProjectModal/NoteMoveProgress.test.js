@@ -40,6 +40,12 @@ jest.mock('../../../../utils/backends/projectMoves', () => ({
     waitForProjectMoveCompletion: (...args) => mockWaitForMove(...args),
 }))
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: value => value }))
+// Only the task branch uses it; notes never start an optimistic task move.
+jest.mock('../../../../utils/backends/Tasks/optimisticTaskProjectMove', () => ({
+    didServerAcceptTaskMove: jest.fn(),
+    isAmbiguousCallableFailure: jest.fn(() => false),
+    startOptimisticTaskProjectMove: jest.fn(() => ({ complete: jest.fn(), rollback: jest.fn() })),
+}))
 
 import useMoveObjectToProject from './useMoveObjectToProject'
 

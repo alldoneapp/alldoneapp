@@ -11,6 +11,7 @@ import {
     OPTIMISTIC_TASK_SETTLED,
     subscribeToOptimisticTaskCreates,
 } from './optimisticTaskCreate'
+import { isTaskMovingOutOfProject, subscribeLocalTaskProjectMoves } from './localTaskProjectMoves'
 
 export const TO_ATTEND_TASKS_MY_DAY_TYPE = 'TO_ATTEND_TASKS_MY_DAY_TYPE'
 export const OBSERVED_TASKS_MY_DAY_TYPE = 'OBSERVED_TASKS_MY_DAY_TYPE'
@@ -54,7 +55,9 @@ export async function watchTasksToAttend(projectId, userId, watcherKey) {
                 confirmOptimisticTaskForSubscriber(projectId, taskId, handleOptimisticTaskChange)
             }
         })
-        const docs = pendingDocsById.size > 0 ? [...latestDocs, ...pendingDocsById.values()] : latestDocs
+        const allDocs = pendingDocsById.size > 0 ? [...latestDocs, ...pendingDocsById.values()] : latestDocs
+        // AT-3156: a task on its way to another project leaves this list as soon as the move starts.
+        const docs = allDocs.filter(doc => !isTaskMovingOutOfProject(projectId, doc.id, doc.data()))
 
         const tasks = []
         const subtasksMap = {}
@@ -107,6 +110,9 @@ export async function watchTasksToAttend(projectId, userId, watcherKey) {
     }
 
     const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, handleOptimisticTaskChange)
+    const unsubLocalMoves = subscribeLocalTaskProjectMoves(({ move }) => {
+        if (move.sourceProjectId === projectId && hasRealSnapshot) emit()
+    })
 
     const unsub = getDb()
         .collection(`items/${projectId}/tasks`)
@@ -134,6 +140,7 @@ export async function watchTasksToAttend(projectId, userId, watcherKey) {
 
     globalWatcherUnsub[watcherKey] = () => {
         unsubOptimistic()
+        unsubLocalMoves()
         unsub()
     }
 }

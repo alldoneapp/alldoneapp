@@ -48,6 +48,7 @@ import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshot
 import { registerOpenTasksServerSyncListener } from '../performance/openTasksServerSync'
 import { enqueueOpenTasksBackgroundHydration } from './openTasksBackgroundQueue'
 import { getRecentlyCompletedTasks, subscribeToRecentCompletions } from './Tasks/recentCompletionsPrefetch'
+import { isTaskMovingOutOfProject, subscribeLocalTaskProjectMoves } from './Tasks/localTaskProjectMoves'
 import { scheduleTaskColdStartCachePersist } from '../InitialLoad/taskColdStartCache'
 import { getEmailTaskActivityTime, isEmailOriginTask } from '../Gmail/emailTaskOrigin'
 
@@ -806,12 +807,41 @@ const watchUserOpenTasks = (
         }
         return changes
     }
+    // AT-3156: rows this watcher took off screen because the task is moving to another project.
+    // Firestore still holds them in its view, so its own `removed` arrives once the worker deletes
+    // the source document; `deleteTask` is not idempotent, so that echo must be dropped.
+    const hiddenMovingIds = new Set()
+    const knownRowsById = () => ({
+        ...(areObservedTasks ? tasksMap.observedTasksById : tasksMap.userTasksById),
+        ...(areObservedTasks ? subtasksMap.observedSubtasksById : subtasksMap.userSubtasksById),
+    })
+    function withoutTasksMovingOut(changes) {
+        let known = null
+        const getKnown = () => known || (known = knownRowsById())
+        return changes.flatMap(change => {
+            const id = change.doc.id
+            if (change.type === 'removed') {
+                if (!hiddenMovingIds.has(id) || getKnown()[id]) return [change]
+                hiddenMovingIds.delete(id)
+                return []
+            }
+            if (!isTaskMovingOutOfProject(projectId, id, change.doc.data())) {
+                hiddenMovingIds.delete(id)
+                return [change]
+            }
+            hiddenMovingIds.add(id)
+            const retained = getKnown()[id]
+            return retained ? [{ type: 'removed', doc: cachedItemAsSnapshotDocument(retained) }] : []
+        })
+    }
     function handleOpenTasksSnapshot(querySnapshot) {
-        const liveChanges = querySnapshot
-            .docChanges()
-            .filter(change =>
-                taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
-            )
+        const liveChanges = withoutTasksMovingOut(
+            querySnapshot
+                .docChanges()
+                .filter(change =>
+                    taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
+                )
+        )
 
         const buffered = gate.shouldBuffer(querySnapshot)
         snapshotPerformance.observe(querySnapshot, buffered)
@@ -844,13 +874,18 @@ const watchUserOpenTasks = (
                               // A limited foreground window can refresh documents it contains, but only the
                               // subsequent complete listener may remove retained documents absent from it.
                               authoritative: authoritativeInitialSnapshot,
-                              includeDocument: doc =>
-                                  taskBelongsInOpenBoard(
+                              includeDocument: doc => {
+                                  if (isTaskMovingOutOfProject(projectId, doc.id, doc.data())) {
+                                      hiddenMovingIds.add(doc.id)
+                                      return false
+                                  }
+                                  return taskBelongsInOpenBoard(
                                       doc.data(),
                                       assistantOwner,
                                       areObservedTasks,
                                       assistantProfileMode
-                                  ),
+                                  )
+                              },
                           }
                       ),
                       // ...except for rows the completion prefetch has already proven done: those
@@ -1048,6 +1083,45 @@ const watchUserOpenTasks = (
     }
 
     const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, handleOptimisticTaskChange)
+
+    // AT-3156: a task moved out of this project leaves the list the moment the move starts, and
+    // comes back from the local cache if the move is rolled back. See optimisticTaskProjectMove.js.
+    let unsubscribed = false
+    const restoreRowsAfterMove = async ids => {
+        const restored = []
+        for (const id of ids) {
+            if (!hiddenMovingIds.has(id) || knownRowsById()[id]) continue
+            let taskData = null
+            try {
+                const snapshot = await getDb().doc(`items/${projectId}/tasks/${id}`).get({ source: 'cache' })
+                taskData = snapshot?.exists ? snapshot.data() : null
+            } catch (error) {
+                taskData = null
+            }
+            if (unsubscribed || !taskData || isTaskMovingOutOfProject(projectId, id, taskData)) continue
+            hiddenMovingIds.delete(id)
+            if (!isTaskInThisView(taskData)) continue
+            restored.push({ type: 'added', doc: { id, data: () => taskData } })
+        }
+        if (restored.length > 0) deliverOpenTasksChanges(restored, { optimistic: true })
+    }
+    const unsubLocalMoves = subscribeLocalTaskProjectMoves(({ type, move }) => {
+        if (move.sourceProjectId !== projectId || !initialSnapshotDelivered) return
+        if (type === 'end') {
+            restoreRowsAfterMove(move.ids)
+            return
+        }
+        const known = knownRowsById()
+        // Subtasks first, so a parent never leaves its subtasks behind in the map.
+        const removals = [...move.ids]
+            .reverse()
+            .filter(id => known[id])
+            .map(id => {
+                hiddenMovingIds.add(id)
+                return { type: 'removed', doc: cachedItemAsSnapshotDocument(known[id]) }
+            })
+        if (removals.length > 0) deliverOpenTasksChanges(removals, { optimistic: true })
+    })
     // A prefetch that lands before the first delivery is applied by that delivery itself.
     const unsubCompletions = areObservedTasks
         ? () => {}
@@ -1062,15 +1136,16 @@ const watchUserOpenTasks = (
         unsub = gate.subscribe(query)
     } catch (error) {
         unsubOptimistic()
+        unsubLocalMoves()
         unsubCompletions()
         serverSync.dispose()
         throw error
     }
-    let unsubscribed = false
     const unsubAll = () => {
         if (unsubscribed) return
         unsubscribed = true
         unsubOptimistic()
+        unsubLocalMoves()
         unsubCompletions()
         serverSync.dispose()
         snapshotPerformance.cancel()

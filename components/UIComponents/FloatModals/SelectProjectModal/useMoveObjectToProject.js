@@ -28,6 +28,11 @@ import { startPerformanceTrace } from '../../../../utils/performance/performance
 import { CONFIRM_POPUP_TRIGGER_INFO } from '../../ConfirmPopup'
 import { queueObjectProjectMove, waitForProjectMoveCompletion } from '../../../../utils/backends/projectMoves'
 import { translate } from '../../../../i18n/TranslationService'
+import {
+    didServerAcceptTaskMove,
+    isAmbiguousCallableFailure,
+    startOptimisticTaskProjectMove,
+} from '../../../../utils/backends/Tasks/optimisticTaskProjectMove'
 
 /**
  * The cross-entity "move this object to another project" engine, extracted
@@ -91,26 +96,80 @@ export default function useMoveObjectToProject() {
         if (type === 'task') {
             // The callable only enqueues the durable Cloud Tasks worker. Do not
             // await even that short round trip: selection should close the
-            // picker immediately, while the server owns the complete move. A
-            // rejected enqueue still needs to reach the user: at that point no
-            // task write has happened and silently swallowing the rejection
-            // makes a broken worker look like a successful background action.
+            // picker immediately, while the server owns the complete move.
+            //
+            // Since AT-3156 the lists also show the outcome right away: the row
+            // leaves this project and appears in the destination with the move
+            // spinner (optimisticTaskProjectMove.js). A definite rejection puts it
+            // back and tells the user; an ambiguous one (the SDK's deadline, a
+            // dropped connection) first asks the source document whether the server
+            // took the move, because after a cold start it usually has.
+            const optimisticMove = startOptimisticTaskProjectMove({
+                sourceProjectId: project.id,
+                targetProject: newProject,
+                task: data,
+                actorId: loggedUser.uid,
+            })
+            const showTaskMoveFailed = () =>
+                dispatch(
+                    showConfirmPopup({
+                        trigger: CONFIRM_POPUP_TRIGGER_INFO,
+                        object: {
+                            headerText: 'Task could not be moved',
+                            headerQuestion: 'No changes were made. Please try again.',
+                        },
+                    })
+                )
+            const followServerMove = () =>
+                waitForProjectMoveCompletion(project.id, newProject.id, 'task', objectId)
+                    .then(() => optimisticMove.complete())
+                    .catch(error => {
+                        optimisticMove.rollback()
+                        if (error?.code !== 'move-failed') return
+                        // The task DV shows its own message for a failed background move.
+                        if (taskMoveCallbacks.onTaskProjectMoveEnqueued) return
+                        dispatch(
+                            showConfirmPopup({
+                                trigger: CONFIRM_POPUP_TRIGGER_INFO,
+                                object: {
+                                    headerText: 'Task move failed',
+                                    headerQuestion: 'The task is still in its current project. Please try again.',
+                                },
+                            })
+                        )
+                    })
+            const rejectMove = () => {
+                optimisticMove.rollback()
+                taskMoveCallbacks.onTaskProjectMoveEnqueueFailed?.()
+                showTaskMoveFailed()
+            }
             movePromise
                 .then(result => {
                     performanceTrace.end('move_queued', { outcome: 'success' })
                     taskMoveCallbacks.onTaskProjectMoveEnqueued?.(result)
+                    if (result?.queued === false) {
+                        optimisticMove.rollback()
+                        return
+                    }
+                    followServerMove()
                 })
-                .catch(() => {
-                    taskMoveCallbacks.onTaskProjectMoveEnqueueFailed?.()
-                    dispatch(
-                        showConfirmPopup({
-                            trigger: CONFIRM_POPUP_TRIGGER_INFO,
-                            object: {
-                                headerText: 'Task could not be moved',
-                                headerQuestion: 'No changes were made. Please try again.',
-                            },
-                        })
-                    )
+                .catch(async error => {
+                    if (!isAmbiguousCallableFailure(error)) {
+                        rejectMove()
+                        return
+                    }
+                    const accepted = await didServerAcceptTaskMove(project.id, newProject.id, objectId)
+                    if (accepted === false) {
+                        rejectMove()
+                        return
+                    }
+                    // Accepted, or the check itself could not reach the server: keep the
+                    // optimistic state and let the destination document decide.
+                    console.warn('[moveObjectToProject] task move callable failed ambiguously; following the server', {
+                        code: error?.code,
+                        accepted,
+                    })
+                    followServerMove()
                 })
             dispatch(hideProjectPicker())
             return
