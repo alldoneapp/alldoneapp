@@ -54,3 +54,28 @@ once per environment (as `grant-heartbeat-task-worker.sh` does).
 ## IAM for firebase-admin GCP calls — use the Firebase Admin SDK SA, not the compute SA
 
 This is a repo-wide gotcha, learned the hard way. Gen2 Functions are configured through `setGlobalOptions` to run as the environment's `firebase-adminsdk-*@<project>.iam.gserviceaccount.com` service account, and `functions/firebaseConfig*.js` uses application-default credentials in that managed runtime. Therefore **every firebase-admin call that hits a Google Cloud API authenticates as the firebase-adminsdk service account — NOT the `<projectNumber>-compute@developer.gserviceaccount.com` default runtime SA**. So when a function needs a new GCP IAM permission (Cloud Tasks, Pub/Sub, etc.), grant the role to the **firebase-adminsdk SA**. Granting the compute SA looks right but does nothing. The old CI service-account JSON files may still be prepared for legacy tooling, but Functions no longer depend on baking that long-lived key into Cloud Run revisions. IAM changes also take up to ~7 min to propagate — wait before re-testing.
+
+## Cold starts: what they cost and what is ours (AT-3156, measured 2026-11-25)
+
+Every function's instance loads the whole of `index.js`, so a module required at module scope is
+paid on the cold start of all ~150 functions, not only the one that uses it.
+
+- A normal cold start is 5-10s from "Starting new instance" to the startup probe: 3-5s before
+  `index.js` runs at all (platform), then 2-4s loading it. The move functions already run with 1
+  vCPU and startup CPU boost (`gcloud run services describe … --format` shows `cpu: 1`); gen2's
+  default is 1 vCPU up to 2GiB, so `cpu: 1` changes nothing.
+- At the top of the hour cold starts across the project get 10-20x slower, in both phases at once:
+  2026-11-23 16:00 (`runManualObjectProjectMove` 142s, `sendEmailChatNotification` 131s) and
+  2026-11-25 08:00 (`moveObjectToProjectSecondGen` 79s, `autopostponeOverdueTasks` 54s). No deploy
+  ran then; it is load on the platform when scheduled jobs start, and a user-facing callable that
+  cold-starts in that minute can outlast the client SDK's 70s deadline. Clients must not read such
+  a timeout as "nothing happened" (see `notes-tasks-feeds.md` on task moves).
+- What we control is the load time. `transcribeMeeting.js` (Deepgram client, Gold helper) and the
+  askToBot preload of `assistantNormalTalk_optimized` (tiktoken) were about half of it; both now
+  load on first use, and `functions/coldStartModuleLoad.test.js` keeps them there. Locally that took
+  `require('./index.js')` from ~280ms to ~130ms; most of what is left is `firebase-functions`
+  itself. Put heavy requires inside the handler (as most functions here already do), not at the top
+  of `index.js` or of a module `index.js` requires to register a trigger.
+- To measure: `gcloud logging read 'resource.labels.service_name="<name>" AND (textPayload:"Starting
+new instance" OR textPayload:"STARTUP TCP probe succeeded")'` and pair the two by
+  `labels.instanceId`.

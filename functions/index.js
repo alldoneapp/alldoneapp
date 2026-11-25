@@ -3570,8 +3570,11 @@ exports.distributeManualSkillPointsSecondGen = onCall(
 
 //AI ASSISTANTS
 
-// Pre-load module at top level to avoid repeated require overhead
-const { askToOpenAIBot } = require('./Assistant/assistantNormalTalk_optimized')
+// AT-3156: loaded on first call, not at module scope. index.js is loaded by every function's
+// instance, so the top-level preload (with its tiktoken encoder) made each of them pay this
+// module's load time on every cold start; no function keeps a warm instance, so the preload never
+// saved askToBot anything either. Node caches the module after the first call.
+const loadAskToOpenAIBot = () => require('./Assistant/assistantNormalTalk_optimized').askToOpenAIBot
 
 exports.askToBotSecondGen = onCall(
     {
@@ -3599,7 +3602,9 @@ exports.askToBotSecondGen = onCall(
         })
 
         if (auth) {
-            console.log(`📊 [TIMING] Module require (pre-loaded): 0ms`)
+            const moduleRequireStart = Date.now()
+            const askToOpenAIBot = loadAskToOpenAIBot()
+            console.log(`📊 [TIMING] Module require: ${Date.now() - moduleRequireStart}ms`)
             const {
                 userId: requestedUserId,
                 messageId,

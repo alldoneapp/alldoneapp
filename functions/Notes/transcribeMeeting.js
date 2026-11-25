@@ -1,9 +1,15 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https')
-const { getEnvFunctions } = require('../envFunctionsHelper')
-const { transcribeAudioBase64 } = require('./deepgramTranscribe')
 
-const { deductGold } = require('../Gold/goldHelper')
-const { withMeetingTranscriptionCache } = require('./meetingTranscriptionCache')
+// AT-3156: index.js loads this module in every function instance to register the callable, so
+// the Deepgram client and the Gold helper are required on first use instead. At module scope they
+// were the largest single cost of loading index.js, paid on the cold start of every function,
+// almost none of which transcribe anything.
+const lazy = () => ({
+    getEnvFunctions: require('../envFunctionsHelper').getEnvFunctions,
+    transcribeAudioBase64: require('./deepgramTranscribe').transcribeAudioBase64,
+    deductGold: require('../Gold/goldHelper').deductGold,
+    withMeetingTranscriptionCache: require('./meetingTranscriptionCache').withMeetingTranscriptionCache,
+})
 
 const TRANSCRIPTION_COST = 0.2 // Gold per chunk
 
@@ -15,6 +21,7 @@ exports.transcribeMeetingAudio = onCall(
         cors: true,
     },
     async request => {
+        const { getEnvFunctions, transcribeAudioBase64, deductGold, withMeetingTranscriptionCache } = lazy()
         const { data, auth } = request
 
         if (!auth) {
