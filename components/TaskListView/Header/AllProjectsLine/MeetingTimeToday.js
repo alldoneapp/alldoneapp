@@ -16,6 +16,7 @@ import {
     formatClockTime,
     formatDurationCompact,
     formatWorkingHoursRange,
+    isAfterWorkView,
 } from '../../../../utils/meetingTimeToday'
 import { CALENDAR_SYNC_FAILED, CALENDAR_SYNC_SYNCING } from '../../../../utils/calendarSyncStatus'
 
@@ -43,6 +44,13 @@ import { CALENDAR_SYNC_FAILED, CALENDAR_SYNC_SYNCING } from '../../../../utils/c
  * - full: figure + "Time to work" / "7h 30m meetings"
  * - compact: figure + "7h 30m" / "Meetings" (the "Time to work" label is left out)
  * - minimal: the figure only; the meeting time stays in the tooltip and the accessibility label
+ *
+ * AT-3157: once today's working hours are over (`isAfterWorkView`, the clock, not a 0 figure) the
+ * figure reads "Feierabend" and the "Time to work" label is left out, so the full form is
+ * "Feierabend  5h 15m meetings". 0h because meetings fill the rest of the day stays "0h". The label
+ * is wider than a figure ("Jornada terminada"), so on mobile sizes it is set smaller and may wrap
+ * onto two lines (AFTER_WORK_NARROW_MAX_WIDTH), and getMeetingTimeDensity keeps the compact form at
+ * most there.
  */
 
 export const MEETING_TIME_DENSITY_FULL = 'full'
@@ -60,14 +68,26 @@ export const MEETING_TIME_FULL_MIN_LINE_WIDTH = 440
 // Room taken by the sync warning icon (12px + margin, with some slack).
 export const MEETING_TIME_WARNING_WIDTH = 20
 
+// AT-3157: the after-work label in the compact and minimal forms (14px, at most two lines) is at
+// most this wide; measured with Roboto Medium: "Feierabend" 70px, "Done for / today" 54px,
+// "Jornada / terminada" 64px. An 18px figure like "7h 30m" is ~61px, so the label needs this much
+// more room than the figure the thresholds were measured with.
+export const AFTER_WORK_NARROW_MAX_WIDTH = 76
+export const MEETING_TIME_AFTER_WORK_EXTRA_WIDTH = 16
+
 // `withWarning`: the sync warning icon is shown too, so each form needs that much more room
-// (otherwise "All projects" is the one that gets truncated).
-export const getMeetingTimeDensity = (mobile, lineWidth, withWarning = false) => {
+// (otherwise "All projects" is the one that gets truncated). `afterWork` (AT-3157): the after-work
+// label replaces the figure; it needs a little more room and on mobile sizes it never gets the
+// full form, whose 20px one-line label would be up to ~100px wider than a figure in Spanish.
+export const getMeetingTimeDensity = (mobile, lineWidth, withWarning = false, afterWork = false) => {
     if (!mobile) return MEETING_TIME_DENSITY_FULL
     // Not measured yet: start small, so the first frame never overlaps the title.
     if (!lineWidth) return MEETING_TIME_DENSITY_MINIMAL
-    const room = lineWidth - (withWarning ? MEETING_TIME_WARNING_WIDTH : 0)
-    if (room >= MEETING_TIME_FULL_MIN_LINE_WIDTH) return MEETING_TIME_DENSITY_FULL
+    const room =
+        lineWidth -
+        (withWarning ? MEETING_TIME_WARNING_WIDTH : 0) -
+        (afterWork ? MEETING_TIME_AFTER_WORK_EXTRA_WIDTH : 0)
+    if (!afterWork && room >= MEETING_TIME_FULL_MIN_LINE_WIDTH) return MEETING_TIME_DENSITY_FULL
     if (room >= MEETING_TIME_COMPACT_MIN_LINE_WIDTH) return MEETING_TIME_DENSITY_COMPACT
     return MEETING_TIME_DENSITY_MINIMAL
 }
@@ -153,8 +173,10 @@ export default function MeetingTimeToday({ view, density = MEETING_TIME_DENSITY_
     const syncFailed = isReady && view.syncStatus === CALENDAR_SYNC_FAILED
     const full = density === MEETING_TIME_DENSITY_FULL
     const compact = density === MEETING_TIME_DENSITY_COMPACT
+    const afterWork = isAfterWorkView(view)
 
-    // The large figure: the free working time, "…" while the meetings load, absent when unknown.
+    // The large figure: the free working time, "…" while the meetings load, absent when unknown,
+    // "Feierabend" once the working hours are over (AT-3157).
     let primaryValue = null
     // The two small lines to the right of the figure (either may be left out).
     let firstLine = null
@@ -165,7 +187,11 @@ export default function MeetingTimeToday({ view, density = MEETING_TIME_DENSITY_
     if (isReady || loading) {
         const meetings = isReady ? formatDurationCompact(view.meetingMinutes) : '…'
         primaryValue = isReady ? formatDurationCompact(view.freeMinutes) : '…'
-        if (full) {
+        if (afterWork) primaryValue = translate('meetingTime after work')
+        if (full && afterWork) {
+            // "Feierabend  5h 15m meetings": no "Time to work" label after work (AT-3157).
+            secondLine = translate('meetingTime meetings duration', { duration: meetings })
+        } else if (full) {
             firstLine = translate('meetingTime time to work')
             secondLine = translate('meetingTime meetings duration', { duration: meetings })
         } else if (compact) {
@@ -191,6 +217,8 @@ export default function MeetingTimeToday({ view, density = MEETING_TIME_DENSITY_
     }
 
     const pending = (syncing || loading) && localStyles.pending
+    // The after-work label is certain (it follows the clock), so it is never dimmed.
+    const primaryPending = !afterWork && pending
     // Without a calendar the display is the way to connect one; otherwise it leads to the meeting
     // statistics (which link to the working hours it is computed from).
     const onPress = status === MEETING_TIME_NO_CALENDAR ? openCalendarConnection : openMeetingStatistics
@@ -207,8 +235,13 @@ export default function MeetingTimeToday({ view, density = MEETING_TIME_DENSITY_
             <View ref={setTooltip} style={localStyles.container}>
                 {primaryValue && (
                     <Text
-                        style={[localStyles.primaryValue, !full && localStyles.primaryValueNarrow, pending]}
-                        numberOfLines={1}
+                        style={[
+                            localStyles.primaryValue,
+                            !full && localStyles.primaryValueNarrow,
+                            !full && afterWork && localStyles.afterWorkNarrow,
+                            primaryPending,
+                        ]}
+                        numberOfLines={!full && afterWork ? 2 : 1}
                         testID="meeting-time-primary-value"
                     >
                         {primaryValue}
@@ -279,6 +312,12 @@ const localStyles = StyleSheet.create({
     primaryValueNarrow: {
         fontSize: 18,
         lineHeight: 22,
+    },
+    // AT-3157: the after-work label on mobile sizes, see AFTER_WORK_NARROW_MAX_WIDTH.
+    afterWorkNarrow: {
+        fontSize: 14,
+        lineHeight: 16,
+        maxWidth: AFTER_WORK_NARROW_MAX_WIDTH,
     },
     lines: {
         flexDirection: 'column',

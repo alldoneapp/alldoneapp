@@ -130,6 +130,21 @@ Rules live in `utils/meetingTimeToday.js` and are pinned by `utils/meetingTimeTo
   the sync warning icon needs 20px more. Compact and minimal use an 18px figure. Thresholds were
   measured in the browser with the German labels at 320/360/390/430/600px; check them again with
   the browser when the line gets another element.
+- **After the working hours: "Feierabend", not "0h" (AT-3157, decided with the user 2026-11-25).**
+  Once today's working window has ended (`workdayPhase === 'after'`, `isAfterWorkView`) the figure
+  reads "Feierabend" / "Done for today" / "Jornada terminada" (`meetingTime after work`). It follows
+  the clock (re-evaluated every minute by `useMinuteClock`), not the figure: 0 left because meetings
+  fill the rest of the day stays "0h"; before the end nothing changes. Decisions: (1) the "Time to
+  work" label is dropped after work, the full form is "Feierabend 5h 15m Meetings" (compact keeps
+  "7h 30m / Meetings", minimal the label only); (2) only where the line shows a figure, i.e. calendar
+  data loaded or loading (`deriveMeetingTimeView` gives the loading view the phase, so there is no
+  "…" first; the label is never dimmed). Without a connected calendar or with unavailable calendar
+  data the hints stay as they were. Width: the label is wider than a figure (Roboto Medium 18px:
+  "7h 30m" 61px, "Feierabend" 90px, "Jornada terminada" 153px), so on mobile sizes it is 14px, at
+  most two lines and `AFTER_WORK_NARROW_MAX_WIDTH` (76px) wide, `getMeetingTimeDensity(…, afterWork)`
+  never picks the full form on mobile and asks 16px more for the compact one. Measured from the font
+  metrics, not in a browser; check at 320/360/390px when it is touched again. Pinned by the AT-3157
+  cases in `MeetingTimeToday.test.js`, `AllProjectsMeetingTime.test.js` and `meetingTimeToday.test.js`.
 - The previous layouts (a separate row under the line on mobile, `wrap-reverse` secondary text
   before the figure) are gone; `utils/meetingTimeToday.js` was not touched by either layout
   revision (only by the solo work block change below).

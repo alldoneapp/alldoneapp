@@ -57,6 +57,13 @@
  * no longer add up to the window during the day; the tooltip says which is which. The hook
  * re-evaluates this every minute and on tab focus/visibility (`useMinuteClock`), not only when the
  * calendar syncs.
+ *
+ * ## After the working hours: "Feierabend", not "0h" (AT-3157)
+ *
+ * Once the working window has ended (`workdayPhase === 'after'`) the large figure is replaced by
+ * the label "Feierabend" / "Done for today" (`isAfterWorkView`). This follows the clock, not the
+ * figure: 0 minutes left because meetings fill the rest of the day stays "0h". Before the end
+ * nothing changes.
  */
 
 import moment from 'moment-timezone'
@@ -318,7 +325,27 @@ export const deriveMeetingTimeView = ({
 
     if (!calendarConnected) return { ...base, status: MEETING_TIME_NO_CALENDAR }
     if (tasksError) return { ...base, status: MEETING_TIME_CALENDAR_UNAVAILABLE }
-    if (!tasksLoaded) return { ...base, status: MEETING_TIME_CALENDAR_LOADING }
+    // The phase does not depend on the calendar, so "after work" shows while the meetings load too
+    // (AT-3157), instead of a "…" that turns into the after-work label a moment later.
+    if (!tasksLoaded) {
+        return {
+            ...base,
+            workdayPhase: getRemainingWindow(window, nowMs).phase,
+            status: MEETING_TIME_CALENDAR_LOADING,
+        }
+    }
 
     return { ...base, ...computeMeetingTime(tasks, window, nowMs), status: MEETING_TIME_READY, syncStatus }
 }
+
+/**
+ * AT-3157 — "Feierabend" instead of "0h": true once today's working hours are OVER (the phase, not
+ * the figure). A day whose remaining working time is fully taken by meetings also has 0 minutes
+ * left, but it is not after work: that still shows "0h". Only where the line shows a figure today
+ * (calendar data loaded or loading; decided with the user 2026-11-25). Without a connected
+ * calendar or with unavailable calendar data the line keeps its calendar hint.
+ */
+export const isAfterWorkView = view =>
+    !!view &&
+    (view.status === MEETING_TIME_READY || view.status === MEETING_TIME_CALENDAR_LOADING) &&
+    view.workdayPhase === WORKDAY_AFTER

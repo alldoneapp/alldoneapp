@@ -3622,6 +3622,7 @@
     "meetingTime meetings": "Meetings",
     "meetingTime meetings duration": "{{duration}} Meetings",
     "meetingTime time to work": "Zeit zum Arbeiten",
+    "meetingTime after work": "Feierabend",
     "meetingTime connect calendar": "Kalender verbinden",
     "meetingTime calendar unavailable": "Kalenderdaten nicht verfügbar",
     "meetingTime working hours": "Arbeitszeit heute: {{range}} (aus den Einstellungen deines Meeting-Links).",

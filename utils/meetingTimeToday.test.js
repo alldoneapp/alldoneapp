@@ -19,6 +19,7 @@ import {
     getMeetingInterval,
     getRemainingWindow,
     getWorkingWindow,
+    isAfterWorkView,
     isSoloWorkBlock,
     mergeIntervalsInWindow,
     resolveWorkingHours,
@@ -532,6 +533,50 @@ describe('deriveMeetingTimeView', () => {
         const failed = deriveMeetingTimeView({ ...base, tasksError: true })
         expect(failed.status).toBe(MEETING_TIME_CALENDAR_UNAVAILABLE)
         expect(failed.freeMinutes).toBeUndefined()
+    })
+})
+
+// AT-3157: "Feierabend" follows the end of the working window, not a 0 figure.
+describe('isAfterWorkView (AT-3157)', () => {
+    const base = {
+        settings: { workingHoursStart: '09:00', workingHoursEnd: '18:00' },
+        calendarConnected: true,
+        tasksLoaded: true,
+        tasksError: false,
+        syncStatus: 'synced',
+        tasks: [],
+    }
+
+    it('is true once the working hours are over, from the end minute on', () => {
+        expect(isAfterWorkView(deriveMeetingTimeView({ ...base, nowMs: at('18:00') }))).toBe(true)
+        expect(isAfterWorkView(deriveMeetingTimeView({ ...base, nowMs: at('20:59') }))).toBe(true)
+        expect(isAfterWorkView(deriveMeetingTimeView({ ...base, nowMs: at('17:59') }))).toBe(false)
+        expect(isAfterWorkView(deriveMeetingTimeView({ ...base, nowMs: EARLY }))).toBe(false)
+    })
+
+    it('is false when meetings fill the rest of the working day (0 left, but not after work)', () => {
+        const view = deriveMeetingTimeView({ ...base, tasks: [meeting('15:00', '18:00')], nowMs: NOW })
+        expect(view.freeMinutes).toBe(0)
+        expect(view.workdayPhase).toBe(WORKDAY_DURING)
+        expect(isAfterWorkView(view)).toBe(false)
+    })
+
+    it('knows the phase while the meetings load, since it does not depend on the calendar', () => {
+        const loading = deriveMeetingTimeView({ ...base, tasksLoaded: false, nowMs: at('19:00') })
+        expect(loading.status).toBe(MEETING_TIME_CALENDAR_LOADING)
+        expect(loading.workdayPhase).toBe(WORKDAY_AFTER)
+        expect(loading.freeMinutes).toBeUndefined()
+        expect(isAfterWorkView(loading)).toBe(true)
+        const during = deriveMeetingTimeView({ ...base, tasksLoaded: false, nowMs: NOW })
+        expect(isAfterWorkView(during)).toBe(false)
+    })
+
+    it('is false where the line shows no figure (no calendar, calendar data unavailable, loading hours)', () => {
+        const late = at('19:00')
+        expect(isAfterWorkView(deriveMeetingTimeView({ ...base, calendarConnected: false, nowMs: late }))).toBe(false)
+        expect(isAfterWorkView(deriveMeetingTimeView({ ...base, tasksError: true, nowMs: late }))).toBe(false)
+        expect(isAfterWorkView(deriveMeetingTimeView({ ...base, settings: undefined, nowMs: late }))).toBe(false)
+        expect(isAfterWorkView(null)).toBe(false)
     })
 })
 

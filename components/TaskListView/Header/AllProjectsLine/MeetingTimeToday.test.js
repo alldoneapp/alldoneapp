@@ -3,6 +3,7 @@ import renderer, { act } from 'react-test-renderer'
 import { Text } from 'react-native'
 
 import MeetingTimeToday, {
+    AFTER_WORK_NARROW_MAX_WIDTH,
     MEETING_TIME_DENSITY_COMPACT,
     MEETING_TIME_DENSITY_FULL,
     MEETING_TIME_DENSITY_MINIMAL,
@@ -116,13 +117,80 @@ describe('MeetingTimeToday (AT-3136)', () => {
         expect(label(legacy)).toContain('"from":"9:00","until":"18:00"')
     })
 
-    it('after the working hours shows 0h and says the working day is over, keeping the meeting total', () => {
-        const view = { ...READY, freeMinutes: 0, workdayPhase: 'after', remainingFromMs: at(18, 0) }
-        const tree = render(view)
-        expect(textOf(tree)).toBe('0h|meetingTime time to work|meetingTime meetings duration {"duration":"7h 30m"}')
-        const label = tree.root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel
-        expect(label).toContain('meetingTime summary after hours {"meetings":"7h 30m"}')
-        expect(label).not.toContain('meetingTime summary {')
+    // AT-3157: "Feierabend" instead of "0h" once the working hours are over.
+    describe('after the working hours (AT-3157)', () => {
+        const AFTER = { ...READY, freeMinutes: 0, workdayPhase: 'after', remainingFromMs: at(18, 0) }
+
+        it('shows "Feierabend" instead of 0h, without the "Time to work" label, keeping the meeting total', () => {
+            const tree = render(AFTER)
+            expect(textOf(tree)).toBe('meetingTime after work|meetingTime meetings duration {"duration":"7h 30m"}')
+            expect(textIn(tree, 'meeting-time-primary-value')).toBe('meetingTime after work')
+            expect(textIn(tree, 'meeting-time-first-line')).toBeNull()
+            expect(textOf(tree)).not.toContain('0h')
+            // Full form: the label is the large one-line text, like a figure.
+            const value = tree.root.findByProps({ testID: 'meeting-time-primary-value' })
+            expect(flatStyle(value).fontSize).toBe(20)
+            expect(value.props.numberOfLines).toBe(1)
+            const label = tree.root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel
+            expect(label).toContain('meetingTime summary after hours {"meetings":"7h 30m"}')
+            expect(label).not.toContain('meetingTime summary {')
+        })
+
+        it('keeps 0h when meetings fill the rest of the working day, which is not after work', () => {
+            const tree = render({ ...READY, freeMinutes: 0, workdayPhase: 'during', remainingFromMs: at(14, 5) })
+            expect(textOf(tree)).toBe('0h|meetingTime time to work|meetingTime meetings duration {"duration":"7h 30m"}')
+            expect(textOf(tree)).not.toContain('meetingTime after work')
+        })
+
+        it('changes nothing before the working day or for views without the live phase', () => {
+            const before = { ...READY, workdayPhase: 'before', remainingFromMs: at(9, 0), freeMinutes: 90 }
+            expect(textOf(render(before))).toBe(textOf(render(READY)))
+            const { workdayPhase, ...legacy } = AFTER
+            expect(textOf(render(legacy))).toBe(
+                '0h|meetingTime time to work|meetingTime meetings duration {"duration":"7h 30m"}'
+            )
+        })
+
+        it('sets the label smaller and lets it wrap in the compact and minimal forms', () => {
+            const compact = render(AFTER, MEETING_TIME_DENSITY_COMPACT)
+            expect(textOf(compact)).toBe('meetingTime after work|7h 30m|meetingTime meetings')
+            const minimal = render(AFTER, MEETING_TIME_DENSITY_MINIMAL)
+            expect(textOf(minimal)).toBe('meetingTime after work')
+            ;[compact, minimal].forEach(tree => {
+                const value = tree.root.findByProps({ testID: 'meeting-time-primary-value' })
+                expect(flatStyle(value)).toEqual(
+                    expect.objectContaining({ fontSize: 14, maxWidth: AFTER_WORK_NARROW_MAX_WIDTH })
+                )
+                expect(value.props.numberOfLines).toBe(2)
+            })
+            // The meeting time stays in the tooltip of the minimal form.
+            expect(minimal.root.findByProps({ testID: 'meeting-time-today' }).props.accessibilityLabel).toContain(
+                'meetingTime summary after hours {"meetings":"7h 30m"}'
+            )
+        })
+
+        it('shows the label at once while the meetings load, undimmed, with "… meetings"', () => {
+            const tree = render({ status: 'calendarLoading', workingHours: SAVED_HOURS, workdayPhase: 'after' })
+            expect(textOf(tree)).toBe('meetingTime after work|meetingTime meetings duration {"duration":"…"}')
+            expect(flatStyle(tree.root.findByProps({ testID: 'meeting-time-primary-value' })).opacity).toBeUndefined()
+            expect(flatStyle(tree.root.findByProps({ testID: 'meeting-time-second-line' }))).toEqual(
+                expect.objectContaining({ opacity: 0.6 })
+            )
+        })
+
+        it('keeps the sync warning beside the meetings line', () => {
+            const tree = render({ ...AFTER, syncStatus: 'failed' })
+            expect(tree.root.findAllByProps({ testID: 'meeting-time-failed' }).length).toBeGreaterThan(0)
+            const minimal = render({ ...AFTER, syncStatus: 'failed' }, MEETING_TIME_DENSITY_MINIMAL)
+            expect(minimal.root.findAllByProps({ testID: 'meeting-time-failed' }).length).toBeGreaterThan(0)
+        })
+
+        it('keeps the calendar hints without a calendar or calendar data (no label there)', () => {
+            const noCalendar = { status: 'noCalendar', workingHours: DEFAULT_HOURS, workdayPhase: 'after' }
+            expect(textOf(render(noCalendar))).toBe('meetingTime time to work|meetingTime connect calendar')
+            const unavailable = { status: 'calendarUnavailable', workingHours: SAVED_HOURS, workdayPhase: 'after' }
+            expect(textOf(render(unavailable))).toBe('meetingTime time to work|meetingTime calendar unavailable')
+        })
     })
 
     it('says in the tooltip when solo work blocks counted as time to work, without changing the line', () => {
@@ -257,5 +325,15 @@ describe('getMeetingTimeDensity (AT-3136)', () => {
         expect(getMeetingTimeDensity(true, 358, true)).toBe(MEETING_TIME_DENSITY_MINIMAL)
         expect(getMeetingTimeDensity(true, 398, true)).toBe(MEETING_TIME_DENSITY_COMPACT)
         expect(getMeetingTimeDensity(true, 450, true)).toBe(MEETING_TIME_DENSITY_COMPACT)
+    })
+
+    it('after work: never the full form on mobile, and a little more room for the compact one (AT-3157)', () => {
+        expect(getMeetingTimeDensity(false, 0, false, true)).toBe(MEETING_TIME_DENSITY_FULL)
+        expect(getMeetingTimeDensity(true, 0, false, true)).toBe(MEETING_TIME_DENSITY_MINIMAL)
+        expect(getMeetingTimeDensity(true, 568, false, true)).toBe(MEETING_TIME_DENSITY_COMPACT) // 600px
+        expect(getMeetingTimeDensity(true, 358, false, true)).toBe(MEETING_TIME_DENSITY_COMPACT) // 390px
+        expect(getMeetingTimeDensity(true, 350, false, true)).toBe(MEETING_TIME_DENSITY_MINIMAL)
+        expect(getMeetingTimeDensity(true, 350, false, false)).toBe(MEETING_TIME_DENSITY_COMPACT)
+        expect(getMeetingTimeDensity(true, 328, false, true)).toBe(MEETING_TIME_DENSITY_MINIMAL) // 360px
     })
 })

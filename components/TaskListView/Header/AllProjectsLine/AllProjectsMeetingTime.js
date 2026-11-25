@@ -2,7 +2,7 @@ import React from 'react'
 import { View } from 'react-native'
 
 import MeetingTimeToday, { getMeetingTimeDensity } from './MeetingTimeToday'
-import { MEETING_TIME_READY } from '../../../../utils/meetingTimeToday'
+import { MEETING_TIME_READY, isAfterWorkView } from '../../../../utils/meetingTimeToday'
 import { CALENDAR_SYNC_FAILED } from '../../../../utils/calendarSyncStatus'
 import useMeetingTimeToday from './useMeetingTimeToday'
 import DailyPlanEntry, { DAILY_PLAN_COMPACT_ENTRY_WIDTH } from '../../DailyPlan/DailyPlanEntry'
@@ -18,7 +18,10 @@ export default function AllProjectsMeetingTime({ mobile = false, lineWidth = 0 }
     const roomForTime = mobile && lineWidth ? Math.max(1, lineWidth - DAILY_PLAN_COMPACT_ENTRY_WIDTH) : lineWidth
     return (
         <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: mobile ? 1 : 0 }}>
-            <MeetingTimeToday view={view} density={getMeetingTimeDensity(mobile, roomForTime, withWarning)} />
+            <MeetingTimeToday
+                view={view}
+                density={getMeetingTimeDensity(mobile, roomForTime, withWarning, isAfterWorkView(view))}
+            />
             <DailyPlanEntry meetingView={view} compact={mobile} />
         </View>
     )

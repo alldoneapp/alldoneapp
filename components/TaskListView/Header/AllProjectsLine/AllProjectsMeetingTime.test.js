@@ -36,17 +36,28 @@ describe('AllProjectsMeetingTime with Plan my day', () => {
     it('keeps the full entry and the unchanged density on desktop', () => {
         const root = renderer.create(<AllProjectsMeetingTime />).root
         expect(root.findByType('DailyPlanEntry').props.compact).toBe(false)
-        expect(mockDensity).toHaveBeenCalledWith(false, 0, false)
+        expect(mockDensity).toHaveBeenCalledWith(false, 0, false, false)
     })
 
     it('makes the entry compact on mobile and takes its width off the room for the time display', () => {
         const root = renderer.create(<AllProjectsMeetingTime mobile lineWidth={358} />).root
         expect(root.findByType('DailyPlanEntry').props.compact).toBe(true)
-        expect(mockDensity).toHaveBeenCalledWith(true, 358 - DAILY_PLAN_COMPACT_ENTRY_WIDTH, false)
+        expect(mockDensity).toHaveBeenCalledWith(true, 358 - DAILY_PLAN_COMPACT_ENTRY_WIDTH, false, false)
     })
 
     it('leaves an unmeasured mobile line unmeasured (minimal density first)', () => {
         renderer.create(<AllProjectsMeetingTime mobile lineWidth={0} />)
-        expect(mockDensity).toHaveBeenCalledWith(true, 0, false)
+        expect(mockDensity).toHaveBeenCalledWith(true, 0, false, false)
+    })
+
+    // AT-3157: the after-work label is wider than a figure, so the density knows about it.
+    it('tells the density when the working hours are over', () => {
+        mockView.workdayPhase = 'after'
+        try {
+            renderer.create(<AllProjectsMeetingTime mobile lineWidth={358} />)
+            expect(mockDensity).toHaveBeenCalledWith(true, 358 - DAILY_PLAN_COMPACT_ENTRY_WIDTH, false, true)
+        } finally {
+            delete mockView.workdayPhase
+        }
     })
 })

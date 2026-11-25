@@ -4011,6 +4011,7 @@
     "meetingTime meetings": "Reuniones",
     "meetingTime meetings duration": "{{duration}} de reuniones",
     "meetingTime time to work": "Tiempo para trabajar",
+    "meetingTime after work": "Jornada terminada",
     "meetingTime connect calendar": "Conectar calendario",
     "meetingTime calendar unavailable": "Datos del calendario no disponibles",
     "meetingTime working hours": "Horario laboral de hoy: {{range}} (de la configuración de tu enlace de reuniones).",

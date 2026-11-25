@@ -4063,6 +4063,7 @@
     "meetingTime meetings": "Meetings",
     "meetingTime meetings duration": "{{duration}} meetings",
     "meetingTime time to work": "Time to work",
+    "meetingTime after work": "Done for today",
     "meetingTime connect calendar": "Connect calendar",
     "meetingTime calendar unavailable": "Calendar data unavailable",
     "meetingTime working hours": "Working hours today: {{range}} (from your meeting link settings).",
