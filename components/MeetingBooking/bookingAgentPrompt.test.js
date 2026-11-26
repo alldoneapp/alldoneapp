@@ -1,5 +1,5 @@
 import { setLanguage } from '../../i18n/TranslationService'
-import { buildBookingAgentPrompt, copyBookingText, getBookingPageUrl } from './bookingAgentPrompt'
+import { buildBookingAgentPrompt, copyBookingText, getBookingMcpUrl, getBookingPageUrl } from './bookingAgentPrompt'
 
 describe('bookingAgentPrompt (AT-3161)', () => {
     afterEach(() => {
@@ -22,37 +22,57 @@ describe('bookingAgentPrompt (AT-3161)', () => {
         expect(getBookingPageUrl('demo')).toBe(`${window.location.origin}/meet/demo`)
     })
 
-    test('the prompt is short, carries the URL once, prefers known context and requires confirmation', () => {
-        const url = 'https://mystaging.alldone.app/meet/anna-team'
+    test("builds the page's public MCP URL from the same origin and slug", () => {
+        expect(getBookingMcpUrl('karsten-wysk', 'https://my.alldone.app/')).toBe(
+            'https://my.alldone.app/api/booking/mcp/karsten-wysk'
+        )
+        expect(getBookingMcpUrl('demo')).toBe(`${window.location.origin}/api/booking/mcp/demo`)
+    })
+
+    test('the prompt names the tools, rules out the browser, asks before booking and stays short', () => {
+        const origin = 'https://mystaging.alldone.app'
+        const url = `${origin}/meet/anna-team`
+        const mcpUrl = `${origin}/api/booking/mcp/anna-team`
+        const tools = ['get_public_booking_page', 'find_public_booking_times', 'book_public_meeting']
         const expected = {
             en: [
-                'Use existing context (name, email, time zone, preferences)',
-                'my calendar, if connected',
-                'Ask only for missing details',
-                'Book only after I confirm',
+                'not the browser',
+                'Use my context',
+                'if connected, my calendar',
+                'Propose one slot with date, time and time zone',
+                'book only after I confirm that slot',
+                'tell me to connect Alldone or refresh its tools',
             ],
             de: [
-                'Nutze vorhandenen Kontext (Name, E-Mail, Zeitzone, Präferenzen)',
+                'nicht den Browser',
+                'Nutze meinen Kontext',
                 'falls verbunden, meinen Kalender',
-                'Frage nur nach fehlenden Angaben',
-                'Buche erst nach meiner Bestätigung',
+                'Schlag einen Termin mit Datum, Uhrzeit und Zeitzone vor',
+                'buche erst, wenn ich genau diesen bestätige',
+                'dass ich Alldone verbinden oder die Tools aktualisieren soll',
             ],
             es: [
-                'Usa el contexto disponible (nombre, correo, zona horaria, preferencias)',
-                'mi calendario, si está conectado',
-                'Pregunta solo por lo que falte',
-                'Reserva solo tras mi confirmación',
+                'no el navegador',
+                'Usa mi contexto',
+                'si está conectado, mi calendario',
+                'Propón una cita con fecha, hora y zona horaria',
+                'resérvala solo cuando confirme esa cita',
+                'dime que conecte Alldone o actualice sus herramientas',
             ],
         }
         Object.entries(expected).forEach(([language, phrases]) => {
             setLanguage(language)
-            const prompt = buildBookingAgentPrompt(url)
+            const prompt = buildBookingAgentPrompt('anna-team', origin)
             expect(prompt.split(url)).toHaveLength(2)
-            // The URL ends its line, so no sentence punctuation sticks to the link.
+            expect(prompt.split(mcpUrl)).toHaveLength(2)
+            // Each URL ends its line (the MCP URL ends the prompt), so no punctuation sticks to a link.
             expect(prompt).toContain(`${url}\n`)
+            expect(prompt.endsWith(mcpUrl)).toBe(true)
+            tools.forEach(tool => expect(prompt).toContain(tool))
             phrases.forEach(phrase => expect(prompt).toContain(phrase))
             expect(prompt).not.toContain('%{')
-            expect(prompt.length - url.length).toBeLessThan(220)
+            // Short enough to paste: about four sentences besides the two links.
+            expect(prompt.length - url.length - mcpUrl.length).toBeLessThan(450)
         })
     })
 

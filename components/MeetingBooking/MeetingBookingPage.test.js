@@ -461,7 +461,7 @@ describe('MeetingBookingPage agent API (AT-3161)', () => {
     })
 })
 
-describe('MeetingBookingPage agent hint (AT-3161)', () => {
+describe('MeetingBookingPage agent info box (AT-3161)', () => {
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
     let writeText
 
@@ -478,15 +478,13 @@ describe('MeetingBookingPage agent hint (AT-3161)', () => {
         return tree
     }
 
-    const openHint = async tree => {
-        await act(async () => {
-            tree.root.findByProps({ testID: 'booking-agent-hint-toggle' }).props.onPress()
-        })
-    }
-
-    const promptText = tree => tree.root.findByProps({ testID: 'booking-agent-prompt' }).props.children
+    const infoBox = tree => tree.root.findByProps({ testID: 'booking-agent-hint' })
+    const promptNode = tree => tree.root.findByProps({ testID: 'booking-agent-prompt' })
+    const promptText = tree => promptNode(tree).props.children
     const copyButton = tree => tree.root.findByProps({ testID: 'booking-agent-prompt-copy' })
     const copyStatus = tree => tree.root.findByProps({ testID: 'booking-agent-prompt-copy-status' }).props.children
+    // Everything inside the box that reacts to a press: only the copy button may.
+    const pressables = tree => infoBox(tree).findAll(node => typeof node.props.onPress === 'function')
 
     beforeEach(() => {
         jest.clearAllMocks()
@@ -511,76 +509,102 @@ describe('MeetingBookingPage agent hint (AT-3161)', () => {
         jest.restoreAllMocks()
     })
 
-    test('is one collapsed line under the heading until the visitor opens it', async () => {
+    test('is an always visible, neutrally labelled note whose only action is "Copy prompt"', async () => {
         const tree = await renderPage()
 
-        const toggle = tree.root.findByProps({ testID: 'booking-agent-hint-toggle' })
-        expect(toggle.props.role).toBe('button')
-        expect(toggle.props['aria-expanded']).toBe(false)
-        expect(tree.root.findAllByProps({ children: 'Book with your AI agent' }).length).toBeGreaterThan(0)
+        const box = infoBox(tree)
+        expect(box.props.role).toBe('note')
+        const title = tree.root.findByProps({ testID: 'booking-agent-info-title' })
+        expect(title.props.children).toBe('For AI agents')
+        expect(box.props['aria-labelledby']).toBe(title.props.nativeID)
+        // Visible without any interaction: no expander, no chevron, no "book" wording in the label.
+        expect(tree.root.findAllByProps({ testID: 'booking-agent-hint-toggle' })).toHaveLength(0)
         expect(tree.root.findAllByProps({ testID: 'booking-agent-hint-panel' })).toHaveLength(0)
+        expect(box.findAll(node => node.props['aria-expanded'] !== undefined)).toHaveLength(0)
+        expect(box.findAll(node => ['▸', '▾'].includes(node.props.children))).toHaveLength(0)
+        expect(title.props.children).not.toMatch(/book/i)
+        expect(promptText(tree)).toContain('/meet/karsten-wysk')
 
-        await openHint(tree)
-        expect(tree.root.findByProps({ testID: 'booking-agent-hint-toggle' }).props['aria-expanded']).toBe(true)
-        expect(tree.root.findAllByProps({ testID: 'booking-agent-hint-panel' }).length).toBeGreaterThan(0)
-        // Says what the agent needs, without promising that every chatbot can book.
-        const description = tree.root.findByProps({ children: translate('Booking agent hint description') }).props
+        const actions = pressables(tree).filter(node => node.props.testID)
+        expect([...new Set(actions.map(node => node.props.testID))]).toEqual(['booking-agent-prompt-copy'])
+        expect(copyButton(tree).props.title).toBe('Copy prompt')
+        expect(copyButton(tree).props.role).toBe('button')
+        // A quiet secondary button: it copies text, it is not the booking call to action.
+        expect(copyButton(tree).props.type).toBe('secondary')
+
+        // Says who can use it, without advertising browser clicks or promising every chatbot works.
+        const description = tree.root.findByProps({ children: translate('Booking agent info description') }).props
             .children
-        expect(description).toContain('browser or MCP tools')
+        expect(description).toContain('connected to Alldone')
         expect(description).toContain('Not every chatbot')
-
-        await openHint(tree)
-        expect(tree.root.findAllByProps({ testID: 'booking-agent-hint-panel' })).toHaveLength(0)
+        expect(description).not.toMatch(/browser/i)
     })
 
-    test("the prompt links this page on the page's own origin and asks for confirmation before booking", async () => {
+    test('the prompt sends the agent to the booking tools, not the browser, and asks before booking', async () => {
         const tree = await renderPage()
-        await openHint(tree)
 
         const prompt = promptText(tree)
         expect(prompt).toContain(`${window.location.origin}/meet/karsten-wysk`)
         expect(window.location.origin).not.toContain('my.alldone.app')
         expect(prompt).not.toContain('my.alldone.app')
-        expect(prompt).toContain('Find a suitable meeting time')
-        expect(prompt).toContain('Use existing context (name, email, time zone, preferences)')
-        expect(prompt).toContain('my calendar, if connected')
-        expect(prompt).toContain('Ask only for missing details')
-        expect(prompt).toContain('Book only after I confirm')
-        expect(tree.root.findByProps({ testID: 'booking-agent-prompt' }).props.selectable).toBe(true)
+        expect(prompt).toContain('get_public_booking_page, find_public_booking_times and book_public_meeting')
+        expect(prompt).toContain('not the browser')
+        expect(prompt).toContain('Propose one slot with date, time and time zone')
+        expect(prompt).toContain('book only after I confirm that slot')
+        expect(prompt).toContain('tell me to connect Alldone or refresh its tools')
+        expect(prompt).toMatch(new RegExp(`MCP server: ${window.location.origin}/api/booking/mcp/karsten-wysk$`))
+        expect(promptNode(tree).props.selectable).toBe(true)
     })
 
     test("uses the host's canonical slug, not the address as typed", async () => {
         const typedNavigation = { getParam: key => (key === 'slug' ? 'Karsten-Wysk' : '') }
         const tree = await renderPage(typedNavigation)
-        await openHint(tree)
 
         expect(promptText(tree)).toContain(`${window.location.origin}/meet/karsten-wysk\n`)
+        expect(promptText(tree)).toContain(`${window.location.origin}/api/booking/mcp/karsten-wysk`)
     })
 
-    test('follows the page language', async () => {
+    test('follows the page language (DE and ES)', async () => {
         Localization.locale = 'de-DE'
-        const tree = await renderPage()
-        await openHint(tree)
+        let tree = await renderPage()
 
-        expect(tree.root.findAllByProps({ children: 'Mit deinem KI-Agenten buchen' }).length).toBeGreaterThan(0)
-        expect(promptText(tree)).toContain(
-            `Finde einen passenden Termin: ${window.location.origin}/meet/karsten-wysk\n`
-        )
-        expect(promptText(tree)).toContain('Buche erst nach meiner Bestätigung.')
+        expect(tree.root.findByProps({ testID: 'booking-agent-info-title' }).props.children).toBe('Für KI-Agenten')
+        expect(promptText(tree)).toContain(`Buche einen Termin: ${window.location.origin}/meet/karsten-wysk\n`)
+        expect(promptText(tree)).toContain('buche erst, wenn ich genau diesen bestätige')
+        expect(promptText(tree)).toContain('nicht den Browser')
+        expect(copyButton(tree).props.title).toBe('Prompt kopieren')
+        await act(async () => tree.unmount())
+
+        Localization.locale = 'es-ES'
+        window.localStorage.clear()
+        tree = await renderPage()
+        expect(tree.root.findByProps({ testID: 'booking-agent-info-title' }).props.children).toBe('Para agentes de IA')
+        expect(promptText(tree)).toContain(`Reserva una cita: ${window.location.origin}/meet/karsten-wysk\n`)
+        expect(promptText(tree)).toContain('no el navegador')
+        expect(copyButton(tree).props.title).toBe('Copiar prompt')
+    })
+
+    test('switching the language on the page switches the box', async () => {
+        const tree = await renderPage()
+        await act(async () => {
+            tree.root.findByProps({ testID: 'booking-language-de' }).props.onPress()
+        })
+        expect(tree.root.findByProps({ testID: 'booking-agent-info-title' }).props.children).toBe('Für KI-Agenten')
         expect(copyButton(tree).props.title).toBe('Prompt kopieren')
     })
 
-    test('copies the prompt and shows "Copied" for a moment', async () => {
+    test('copies the whole prompt and shows "Copied" for a moment', async () => {
         const tree = await renderPage()
-        await openHint(tree)
         jest.useFakeTimers()
 
-        expect(copyButton(tree).props.title).toBe('Copy prompt')
+        // The box shows a short preview; the copy carries the full text.
+        expect(promptNode(tree).props.numberOfLines).toBe(3)
         await act(async () => {
             await copyButton(tree).props.onPress()
         })
 
         expect(writeText).toHaveBeenCalledWith(promptText(tree))
+        expect(writeText.mock.calls[0][0]).toContain('/api/booking/mcp/karsten-wysk')
         expect(copyButton(tree).props.title).toBe('Copied')
         expect(copyButton(tree).props.icon).toBe('check')
         expect(copyStatus(tree)).toBe('Prompt copied')
@@ -597,7 +621,6 @@ describe('MeetingBookingPage agent hint (AT-3161)', () => {
         setClipboard(undefined)
         document.execCommand = jest.fn(() => true)
         const tree = await renderPage()
-        await openHint(tree)
 
         await act(async () => {
             await copyButton(tree).props.onPress()
@@ -607,10 +630,9 @@ describe('MeetingBookingPage agent hint (AT-3161)', () => {
         expect(copyButton(tree).props.title).toBe('Copied')
     })
 
-    test('says so when copying fails instead of claiming success', async () => {
+    test('says so when copying fails and then shows the whole prompt for copying by hand', async () => {
         writeText.mockImplementation(() => Promise.reject(new Error('NotAllowedError')))
         const tree = await renderPage()
-        await openHint(tree)
 
         await act(async () => {
             await copyButton(tree).props.onPress()
@@ -619,11 +641,11 @@ describe('MeetingBookingPage agent hint (AT-3161)', () => {
         expect(document.execCommand).toHaveBeenCalledWith('copy')
         expect(copyButton(tree).props.title).toBe('Copy prompt')
         expect(copyStatus(tree)).toBe('Could not copy. Select the text above and copy it manually.')
+        expect(promptNode(tree).props.numberOfLines).toBeUndefined()
     })
 
     test('the booking flow still renders below it', async () => {
         const tree = await renderPage()
-        await openHint(tree)
 
         expect(tree.root.findAllByProps({ testID: 'booking-timezone-select' }).length).toBeGreaterThan(0)
         expect(tree.root.findAllByProps({ testID: 'booking-confirm-button' }).length).toBeGreaterThan(0)

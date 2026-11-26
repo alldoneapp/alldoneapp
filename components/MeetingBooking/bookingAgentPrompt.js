@@ -1,16 +1,28 @@
 import { translate } from '../../i18n/TranslationService'
 import { getAppLinkOrigin } from '../../utils/LinkingHelper'
 
-// AT-3161: the visible "Book with your AI agent" hint on a public booking page. The prompt names
-// this page's own address (the origin the page runs on, the host's canonical slug), never a fixed
-// example host, so a copy from staging or a local build points the agent at that same page.
-export const getBookingPageUrl = (slug, origin = getAppLinkOrigin()) => {
-    const cleanOrigin = String(origin || '').replace(/\/+$/, '')
-    return `${cleanOrigin}/meet/${encodeURIComponent(String(slug || '').trim())}`
-}
+// AT-3161: the "For AI agents" info box on a public booking page. The prompt names this page's own
+// address (the origin the page runs on, the host's canonical slug), never a fixed example host, so a
+// copy from staging or a local build points the agent at that same page.
+const cleanOriginOf = origin => String(origin || '').replace(/\/+$/, '')
+const encodeSlug = slug => encodeURIComponent(String(slug || '').trim())
 
-// In the page's current language; the agent reads whatever the visitor pastes.
-export const buildBookingAgentPrompt = url => translate('Booking agent prompt', { url })
+export const getBookingPageUrl = (slug, origin = getAppLinkOrigin()) =>
+    `${cleanOriginOf(origin)}/meet/${encodeSlug(slug)}`
+
+// The page's public MCP server (publicBookingMcp.js, no account), for MCP clients without the Alldone tools.
+export const getBookingMcpUrl = (slug, origin = getAppLinkOrigin()) =>
+    `${cleanOriginOf(origin)}/api/booking/mcp/${encodeSlug(slug)}`
+
+// In the page's current language; the agent reads whatever the visitor pastes. It names the connected
+// Alldone tools (an agent with a browser otherwise clicks the page and stops at the approval gate,
+// AT-3161 follow-up), asks for the exact slot to be confirmed, and ends with the public MCP URL so no
+// punctuation sticks to it.
+export const buildBookingAgentPrompt = (slug, origin = getAppLinkOrigin()) =>
+    translate('Booking agent prompt', {
+        url: getBookingPageUrl(slug, origin),
+        mcpUrl: getBookingMcpUrl(slug, origin),
+    })
 
 const copyWithTextArea = text => {
     if (typeof document === 'undefined' || !document.body) return false

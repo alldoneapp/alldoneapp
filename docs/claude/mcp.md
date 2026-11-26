@@ -223,18 +223,24 @@ runs those three, so validation, limits and the double-booking lock cannot drift
   meta tag, and a visually hidden hint inside `#root` in `index.html` for agents that only fetch the
   URL and get the SPA shell (React replaces it on first render). The service worker never answers
   `/api/booking/` or `/meet/*/llms.txt`.
-- **For visitors** (visible): a collapsed "Book with your AI agent" line under the page heading
-  (`BookingAgentHint` in `MeetingBookingPage.js`; Karsten chose "top, collapsed" so the form stays
-  first on a phone). It opens a short note that the agent needs browser or MCP access (not every
-  chatbot can book), a copyable prompt and a "Copy prompt" button. The prompt
-  (`bookingAgentPrompt.js`, key `Booking agent prompt`, in the page language) links
-  `getAppLinkOrigin()` + `/meet/<page.slug>`: the origin the page runs on and the canonical slug,
-  never a fixed host. It is kept as short as practical (Karsten, follow-up to !957): find a time,
-  use the context the agent already has (name, email, time zone, preferences) and the visitor's own
-  calendar _if connected_ (never implying it always is, nor meaning the agent's calendar), ask only
-  for what is missing, book only after confirmation. The URL ends its line so no punctuation sticks
-  to the link. `copyBookingText` reports failure (the shared
-  `copyTextToClipboard` swallows it), so "Copied" only shows when the copy worked.
+- **For visitors** (visible): a compact, always visible "For AI agents" info box under the page heading
+  (`BookingAgentHint` in `MeetingBookingPage.js`, `role="note"` labelled by its title): one line on who
+  can use it (agents connected to Alldone or with MCP; not every chatbot), the prompt as a three-line
+  preview (the full text is in the DOM, is what gets copied, and is shown whole after a failed copy) and
+  one secondary "Copy prompt" button, its only action. Not shown on an inactive page. It replaced a
+  "Book with your AI agent" expander (button + chevron, Karsten's first choice "top, collapsed"): agents
+  driving the page with `browser_*` read that as a booking action, tried to open it and stopped at the
+  browser approval gate (Karsten, 2026-11-26: "compact info box"; the label stays neutral, no "book").
+  The prompt (`bookingAgentPrompt.js`, key `Booking agent prompt`, in the page language) links
+  `getAppLinkOrigin()` + `/meet/<page.slug>` and ends with `/api/booking/mcp/<page.slug>`: the origin
+  the page runs on and the canonical slug, never a fixed host; each URL ends its line. It tells the
+  agent to use `get_public_booking_page` / `find_public_booking_times` / `book_public_meeting` directly
+  and not the browser, to use its context and the visitor's calendar _if connected_, to propose one slot
+  with date, time and time zone and to book only after the visitor confirmed exactly that slot; without
+  the tools, to say "connect Alldone or refresh its tools", or to use the page's public MCP server. Kept
+  short (about four sentences besides the links, `bookingAgentPrompt.test.js`). `copyBookingText`
+  reports failure (the shared `copyTextToClipboard` swallows it), so "Copied" only shows when the copy
+  worked.
 
 Rules the operations enforce for every caller (the web page included): availability is computed in
 the **host's** timezone (the caller's zone used to move the working hours; it is now display only:
@@ -289,14 +295,50 @@ and add only the user they act for:
   host's calendar, the record into the host's `users/{host}/bookings`), and the host is told by mail and
   the "Booked via" row, as for every public booking.
 
-Discovery: the tool descriptions say "instead of opening the booking page in a browser"; the MCP
-`initialize` text is at its 512-character limit and stays unchanged. `/meet/<slug>/llms.txt`, `/llms.txt`,
-the `ai-agent-api` meta tag, the hidden `#root` hint and the page's `alldone.help()` point connected
-agents at the three tools. A client that cached its tool list must reconnect / refresh tools to see
-them. Pinned by `functions/Booking/publicBookingTools.test.js` (the whole flow on the real booking stack
+Discovery: the tool descriptions say "instead of opening the booking page in a browser" and that the
+two reads are read-only; the MCP `initialize` text is at its 512-character limit and stays unchanged.
+`/meet/<slug>/llms.txt` (the connected-agent section comes first), `/llms.txt`, the `ai-agent-api` meta
+tag, the hidden `#root` hint and the page's `alldone.help()` point connected agents at the three tools,
+say "do not click the page" and what to do when the tools are missing. A client that cached its tool
+list must reconnect / refresh tools to see them.
+
+**Why the agent still clicked after !961 went live (checked 2026-11-26, not guessed).** Production logs
+of `mcpserver` for the run in Karsten's screenshot (11:52 to 11:53 UTC, revision `mcpserver-01181-yip`, which
+serves the three tools): client `openai-mcp/1.0.0 (Codex)`, calls `browser_navigate` to the page,
+`find_calendar_availability`, then `browser_click` twice (the expander, approval-gated). No booking
+tool was called, and no `tools/list` response from that client appears in the logs since 2026-11-19, while
+it re-sent `initialize` before every call: it worked from a tool list fetched before the tools existed.
+Karsten's account has no `mcpDisabledTools`, so nothing was filtered server-side. A server cannot push a
+new list to a stateless HTTP client, so the fixes are on our side of the line: (1) the page no longer
+has a control that looks like booking; (2) the prompt names the tools and rules out the browser; (3) a
+COMPLETED `browser_*` step on a `/meet/<slug>` page of this environment carries `bookingPage` (tools,
+link, "do not click", "if the tools are missing, ask the user to refresh/reconnect the connector or
+enable them") via `attachBookingPageBrowserHint` (`Booking/publicBookingLink.js`, called in
+`executeToolNatively`). Approval-gated, refused and failed steps are returned untouched, so the hint is
+never a way around the browser's own checks. (4) `tools/list` now carries MCP annotations for the three
+tools (`PUBLIC_BOOKING_MCP_ANNOTATIONS`): reads `readOnlyHint: true`, booking `readOnlyHint: false`,
+`destructiveHint: false`, `idempotentHint: true`. `window.alldone` derives the same from its name
+rules (`getToolAnnotations`).
+
+**Trust boundary of `confirmedByUser`.** It is the agent's statement, not proof that a human agreed. Over
+MCP the server cannot see the conversation; between a model and a booking stand the client's own
+approval of a non-read-only call (if the client asks before such calls; the annotation tells it which
+ones), the tool description and the copied prompt. For an assistant the server also knows the turn was
+typed by the user (`isHumanTurn`), not that the user confirmed that very slot. What the server guarantees
+whatever the caller claims: the page's rules, a slot free for the host at booking time, one booking per
+slot and idempotency key (a key reused for another slot is refused), the host lock and recent-bookings
+check against two visitors taking one slot, account rate limits and "Booked via" for the host.
+
+Pinned by `functions/Booking/publicBookingTools.test.js` (the whole flow on the real booking stack
 with only Google Calendar, event creation and mail stubbed), `functions/MCP/mcpPublicBookingTools.test.js`,
 the `public booking link tools` block of `assistantHelper.test.js`, `toolSchemas.test.js`,
-`toolOptions.test.js` and the signed-in block of `browserAgentApi.test.js`.
+`toolOptions.test.js` and the signed-in block of `browserAgentApi.test.js`. End to end:
+`functions/MCP/mcpPublicBookingFlow.test.js` drives a scripted agent through the real MCP server and the
+real `window.alldone` JSON-RPC client (`createMcpSessionClient`) down to the booking stack on a fake
+Firestore (reads without confirmation, refusal without it, booking the confirmed slot, a changed slot,
+retries, two visitors on one slot, Settings → MCP switch, the browser hint). It proves what the server
+does for a well-behaved agent and refuses from any agent; it is not a test of a real model or client.
+`Booking/publicBookingLink.test.js` pins the browser hint.
 
 ## The alldone.team specialists are assistant templates
 

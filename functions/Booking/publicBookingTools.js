@@ -15,6 +15,13 @@
 //   - a booking needs confirmedByUser, and an assistant may only book in a turn the user typed
 //     (isHumanTurn, the same check as move_task_workflow_step), never from an email, heartbeat or
 //     workflow prompt.
+// Trust boundary: confirmedByUser is what the AGENT says, not proof that a human agreed. Over MCP the
+// server cannot see the conversation; what stands between a model and a booking there is the client's
+// own approval of a non-read-only tool call (book_public_meeting is annotated so) and the model
+// following the tool description. For an assistant the server additionally knows the turn was typed
+// by the user, but not that the user confirmed this exact slot. What the server does guarantee no
+// matter what the caller claims: the page's rules, a free slot, one booking per slot and key, and that
+// the booking is the caller's own (their account's rate limits, "Booked via" for the host).
 // The host sees "Booked via" (BOOKED_VIA.ALLDONE_MCP / ALLDONE_ASSISTANT) like every agent booking.
 
 const crypto = require('crypto')
@@ -32,56 +39,7 @@ const safeTrim = value => (typeof value === 'string' ? value.trim() : '')
 
 const fail = (code, error, extra = {}) => ({ success: false, code, error, message: error, ...extra })
 
-// Only links of THIS Alldone environment: a slug is looked up in this project's bookingPages, so a
-// staging link on production (or a look-alike domain) would silently open a different page.
-function getAllowedBookingHosts() {
-    const { getHostingUrl } = require('./bookingSettings')
-    const hosts = new Set()
-    try {
-        hosts.add(new URL(getHostingUrl()).host.toLowerCase())
-    } catch (_) {}
-    if (process.env.FUNCTIONS_EMULATOR) {
-        hosts.add('localhost:19006')
-        hosts.add('localhost:5000')
-    }
-    return hosts
-}
-
-const BOOKING_PATH = /^\/(?:meet|api\/booking\/mcp)\/([A-Za-z0-9-]{1,60})(?:\/llms\.txt)?\/?$/
-
-/** { slug } for a booking link of this environment or a bare slug, else { error } (a failed result). */
-function resolveBookingSlug(value) {
-    const { slugify } = require('./bookingSettings')
-    const raw = safeTrim(value)
-    const usage = 'Pass the booking link, e.g. https://my.alldone.app/meet/<slug>, or its slug.'
-    if (!raw) return { error: fail('invalid_booking_link', `bookingUrl is required. ${usage}`) }
-    if (/^[A-Za-z0-9-]{1,60}$/.test(raw)) {
-        const slug = slugify(raw)
-        return slug ? { slug } : { error: fail('invalid_booking_link', usage) }
-    }
-    let url
-    try {
-        url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`)
-    } catch (_) {
-        return { error: fail('invalid_booking_link', `This is not a link. ${usage}`) }
-    }
-    const allowedHosts = getAllowedBookingHosts()
-    const host = url.host.toLowerCase()
-    const isLocal = host.startsWith('localhost:')
-    if (!allowedHosts.has(host) || (url.protocol !== 'https:' && !(isLocal && url.protocol === 'http:'))) {
-        return {
-            error: fail(
-                'foreign_booking_link',
-                `Only Alldone booking links of ${[...allowedHosts][0] || 'this Alldone app'} can be booked with this tool.`
-            ),
-        }
-    }
-    const match = url.pathname.match(BOOKING_PATH)
-    if (!match) {
-        return { error: fail('invalid_booking_link', `This is not an Alldone booking link. ${usage}`) }
-    }
-    return { slug: slugify(match[1]) }
-}
+const { resolveBookingSlug } = require('./publicBookingLink')
 
 async function loadVisitorProfile(db, userId) {
     const {
@@ -123,7 +81,7 @@ async function getPage(slug, { db, userId }) {
         ...(ownPage ? { ownPage: true } : {}),
         message: ownPage
             ? 'This is the user’s OWN booking link: booking it puts a meeting with themselves into their calendar.'
-            : 'Next: find_public_booking_times, then book_public_meeting after the user confirmed a slot.',
+            : 'Next: find_public_booking_times (reads need no confirmation), propose one slot, then book_public_meeting after the user confirmed exactly that slot.',
     }
 }
 
@@ -211,7 +169,7 @@ async function findTimes(slug, args, { db, userId }) {
     else if (mutual)
         message =
             matched.options.length > 0
-                ? `${matched.options.length} of the host's ${hostOptions.length} free slots are also free in the user's calendar. Offer them in the user's timezone and book only after the user confirmed one.`
+                ? `${matched.options.length} of the host's ${hostOptions.length} free slots are also free in the user's calendar. Propose a slot with date, time and time zone (displayStart/displayEnd are in the user's), and book only after the user confirmed exactly that slot.`
                 : `None of the host's ${hostOptions.length} free slots is free in the user's calendar. Try a later range, or ask the user whether to look at the host's slots anyway (matchMyCalendar: false).`
     else message = matched.visitorCalendar.message || "These are the host's free slots only."
 
@@ -240,7 +198,7 @@ async function book(slug, args, { db, userId, assistantId, runtime }) {
     if (args.confirmedByUser !== true) {
         return fail(
             'confirmation_required',
-            'Not booked. Show the user the exact slot, duration, name and email first, and call again with confirmedByUser: true only after they confirmed.'
+            'Not booked. Show the user the exact slot (date, time and time zone), the duration, name and email, and call again with confirmedByUser: true only after they confirmed exactly that slot. If they pick another slot, ask again for that one.'
         )
     }
     const viaMcp = runtime?.sourceChannel === 'mcp'

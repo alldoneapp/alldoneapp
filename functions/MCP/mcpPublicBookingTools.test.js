@@ -90,6 +90,27 @@ describe('booking-link tools on the connected Alldone MCP server', () => {
         expect(byName.book_meeting).toBeUndefined()
     })
 
+    test('tools/list annotates the reads as read-only and booking as a write, so clients ask only before booking', async () => {
+        const tools = await listTools(buildServer())
+        const byName = Object.fromEntries(tools.map(tool => [tool.name, tool]))
+        expect(byName.get_public_booking_page.annotations).toEqual(
+            expect.objectContaining({ readOnlyHint: true, openWorldHint: false })
+        )
+        expect(byName.find_public_booking_times.annotations).toEqual(
+            expect.objectContaining({ readOnlyHint: true, openWorldHint: false })
+        )
+        expect(byName.book_public_meeting.annotations).toEqual(
+            expect.objectContaining({
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true,
+            })
+        )
+        // Only these three carry annotations from this change; the rest of the list is untouched.
+        expect(byName.find_calendar_availability.annotations).toBeUndefined()
+    })
+
     test('a signed-in tab (window.alldone / WebMCP, "Browser agent") gets the same tools', async () => {
         const names = (await listTools(buildServer({ client: 'Browser agent' }))).map(tool => tool.name)
         expect(names).toEqual(expect.arrayContaining(BOOKING_TOOLS))

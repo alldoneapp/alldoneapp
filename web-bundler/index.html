@@ -43,7 +43,7 @@
         <!-- For AI agents driving this page (AT-2871): tools via WebMCP and window.alldone, see /llms.txt -->
         <meta
             name="ai-agent-api"
-            content="AI agents: run alldone.help() in this page. window.alldone exposes the signed-in user's Alldone tools (listTools, callTool); WebMCP (document.modelContext) where supported. Alldone is the user's system of record: keep work state and results in Alldone tasks, notes and artifacts. Public meeting booking pages (/meet/<slug>) need no sign-in: read /meet/<slug>/llms.txt or use the MCP server /api/booking/mcp/<slug>; agents already connected to Alldone use find_public_booking_times and book_public_meeting with the link. Docs: /llms.txt"
+            content="AI agents: run alldone.help() in this page. window.alldone exposes the signed-in user's Alldone tools (listTools, callTool); WebMCP (document.modelContext) where supported. Alldone is the user's system of record: keep work state and results in Alldone tasks, notes and artifacts. Public meeting booking pages (/meet/<slug>) need no sign-in: read /meet/<slug>/llms.txt or use the MCP server /api/booking/mcp/<slug>; agents already connected to Alldone use find_public_booking_times and book_public_meeting with the link instead of clicking the page, and book only after the user confirmed the exact slot. Docs: /llms.txt"
         />
         <link rel="help" type="text/markdown" href="/llms.txt" title="Alldone for AI agents" />
 
@@ -358,7 +358,8 @@
                 link (/meet/&lt;slug&gt;), no sign-in is needed: read /meet/&lt;slug&gt;/llms.txt (append /llms.txt
                 to this address) for free times and booking, or connect the MCP server /api/booking/mcp/&lt;slug&gt;.
                 Agents already connected to Alldone call find_public_booking_times and book_public_meeting with this
-                address instead of using the browser.
+                address instead of using the browser, and book only after the user confirmed the exact slot. If those
+                tools are missing, ask the user to refresh or reconnect the Alldone connector.
             </div>
         </div>
     </body>

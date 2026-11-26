@@ -42,7 +42,8 @@ const PUBLIC_BOOKING_TOOL_SCHEMAS = {
                 "Read someone else's public Alldone booking link (/meet/<slug>): the host's name, the meeting " +
                 "durations offered, the host's timezone, working hours, weekend/same-day rules and request limits. " +
                 'Also says which name, email and timezone book_public_meeting would use for the user and whether ' +
-                "the user's own calendar is connected. Use this instead of opening the booking page in a browser.",
+                "the user's own calendar is connected. Read-only: call it without asking. Use this instead of opening " +
+                'or clicking the booking page in a browser.',
             parameters: {
                 type: 'object',
                 properties: { bookingUrl: bookingUrlProperty },
@@ -60,8 +61,9 @@ const PUBLIC_BOOKING_TOOL_SCHEMAS = {
                 "checked against the user's OWN connected calendars, so only times free for both are returned " +
                 "(visitorCalendar.checked says whether that happened; it never reveals the host's events). Times are " +
                 `in the host's timezone with displayStart/displayEnd in the user's. At most ${MAX_RANGE_DAYS} days ` +
-                'per request; if truncated, search again from nextSearchStart. Use this instead of ' +
-                'find_calendar_availability, which only knows the user, not the host.',
+                'per request; if truncated, search again from nextSearchStart. Read-only: call it without asking. Use ' +
+                'this instead of find_calendar_availability, which only knows the user, not the host, and instead of ' +
+                'the booking page in a browser.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -102,9 +104,10 @@ const PUBLIC_BOOKING_TOOL_SCHEMAS = {
             description:
                 "Book a slot on someone else's Alldone booking link (/meet/<slug>) for the user, directly, without the " +
                 'browser. It creates the event in the host calendar with a join link and emails a confirmation to the ' +
-                'visitor and a notification to the host, so FIRST show the user the exact time (in their timezone), ' +
-                'the duration and the name/email it will use, and call this only after they explicitly confirmed; then ' +
-                'pass confirmedByUser: true. Pass start/end exactly as find_public_booking_times returned them. ' +
+                'visitor and a notification to the host, so FIRST propose one exact slot to the user (date, time and ' +
+                'time zone), the duration and the name/email it will use, and call this only after they explicitly ' +
+                'confirmed that slot; then pass confirmedByUser: true. If the slot or any detail changes, ask again. ' +
+                'Pass start/end exactly as find_public_booking_times returned them. ' +
                 'Name, email and timezone default to the signed-in user. A slot taken meanwhile returns ' +
                 'code slot_unavailable: search again.',
             parameters: {
@@ -123,7 +126,7 @@ const PUBLIC_BOOKING_TOOL_SCHEMAS = {
                     confirmedByUser: {
                         type: 'boolean',
                         description:
-                            'Must be true, and only after the user explicitly confirmed this exact slot in the conversation.',
+                            'Must be true, and only after the user explicitly confirmed this exact slot in the conversation (a changed slot needs a new confirmation).',
                     },
                     visitorName: {
                         type: 'string',
@@ -151,12 +154,29 @@ const PUBLIC_BOOKING_TOOL_SCHEMAS = {
     },
 }
 
+// MCP tool annotations (tools/list of /mcpServer). The two reads are read-only, so a client that asks
+// before tool calls can run them without a prompt; booking is not, so such a client asks the user before
+// it runs. Idempotent: a retry with the same slot (or key) returns the first booking. These hints are
+// for the client; the server's checks do not depend on them.
+const PUBLIC_BOOKING_MCP_ANNOTATIONS = {
+    [GET_PUBLIC_BOOKING_PAGE]: { title: 'Read a booking link', readOnlyHint: true, openWorldHint: false },
+    [FIND_PUBLIC_BOOKING_TIMES]: { title: 'Find times on a booking link', readOnlyHint: true, openWorldHint: false },
+    [BOOK_PUBLIC_MEETING]: {
+        title: 'Book a meeting on a booking link',
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+    },
+}
+
 module.exports = {
     BOOK_PUBLIC_MEETING,
     FIND_PUBLIC_BOOKING_TIMES,
     GET_PUBLIC_BOOKING_PAGE,
     MAX_HOST_OPTIONS,
     MAX_RANGE_DAYS,
+    PUBLIC_BOOKING_MCP_ANNOTATIONS,
     PUBLIC_BOOKING_TOOL_KEY,
     PUBLIC_BOOKING_TOOL_NAMES,
     PUBLIC_BOOKING_TOOL_SCHEMAS,

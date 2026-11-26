@@ -5890,7 +5890,7 @@ async function executeToolNativelyImpl(
     // attributed to the requesting user, which is what the audit record needs anyway.
     if (isBrowserToolName(toolName)) {
         const { executeBrowserTool } = require('./browser/browserSession')
-        return executeBrowserTool({
+        const browserResult = await executeBrowserTool({
             toolName,
             toolArgs,
             projectId,
@@ -5898,6 +5898,11 @@ async function executeToolNativelyImpl(
             requestUserId,
             toolRuntimeContext,
         })
+        // On an Alldone booking page (/meet/<slug>), a completed step also names the booking tools, so
+        // the agent books through them instead of clicking the page (AT-3161). Gated or refused steps
+        // come back unchanged.
+        const { attachBookingPageBrowserHint } = require('../Booking/publicBookingLink')
+        return attachBookingPageBrowserHint(browserResult, { toolName, toolArgs })
     }
 
     // MCP's workspace tools (projects, contact statuses, assistants, scheduled tasks): the MCP handlers,
@@ -14185,7 +14190,7 @@ async function addBaseInstructions(
     if (Array.isArray(allowedTools) && allowedTools.includes(PUBLIC_BOOKING_TOOL_KEY)) {
         messages.push([
             'system',
-            "When the user gives you someone else's Alldone booking link (/meet/<slug>), book through the tools, never by browsing the page: get_public_booking_page, then find_public_booking_times (it already matches the host's free slots against the user's own connected calendar; visitorCalendar.checked says whether it could), offer the times in the user's timezone, and call book_public_meeting with confirmedByUser: true only after the user confirmed one exact slot. Use the user's known name, email and timezone; ask only for what is missing.",
+            "When the user gives you someone else's Alldone booking link (/meet/<slug>), book through the tools, never by browsing the page: get_public_booking_page, then find_public_booking_times (it already matches the host's free slots against the user's own connected calendar; visitorCalendar.checked says whether it could), propose one slot with date, time and time zone (no confirmation needed for these reads), and call book_public_meeting with confirmedByUser: true only after the user confirmed that exact slot; if the slot changes, ask again. Use the user's known name, email and timezone; ask only for what is missing.",
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_chat_attachment')) {

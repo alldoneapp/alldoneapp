@@ -125,11 +125,19 @@ describe('per-page agent instructions (AT-3161)', () => {
     test('tells an agent already connected to Alldone to use its own booking tools, not the browser', () => {
         const text = buildAgentInstructionsText(page)
         expect(text).toContain('## Already connected to Alldone? Use your own tools')
-        expect(text).toContain('do not open this page in a browser')
+        expect(text).toContain('do not open or click this page')
         expect(text).toContain('`find_public_booking_times`')
         expect(text).toContain('`book_public_meeting` with `bookingUrl: "https://my.alldone.app/meet/karsten-wysk"`')
-        expect(text).toContain('`confirmedByUser: true`')
-        // The anonymous options stay as they were.
+        expect(text).toContain('`confirmedByUser: true` only after your user confirmed exactly that slot')
+        expect(text).toContain('The two reads need no confirmation')
+        expect(text).toContain('Propose one slot with date, time and time zone')
+        expect(text).toContain('if the')
+        // Missing tools: say how to get them, never fall back to clicking.
+        expect(text).toContain('refresh or reconnect the Alldone connector')
+        expect(text).toContain('do not fall back')
+        // Comes before the anonymous options, which stay as they were.
+        expect(text.indexOf('## Already connected')).toBeLessThan(text.indexOf('## How to book'))
         expect(text).toContain('## Option A: MCP (remote server, no authentication)')
+        expect(text.match(/^## Already connected/gm)).toHaveLength(1)
     })
 })

@@ -206,7 +206,18 @@ const applyMcpCreateTaskDefaults = toolArgs => {
     return toolArgs
 }
 
+// MCP tool annotations for delegated tools that declare them (readOnlyHint etc.). Clients that ask the
+// user before a tool call use them to skip that prompt for pure reads and keep it for writes.
+const { PUBLIC_BOOKING_MCP_ANNOTATIONS } = require('../Booking/publicBookingToolSchemas')
+const MCP_TOOL_ANNOTATIONS = { ...PUBLIC_BOOKING_MCP_ANNOTATIONS }
+
 function adaptToolSchemaForMcp(schema) {
+    const adapted = adaptToolSchemaShapeForMcp(schema)
+    const annotations = MCP_TOOL_ANNOTATIONS[adapted.name]
+    return annotations ? { ...adapted, annotations: { ...annotations } } : adapted
+}
+
+function adaptToolSchemaShapeForMcp(schema) {
     const { name, description, parameters } = schema.function
     if (MCP_TOOLS_ACTING_ON_A_NAMED_ASSISTANT.has(name)) {
         return {

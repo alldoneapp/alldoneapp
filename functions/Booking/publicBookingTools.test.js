@@ -40,6 +40,7 @@ const { executePublicBookingTool, resolveBookingSlug } = require('./publicBookin
 const {
     MAX_HOST_OPTIONS,
     MAX_RANGE_DAYS,
+    PUBLIC_BOOKING_MCP_ANNOTATIONS,
     PUBLIC_BOOKING_TOOL_NAMES,
     PUBLIC_BOOKING_TOOL_SCHEMAS,
 } = require('./publicBookingToolSchemas')
@@ -205,6 +206,8 @@ describe('public booking tools for connected agents (get_public_booking_page, fi
             end: slot.end,
         })
         expect(unconfirmed).toEqual(expect.objectContaining({ success: false, code: 'confirmation_required' }))
+        expect(unconfirmed.message).toMatch(/date, time and time zone/)
+        expect(unconfirmed.message).toMatch(/If they pick another slot, ask again/)
         expect(createCalendarEventForAssistantRequest).not.toHaveBeenCalled()
 
         const booking = await run('book_public_meeting', {
@@ -449,6 +452,19 @@ describe('public booking tools for connected agents (get_public_booking_page, fi
             expect(schema.name).toBe(name)
             expect(schema.parameters.required).toContain('bookingUrl')
         }
+        // A changed slot needs a new confirmation; the reads need none.
+        expect(book.description).toMatch(/If the slot or any detail changes, ask again/)
+        expect(book.parameters.properties.confirmedByUser.description).toMatch(
+            /a changed slot needs a new confirmation/
+        )
+        expect(PUBLIC_BOOKING_TOOL_SCHEMAS.get_public_booking_page.function.description).toMatch(/Read-only/)
+        expect(PUBLIC_BOOKING_TOOL_SCHEMAS.find_public_booking_times.function.description).toMatch(/Read-only/)
+        // MCP annotations: reads are read-only, booking is a (non-destructive, idempotent) write.
+        expect(PUBLIC_BOOKING_MCP_ANNOTATIONS.get_public_booking_page.readOnlyHint).toBe(true)
+        expect(PUBLIC_BOOKING_MCP_ANNOTATIONS.find_public_booking_times.readOnlyHint).toBe(true)
+        expect(PUBLIC_BOOKING_MCP_ANNOTATIONS.book_public_meeting).toEqual(
+            expect.objectContaining({ readOnlyHint: false, destructiveHint: false, idempotentHint: true })
+        )
         // The read tools say what they replace, so an agent stops reaching for the browser.
         expect(PUBLIC_BOOKING_TOOL_SCHEMAS.get_public_booking_page.function.description).toMatch(/instead of opening/)
         expect(PUBLIC_BOOKING_TOOL_SCHEMAS.find_public_booking_times.function.description).toMatch(

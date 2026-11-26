@@ -32,7 +32,7 @@ export const getPublicBookingDocsPath = slug => `/meet/${encodeSlug(slug)}/llms.
 // An agent already connected to Alldone (MCP connector, `window.alldone` in a signed-in tab, an Alldone
 // assistant) books from its own tool list, with the user's details and calendar (AT-3161 follow-up).
 export const CONNECTED_ALLDONE_AGENT_HINT =
-    'Already connected to Alldone as a signed-in user? Then you need no browser: call get_public_booking_page, find_public_booking_times and book_public_meeting from your Alldone tools with bookingUrl set to this page.'
+    'Already connected to Alldone as a signed-in user? Then you need no browser and no clicks: call get_public_booking_page and find_public_booking_times (reads, no confirmation needed), then book_public_meeting only after the user confirmed the exact slot, from your Alldone tools with bookingUrl set to this page. If they are missing, ask the user to refresh or reconnect the Alldone connector.'
 
 export const buildPublicBookingInstructions = ({ slug, webMcpSupported, toolNames } = {}) =>
     [

@@ -3,6 +3,7 @@ import { Animated, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpac
 import moment from 'moment-timezone'
 
 import Button from '../UIControls/Button'
+import Icon from '../Icon'
 import styles, { colors, hexColorToRGBa } from '../styles/global'
 import { setLanguage, translate } from '../../i18n/TranslationService'
 import { BOOKING_LANGUAGES, getInitialBookingLanguage, persistBookingLanguage } from './bookingLanguage'
@@ -19,7 +20,7 @@ import { adaptiveColor, themed } from '../../Themes/colorMode'
 import { AGENT_API_STATES, WINDOW_API_NAME } from '../../utils/browserAgent/browserAgentApi'
 import { installPublicBookingAgentApi } from '../../utils/browserAgent/publicBookingAgentApi'
 import { ensureWebMcpOriginTrialToken } from '../../utils/browserAgent/webMcpOriginTrial'
-import { buildBookingAgentPrompt, copyBookingText, getBookingPageUrl } from './bookingAgentPrompt'
+import { buildBookingAgentPrompt, copyBookingText } from './bookingAgentPrompt'
 
 const PUBLIC_BOOKING_DAYS_TO_SHOW = 31
 const AGENT_PROMPT_COPY_FEEDBACK_MS = 2000
@@ -461,15 +462,22 @@ export default function MeetingBookingPage({ navigation }) {
     )
 }
 
+// How many lines of the prompt the info box shows. The whole prompt stays in the DOM (an agent reading
+// the page gets all of it) and is copied in full; a failed copy shows it all for copying by hand.
+const AGENT_PROMPT_PREVIEW_LINES = 3
+
 // AT-3161: tells visitors they can hand this page to their own AI agent, with a ready prompt.
-// Collapsed by default under the heading (Karsten, 2026-11-26) so the form stays first on a phone.
+// A compact, always visible info box under the heading (Karsten, 2026-11-26 follow-up). It used to be
+// a "Book with your AI agent" expander: a button with a chevron that agents read as a booking action,
+// so an agent driving the page with browser tools tried to open it and stopped at the approval gate.
+// Now its label is neutral, nothing expands, and "Copy prompt" is its only action.
 export function BookingAgentHint({ slug }) {
-    const [open, setOpen] = useState(false)
     const [copyState, setCopyState] = useState('idle') // 'idle' | 'copied' | 'failed'
     const resetTimer = useRef(null)
     useEffect(() => () => clearTimeout(resetTimer.current), [])
 
-    const prompt = buildBookingAgentPrompt(getBookingPageUrl(slug))
+    const prompt = buildBookingAgentPrompt(slug)
+    const titleId = 'booking-agent-info-title'
 
     const onCopy = async () => {
         clearTimeout(resetTimer.current)
@@ -480,55 +488,49 @@ export function BookingAgentHint({ slug }) {
     }
 
     return (
-        <View style={localStyles.agentHint} testID="booking-agent-hint">
-            <TouchableOpacity
-                testID="booking-agent-hint-toggle"
-                role="button"
-                aria-expanded={open}
-                style={localStyles.agentHintToggle}
-                onPress={() => setOpen(current => !current)}
-            >
-                <Text style={localStyles.agentHintToggleText}>{translate('Book with your AI agent')}</Text>
-                <Text style={localStyles.agentHintCaret}>{open ? '▾' : '▸'}</Text>
-            </TouchableOpacity>
-            {open && (
-                <View style={localStyles.agentHintPanel} testID="booking-agent-hint-panel">
-                    <Text style={localStyles.agentHintText}>{translate('Booking agent hint description')}</Text>
-                    <View style={localStyles.agentPromptBox}>
-                        <Text testID="booking-agent-prompt" style={localStyles.agentPromptText} selectable>
-                            {prompt}
-                        </Text>
-                    </View>
-                    <View style={localStyles.agentHintActions}>
-                        <Button
-                            testID="booking-agent-prompt-copy"
-                            type={copyState === 'copied' ? 'secondary' : 'primary'}
-                            icon={copyState === 'copied' ? 'check' : 'copy'}
-                            iconSize={16}
-                            iconGap={8}
-                            title={translate(copyState === 'copied' ? 'Copied' : 'Copy prompt')}
-                            onPress={onCopy}
-                            accessible
-                            role="button"
-                            buttonStyle={localStyles.agentCopyButton}
-                        />
-                        <Text
-                            testID="booking-agent-prompt-copy-status"
-                            aria-live="polite"
-                            style={[
-                                localStyles.agentCopyStatus,
-                                copyState === 'failed' && localStyles.agentCopyStatusError,
-                            ]}
-                        >
-                            {copyState === 'copied'
-                                ? translate('Prompt copied')
-                                : copyState === 'failed'
-                                  ? translate('Could not copy the prompt')
-                                  : ''}
-                        </Text>
-                    </View>
-                </View>
-            )}
+        <View style={localStyles.agentInfo} testID="booking-agent-hint" role="note" aria-labelledby={titleId}>
+            <View style={localStyles.agentInfoHeader}>
+                <Icon name="info" size={16} color={colors.Text03} style={localStyles.agentInfoIcon} />
+                <Text nativeID={titleId} testID="booking-agent-info-title" style={localStyles.agentInfoTitle}>
+                    {translate('Booking agent info title')}
+                </Text>
+            </View>
+            <Text style={localStyles.agentInfoText}>{translate('Booking agent info description')}</Text>
+            <View style={localStyles.agentPromptBox}>
+                <Text
+                    testID="booking-agent-prompt"
+                    style={localStyles.agentPromptText}
+                    numberOfLines={copyState === 'failed' ? undefined : AGENT_PROMPT_PREVIEW_LINES}
+                    selectable
+                >
+                    {prompt}
+                </Text>
+            </View>
+            <View style={localStyles.agentInfoActions}>
+                <Button
+                    testID="booking-agent-prompt-copy"
+                    type="secondary"
+                    icon={copyState === 'copied' ? 'check' : 'copy'}
+                    iconSize={16}
+                    iconGap={8}
+                    title={translate(copyState === 'copied' ? 'Copied' : 'Copy prompt')}
+                    onPress={onCopy}
+                    accessible
+                    role="button"
+                    buttonStyle={localStyles.agentCopyButton}
+                />
+                <Text
+                    testID="booking-agent-prompt-copy-status"
+                    aria-live="polite"
+                    style={[localStyles.agentCopyStatus, copyState === 'failed' && localStyles.agentCopyStatusError]}
+                >
+                    {copyState === 'copied'
+                        ? translate('Prompt copied')
+                        : copyState === 'failed'
+                          ? translate('Could not copy the prompt')
+                          : ''}
+                </Text>
+            </View>
         </View>
     )
 }
@@ -806,53 +808,50 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 24,
     },
-    agentHint: {
-        marginTop: -12,
+    // The "For AI agents" info box: quiet surface, no accent color, so it reads as a note, not a CTA.
+    agentInfo: {
+        marginTop: -8,
         marginBottom: 16,
-    },
-    agentHintToggle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        alignSelf: 'flex-start',
-        minHeight: 44,
-        paddingVertical: 8,
-    },
-    agentHintToggleText: {
-        ...styles.subtitle2,
-        color: colors.Primary300,
-        marginRight: 6,
-    },
-    agentHintCaret: {
-        ...styles.caption2,
-        color: colors.Primary300,
-    },
-    agentHintPanel: {
-        padding: 14,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
         borderRadius: 8,
         borderWidth: 1,
         borderColor: colors.Grey300,
         backgroundColor: themed.Surface,
     },
-    agentHintText: {
-        ...styles.body2,
+    agentInfoHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    agentInfoIcon: {
+        marginRight: 6,
+    },
+    agentInfoTitle: {
+        ...styles.subtitle2,
         color: colors.Text02,
+        flexShrink: 1,
+    },
+    agentInfoText: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginTop: 4,
     },
     agentPromptBox: {
-        marginTop: 10,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
+        marginTop: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
         borderRadius: 6,
         backgroundColor: adaptiveColor('#F7F8FA'),
     },
     agentPromptText: {
-        ...styles.body2,
-        color: colors.Text01,
+        ...styles.caption1,
+        color: colors.Text02,
     },
-    agentHintActions: {
+    agentInfoActions: {
         flexDirection: 'row',
         alignItems: 'center',
         flexWrap: 'wrap',
-        marginTop: 12,
+        marginTop: 10,
     },
     agentCopyButton: {
         marginRight: 12,

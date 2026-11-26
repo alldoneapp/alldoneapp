@@ -68,7 +68,11 @@ describe('booking page agent API (AT-3161)', () => {
         expect(window.alldone.help()).toContain('No sign-in needed')
         expect(window.alldone.help()).toContain('/meet/karsten-wysk/llms.txt')
         // An agent that is signed in to Alldone elsewhere is pointed at its own tools (AT-3161 follow-up).
-        expect(window.alldone.help()).toContain('find_public_booking_times and book_public_meeting')
+        const help = window.alldone.help()
+        expect(help).toContain('get_public_booking_page and find_public_booking_times (reads, no confirmation needed)')
+        expect(help).toContain('book_public_meeting only after the user confirmed the exact slot')
+        expect(help).toContain('no clicks')
+        expect(help).toContain('refresh or reconnect the Alldone connector')
         expect(window.alldone.docs).toBe('/meet/karsten-wysk/llms.txt')
         expect(console.info).toHaveBeenCalledWith(expect.stringContaining('Booking page agent API ready'))
         // Nothing is requested until an agent asks (no WebMCP in this browser).
