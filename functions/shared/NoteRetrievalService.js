@@ -198,6 +198,8 @@ class NoteRetrievalService {
         return notes
     }
 
+    // Resolves to null when the body could not be read, so a list never shows an error text as a
+    // note's preview.
     async loadNoteContent(projectId, noteId) {
         try {
             const { NoteService } = require('./NoteService')
@@ -212,25 +214,31 @@ class NoteRetrievalService {
             return content || ''
         } catch (error) {
             console.warn(`NoteRetrievalService: Failed to load content for note ${noteId}:`, error.message)
-            return '[Content could not be loaded]'
+            return null
         }
     }
 
+    // A list item carries metadata and a short `contentPreview`, never the note's content: the full
+    // text is read with get_notes noteId + projectId (AT-3159). `contentPreviewTruncated` says
+    // whether the preview is shorter than the note.
     mapNote(note, project, content) {
+        const contentUnavailable = content === null
         const normalizedContent = String(content || '')
             .replace(/\s+/g, ' ')
             .trim()
-        const preview =
-            normalizedContent.length > NOTE_PREVIEW_MAX_LENGTH
-                ? `${normalizedContent.slice(0, NOTE_PREVIEW_MAX_LENGTH).trimEnd()}…`
-                : normalizedContent
+        const contentPreviewTruncated = normalizedContent.length > NOTE_PREVIEW_MAX_LENGTH
+        const contentPreview = contentPreviewTruncated
+            ? `${normalizedContent.slice(0, NOTE_PREVIEW_MAX_LENGTH).trimEnd()}…`
+            : normalizedContent
 
         return {
             id: note.noteId,
             projectId: project.id,
             projectName: project.name || project.id,
             title: note.extendedTitle || note.title || 'Untitled Note',
-            preview,
+            contentPreview,
+            contentPreviewTruncated,
+            ...(contentUnavailable ? { contentPreviewUnavailable: true } : {}),
             createdAt: note.created || note.createdDate || null,
             lastEditedAt: Number(note.lastEditionDate) || 0,
             wordCount: normalizedContent ? normalizedContent.split(/\s+/).filter(Boolean).length : 0,

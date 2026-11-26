@@ -67,6 +67,54 @@ describe('SearchService direct note lookup', () => {
     })
 })
 
+// get_notes must never hand a model a placeholder or an empty string as a note's text (AT-3159).
+describe('SearchService getNote content loading', () => {
+    const { NoteService } = require('./NoteService')
+
+    const buildService = () => {
+        const service = new SearchService({
+            database: {
+                doc: jest.fn(() => ({
+                    get: jest.fn().mockResolvedValue({
+                        exists: true,
+                        data: () => ({ title: 'Spec', isPublicFor: [0], lastEditionDate: 5 }),
+                    }),
+                })),
+            },
+            enableNoteContent: true,
+        })
+        service.initialized = true
+        jest.spyOn(service, 'getUserProjects').mockResolvedValue([{ id: 'project-1', name: 'Product' }])
+        return service
+    }
+
+    afterEach(() => jest.restoreAllMocks())
+
+    test('returns the loaded text and the project name', async () => {
+        jest.spyOn(NoteService.prototype, 'initialize').mockResolvedValue(undefined)
+        jest.spyOn(NoteService.prototype, 'getStorageContent').mockResolvedValue('Full text')
+
+        const note = await buildService().getNote('user-1', 'note-1', 'project-1')
+
+        expect(note).toEqual(
+            expect.objectContaining({
+                content: 'Full text',
+                contentUnavailable: false,
+                projectName: 'Product',
+            })
+        )
+    })
+
+    test('marks the content unavailable when no loader could read it', async () => {
+        jest.spyOn(NoteService.prototype, 'initialize').mockResolvedValue(undefined)
+        jest.spyOn(NoteService.prototype, 'getStorageContent').mockRejectedValue(new Error('bucket down'))
+
+        const note = await buildService().getNote('user-1', 'note-1', 'project-1')
+
+        expect(note.contentUnavailable).toBe(true)
+    })
+})
+
 // An update_note in production took ~50s per call (2026-09-28): the note was found by reading
 // every one of the user's ~190 projects, then every project's note path, one await at a time.
 describe('SearchService note lookup cost', () => {

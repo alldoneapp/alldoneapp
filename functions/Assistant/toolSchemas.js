@@ -2848,19 +2848,27 @@ const toolSchemas = {
         function: {
             name: 'get_notes',
             description:
-                'Retrieve notes. Can fetch a single note by ID (returns full content) or list multiple notes filtered by date and project (returns metadata and a short preview, not full content). Use list mode to identify a note, then fetch the selected note by ID when its full content is needed.',
+                'Retrieve notes. Without noteId it lists notes filtered by date and project: each item has metadata and a short contentPreview, which is an excerpt, not the note content. ' +
+                'To read a note completely, call get_notes again with its noteId and projectId after listing; that returns the note text as content. ' +
+                'A note too large for one response comes in pages: the response then has truncated: true and a nextCursor. Call again with the same noteId, projectId and cursor set to nextCursor, and keep going until truncated is false; join the content of all pages in order. ' +
+                'Never treat a contentPreview or a page with truncated: true as the whole note.',
             parameters: {
                 type: 'object',
                 properties: {
                     noteId: {
                         type: 'string',
                         description:
-                            'Optional: the ID of a specific note to retrieve. When provided, projectId is also required. Returns the full content of that single note.',
+                            'Optional: the ID of a specific note to read. When provided, projectId is also required. Returns the note text as content (complete, or the first page with truncated: true and nextCursor).',
                     },
                     projectId: {
                         type: 'string',
                         description:
                             'Optional: scope to a specific project by ID. Required when noteId is provided. If both projectId and projectName are provided, projectId takes precedence.',
+                    },
+                    cursor: {
+                        type: 'string',
+                        description:
+                            'Optional: the nextCursor of the previous response for the same noteId and projectId, to read the next page of a note. Omit it for the first page. Only valid together with noteId and projectId.',
                     },
                     projectName: {
                         type: 'string',

@@ -13221,3 +13221,217 @@ describe('goal, milestone and OKR tools', () => {
         expect(result.project).toEqual({ id: 'project-1', name: 'Context project' })
     })
 })
+
+describe('get_notes contract: list previews, complete single reads, explicit pages (AT-3159)', () => {
+    const { SearchService } = require('../shared/SearchService')
+    const { NoteRetrievalService } = require('../shared/NoteRetrievalService')
+    const { NOTE_CONTENT_PAGE_MAX_CHARS } = require('../shared/notePagination')
+
+    const storedNote = content => ({
+        id: 'note-1',
+        projectId: 'project-1',
+        projectName: 'Product',
+        title: 'Spec',
+        content,
+        contentUnavailable: false,
+        createdDate: 100,
+        lastEditionDate: 200,
+        metadata: { wordCount: 3 },
+    })
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockReset()
+        mockDocGet.mockResolvedValue({ exists: true, data: () => ({ timezone: 'UTC+1' }) })
+        jest.spyOn(SearchService.prototype, 'initialize').mockResolvedValue(undefined)
+    })
+
+    afterEach(() => jest.restoreAllMocks())
+
+    test('a list returns contentPreview items and tells the caller how to read a note completely', async () => {
+        jest.spyOn(NoteRetrievalService.prototype, 'initialize').mockResolvedValue(undefined)
+        const getNotes = jest.spyOn(NoteRetrievalService.prototype, 'getNotes').mockResolvedValue({
+            notes: [
+                {
+                    id: 'note-1',
+                    projectId: 'project-1',
+                    title: 'Spec',
+                    contentPreview: 'Short excerpt…',
+                    contentPreviewTruncated: true,
+                },
+            ],
+            count: 1,
+            appliedFilters: { allProjects: false, projectId: 'project-1' },
+        })
+        const getNote = jest.spyOn(SearchService.prototype, 'getNote')
+
+        const result = await executeToolNatively('get_notes', { projectId: 'project-1' }, 'project-1', null, 'user-1')
+
+        expect(getNotes).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', projectId: 'project-1' }))
+        expect(getNote).not.toHaveBeenCalled()
+        expect(result.success).toBe(true)
+        expect(result.notes[0]).toHaveProperty('contentPreview', 'Short excerpt…')
+        expect(result.notes[0]).not.toHaveProperty('content')
+        expect(result.notes[0]).not.toHaveProperty('preview')
+        expect(result.hint).toContain('noteId')
+        expect(result.hint).toContain('nextCursor')
+        expect(result).not.toHaveProperty('truncated')
+    })
+
+    test('noteId + projectId returns the complete note text as content, without a full-text flag', async () => {
+        const content = 'Line one\n"quoted" line two\nLine three'
+        const getNote = jest.spyOn(SearchService.prototype, 'getNote').mockResolvedValue(storedNote(content))
+
+        const result = await executeToolNatively(
+            'get_notes',
+            { noteId: 'note-1', projectId: 'project-1' },
+            'project-1',
+            null,
+            'user-1'
+        )
+
+        expect(getNote).toHaveBeenCalledWith('user-1', 'note-1', 'project-1')
+        expect(result).toEqual(
+            expect.objectContaining({
+                success: true,
+                truncated: false,
+                nextCursor: null,
+                contentRange: { start: 0, end: content.length, totalCharacters: content.length },
+            })
+        )
+        expect(result.note).toEqual(
+            expect.objectContaining({
+                id: 'note-1',
+                projectId: 'project-1',
+                projectName: 'Product',
+                title: 'Spec',
+                content,
+                characterCount: content.length,
+                createdAt: 100,
+                updatedAt: 200,
+            })
+        )
+        // What the model sees is the same object: the context ceiling leaves it alone.
+        expect(buildConversationSafeToolResult('get_notes', result)).toEqual(result)
+    })
+
+    test('the legacy get_note name reads the same way', async () => {
+        jest.spyOn(SearchService.prototype, 'getNote').mockResolvedValue(storedNote('Body'))
+        const result = await executeToolNatively(
+            'get_note',
+            { noteId: 'note-1', projectId: 'project-1' },
+            'project-1',
+            null,
+            'user-1'
+        )
+        expect(result.note.content).toBe('Body')
+        expect(result.truncated).toBe(false)
+    })
+
+    test('a very large note is read page by page through nextCursor until it is complete', async () => {
+        const paragraphs = []
+        for (let i = 0; paragraphs.join('\n').length < 250000; i++) {
+            paragraphs.push(`Absatz ${i}: "Zitat" mit Umlauten äöü, Emoji 🚀 und Tab\t– ${'x'.repeat(i % 97)}`)
+        }
+        const content = paragraphs.join('\n')
+        jest.spyOn(SearchService.prototype, 'getNote').mockResolvedValue(storedNote(content))
+
+        const pages = []
+        let cursor
+        do {
+            const page = await executeToolNatively(
+                'get_notes',
+                { noteId: 'note-1', projectId: 'project-1', ...(cursor ? { cursor } : {}) },
+                'project-1',
+                null,
+                'user-1'
+            )
+            expect(page.success).toBe(true)
+            // Every page reaches the model unchanged, not shortened by the 40,000-character ceiling.
+            expect(buildConversationSafeToolResult('get_notes', page)).toEqual(page)
+            expect(JSON.stringify(page.note.content).length - 2).toBeLessThanOrEqual(NOTE_CONTENT_PAGE_MAX_CHARS)
+            if (page.truncated) {
+                expect(typeof page.nextCursor).toBe('string')
+                expect(page.message).toContain('nextCursor')
+            } else {
+                expect(page.nextCursor).toBeNull()
+            }
+            pages.push(page)
+            cursor = page.nextCursor
+            expect(pages.length).toBeLessThan(50)
+        } while (cursor)
+
+        expect(pages.length).toBeGreaterThan(5)
+        expect(pages.map(page => page.note.content).join('')).toBe(content)
+        pages.forEach((page, index) => {
+            const expectedStart = index === 0 ? 0 : pages[index - 1].contentRange.end
+            expect(page.contentRange.start).toBe(expectedStart)
+            expect(page.note.content.length).toBe(page.contentRange.end - page.contentRange.start)
+        })
+        expect(pages[pages.length - 1].contentRange.end).toBe(content.length)
+    })
+
+    test('a note edited between pages fails with note_changed instead of returning misaligned text', async () => {
+        const getNote = jest
+            .spyOn(SearchService.prototype, 'getNote')
+            .mockResolvedValue(storedNote('a\n'.repeat(40000)))
+        const first = await executeToolNatively(
+            'get_notes',
+            { noteId: 'note-1', projectId: 'project-1' },
+            'project-1',
+            null,
+            'user-1'
+        )
+        expect(first.truncated).toBe(true)
+
+        getNote.mockResolvedValue(storedNote(`inserted\n${'a\n'.repeat(40000)}`))
+        const next = await executeToolNatively(
+            'get_notes',
+            { noteId: 'note-1', projectId: 'project-1', cursor: first.nextCursor },
+            'project-1',
+            null,
+            'user-1'
+        )
+        expect(next).toEqual(expect.objectContaining({ success: false, code: 'note_changed' }))
+        expect(next).not.toHaveProperty('note')
+    })
+
+    test('validates noteId, projectId and cursor before reading', async () => {
+        const getNote = jest.spyOn(SearchService.prototype, 'getNote').mockResolvedValue(storedNote('Body'))
+        const run = args => executeToolNatively('get_notes', args, 'project-1', null, 'user-1')
+
+        await expect(run({ noteId: 'note-1' })).resolves.toEqual(
+            expect.objectContaining({ success: false, error: expect.stringContaining('projectId is required') })
+        )
+        await expect(run({ cursor: 'nc1.abc', projectId: 'project-1' })).resolves.toEqual(
+            expect.objectContaining({ success: false, code: 'invalid_cursor' })
+        )
+        await expect(run({ noteId: 'note-1', projectId: 'project-1', cursor: 42 })).resolves.toEqual(
+            expect.objectContaining({ success: false, code: 'invalid_cursor' })
+        )
+        await expect(run({ noteId: 7, projectId: 'project-1' })).resolves.toEqual(
+            expect.objectContaining({ success: false, error: 'noteId must be a string.' })
+        )
+        expect(getNote).not.toHaveBeenCalled()
+
+        await expect(run({ noteId: 'note-1', projectId: 'project-1', cursor: 'not-a-cursor' })).resolves.toEqual(
+            expect.objectContaining({ success: false, code: 'invalid_cursor' })
+        )
+    })
+
+    test('a note whose content could not be loaded is an error, not an empty or placeholder content', async () => {
+        jest.spyOn(SearchService.prototype, 'getNote').mockResolvedValue({
+            ...storedNote('[Content could not be loaded]'),
+            contentUnavailable: true,
+        })
+        const result = await executeToolNatively(
+            'get_notes',
+            { noteId: 'note-1', projectId: 'project-1' },
+            'project-1',
+            null,
+            'user-1'
+        )
+        expect(result).toEqual(expect.objectContaining({ success: false, code: 'content_unavailable' }))
+        expect(result.note).not.toHaveProperty('content')
+    })
+})

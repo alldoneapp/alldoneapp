@@ -90,6 +90,29 @@ sequential reads) and then probed each for the note (up to ~190 more). With both
 `projectId` it now does three reads (`findNoteInProject`, same membership + visibility rules);
 the fallback paths read projects at bounded concurrency and check the caller's project first.
 
+## `get_notes`: previews in lists, complete text by id, explicit pages (AT-3159)
+
+A list (no `noteId`) returns metadata and `contentPreview` (300 characters, whitespace collapsed,
+`contentPreviewTruncated`; `contentPreviewUnavailable` when the body could not be read; the old
+`preview` field is gone) plus a `hint` on how to read a note completely. A read with `noteId` +
+`projectId` returns the note text as `note.content`, with no full-text switch. Before AT-3159
+that read was cut afterwards: `enforceToolResultContextCeiling` (40,000 serialized characters,
+`Assistant/attachmentToolHandoff.js`) shortened a large note's content to ~2,000 characters and
+gave no way to read the rest, while MCP (no ceiling) returned it whole. Now
+`shared/notePagination.js` pages it: at most 30,000 serialized characters of content per page
+(JSON escapes count, a long title takes its room from the page, the response stays below 38,000).
+A page that is not the last one has `truncated: true`, `nextCursor` and a `message`. Calling again
+with `cursor` returns the next page, and `contentRange` gives the offsets. Pages end after a line
+break where they can, never split a surrogate pair, and joined in order give the exact text. The
+cursor carries a fingerprint of the text: if the note changes between pages, the read fails with
+`code: 'note_changed'` (start again without a cursor) instead of returning a gap or a repeat. A
+body that could not be loaded is `code: 'content_unavailable'`, not the old placeholder text
+returned as content. MCP gets the same pages through `executeToolNatively`. Pinned by
+`shared/notePagination.test.js`, `shared/NoteRetrievalService.test.js` and the `get_notes contract`
+block in `Assistant/assistantHelper.test.js`. Still open: the in-run research guard compacts older
+tool results once the working context passes 100 KB, so a model that reads many pages should
+work through them as it goes. Its 48-call budget also caps a single run at ~1.4M characters.
+
 ## A date-only dueDate is "due on that day", not a new timestamp (AT-2891)
 
 Codex resent `update_task` with `dueDate: "2026-10-27"` next to every progress comment to keep a

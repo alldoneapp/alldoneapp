@@ -332,9 +332,20 @@ describe('User memory assistant tool schemas', () => {
     test('documents compact note list limits and single-note full-content retrieval', () => {
         const getNotes = toolSchemas.get_notes.function
 
-        expect(getNotes.description).toContain('metadata and a short preview')
-        expect(getNotes.description).toContain('fetch the selected note by ID')
+        expect(getNotes.description).toContain('short contentPreview, which is an excerpt, not the note content')
+        expect(getNotes.description).toContain(
+            'To read a note completely, call get_notes again with its noteId and projectId after listing'
+        )
+        expect(getNotes.description).toContain('truncated: true and a nextCursor')
+        expect(getNotes.description).toContain('keep going until truncated is false')
         expect(getNotes.parameters.properties.limit.description).toContain('Default is 20, maximum is 50')
+        // A single read needs no full-text switch: noteId + projectId always return content.
+        expect(Object.keys(getNotes.parameters.properties).sort()).toEqual(
+            ['allProjects', 'cursor', 'date', 'limit', 'noteId', 'projectId', 'projectName'].sort()
+        )
+        expect(getNotes.parameters.properties.cursor.type).toBe('string')
+        expect(getNotes.parameters.properties.cursor.description).toContain('nextCursor')
+        expect(getNotes.parameters.required).toEqual([])
     })
 
     test('documents project description update fields', () => {

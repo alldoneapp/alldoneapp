@@ -9402,19 +9402,41 @@ async function executeToolNativelyImpl(
 
         case 'get_note':
         case 'get_notes': {
+            // Contract (AT-3159): a list returns metadata and a short contentPreview; a read with noteId
+            // and projectId returns the note's text as content, page by page (truncated + nextCursor)
+            // when it is larger than one response. Nothing is shortened without saying so.
+            const hasCursor = toolArgs.cursor !== undefined && toolArgs.cursor !== null && toolArgs.cursor !== ''
+            if (hasCursor && typeof toolArgs.cursor !== 'string') {
+                return { success: false, code: 'invalid_cursor', error: 'cursor must be the nextCursor string.' }
+            }
+            if (toolArgs.noteId !== undefined && toolArgs.noteId !== null && typeof toolArgs.noteId !== 'string') {
+                return { success: false, error: 'noteId must be a string.' }
+            }
+            const requestedNoteId = typeof toolArgs.noteId === 'string' ? toolArgs.noteId.trim() : ''
+            if (hasCursor && !requestedNoteId) {
+                return {
+                    success: false,
+                    code: 'invalid_cursor',
+                    error: "cursor continues reading one note: pass it together with that note's noteId and projectId.",
+                }
+            }
+
             // Single note by ID
-            if (toolArgs.noteId) {
+            if (requestedNoteId) {
                 console.log('📝 GET_NOTES TOOL: Fetching single note by ID', {
                     creatorId,
-                    noteId: toolArgs.noteId,
+                    noteId: requestedNoteId,
                     projectId: toolArgs.projectId,
+                    hasCursor,
                 })
 
-                if (!toolArgs.projectId) {
+                const requestedProjectId = typeof toolArgs.projectId === 'string' ? toolArgs.projectId.trim() : ''
+                if (!requestedProjectId) {
                     return { success: false, error: 'projectId is required when fetching a note by noteId.' }
                 }
 
                 const { SearchService } = require('../shared/SearchService')
+                const { buildSingleNotePage, NoteCursorError } = require('../shared/notePagination')
                 const moment = require('moment')
 
                 let storageBucket = null
@@ -9434,25 +9456,48 @@ async function executeToolNativelyImpl(
                 })
                 await searchService.initialize()
 
-                const note = await searchService.getNote(creatorId, toolArgs.noteId, toolArgs.projectId)
+                const note = await searchService.getNote(creatorId, requestedNoteId, requestedProjectId)
                 console.log('📝 GET_NOTES TOOL: Single note retrieved', {
                     noteId: note.id,
                     title: note.title,
                     contentLength: note.content?.length || 0,
+                    contentUnavailable: note.contentUnavailable === true,
                 })
 
-                return {
-                    success: true,
-                    note: {
-                        id: note.id,
-                        title: note.title,
-                        content: note.content,
-                        projectId: note.projectId,
-                        projectName: note.projectName,
-                        createdAt: note.createdDate,
-                        updatedAt: note.lastEditionDate,
-                        wordCount: note.metadata?.wordCount || 0,
-                    },
+                if (note.contentUnavailable) {
+                    return {
+                        success: false,
+                        code: 'content_unavailable',
+                        error: 'The content of this note could not be loaded. Try again later; do not treat the note as empty.',
+                        note: { id: note.id, title: note.title, projectId: note.projectId },
+                    }
+                }
+
+                try {
+                    const page = buildSingleNotePage(
+                        {
+                            id: note.id,
+                            title: note.title,
+                            projectId: note.projectId,
+                            projectName: note.projectName,
+                            content: note.content,
+                            createdAt: note.createdDate,
+                            updatedAt: note.lastEditionDate,
+                            wordCount: note.metadata?.wordCount || 0,
+                        },
+                        { cursor: hasCursor ? toolArgs.cursor : null }
+                    )
+                    console.log('📝 GET_NOTES TOOL: Returning note page', {
+                        noteId: note.id,
+                        contentRange: page.contentRange,
+                        truncated: page.truncated,
+                    })
+                    return page
+                } catch (error) {
+                    if (error instanceof NoteCursorError) {
+                        return { success: false, code: error.code, error: error.message }
+                    }
+                    throw error
                 }
             }
 
@@ -9515,6 +9560,7 @@ async function executeToolNativelyImpl(
                 notes: notesResult.notes,
                 count: notesResult.count,
                 appliedFilters: notesResult.appliedFilters,
+                ...(notesResult.count > 0 ? { hint: require('../shared/notePagination').GET_NOTES_LIST_HINT } : {}),
             }
         }
 

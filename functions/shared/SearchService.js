@@ -713,9 +713,9 @@ class SearchService {
 
         // Verify user has access to this project
         const userProjects = await this.getUserProjects(userId)
-        const hasAccess = userProjects.some(p => p.id === projectId)
+        const project = userProjects.find(p => p.id === projectId)
 
-        if (!hasAccess) {
+        if (!project) {
             throw new Error('User does not have access to this project')
         }
 
@@ -758,6 +758,9 @@ class SearchService {
 
         // Get full note content if available
         let content = ''
+        // Set when the body could not be read: the placeholder text is not the note's content, and a
+        // reader that must return the full note (get_notes) reports an error instead (AT-3159).
+        let contentUnavailable = false
         if (this.options.enableNoteContent) {
             try {
                 // Try using NoteService first (more robust bucket name resolution)
@@ -781,18 +784,25 @@ class SearchService {
                 // Fallback to searchHelper.getNoteContent if NoteService failed
                 if (!noteContentLoaded && getNoteContent) {
                     content = await getNoteContent(projectId, resolvedNoteId)
+                    noteContentLoaded = true
                     console.log(`SearchService: Loaded note content via searchHelper (${content.length} chars)`)
+                }
+                if (!noteContentLoaded) {
+                    throw new Error('No note content loader succeeded')
                 }
             } catch (error) {
                 console.error('SearchService: Failed to load note content:', error.message)
                 console.error('SearchService: Error stack:', error.stack)
                 content = '[Content could not be loaded]'
+                contentUnavailable = true
             }
         }
 
         return {
             id: resolvedNoteId,
             projectId,
+            projectName: project.name || null,
+            contentUnavailable,
             title: noteData.title || 'Untitled Note',
             content,
             createdDate: noteData.created || noteData.createdDate,
