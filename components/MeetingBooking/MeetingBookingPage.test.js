@@ -541,11 +541,11 @@ describe('MeetingBookingPage agent hint (AT-3161)', () => {
         expect(prompt).toContain(`${window.location.origin}/meet/karsten-wysk`)
         expect(window.location.origin).not.toContain('my.alldone.app')
         expect(prompt).not.toContain('my.alldone.app')
-        expect(prompt).toContain('available times')
-        expect(prompt).toContain('Ask me about my preferences')
-        expect(prompt).toContain('booking details you still need')
-        expect(prompt).toContain('suggest suitable options')
-        expect(prompt).toContain('Only book once I have explicitly confirmed')
+        expect(prompt).toContain('Find a suitable meeting time')
+        expect(prompt).toContain('Use existing context (name, email, time zone, preferences)')
+        expect(prompt).toContain('my calendar, if connected')
+        expect(prompt).toContain('Ask only for missing details')
+        expect(prompt).toContain('Book only after I confirm')
         expect(tree.root.findByProps({ testID: 'booking-agent-prompt' }).props.selectable).toBe(true)
     })
 
@@ -564,9 +564,9 @@ describe('MeetingBookingPage agent hint (AT-3161)', () => {
 
         expect(tree.root.findAllByProps({ children: 'Mit deinem KI-Agenten buchen' }).length).toBeGreaterThan(0)
         expect(promptText(tree)).toContain(
-            `Hilf mir, über diese Seite einen Termin zu vereinbaren: ${window.location.origin}/meet/karsten-wysk`
+            `Finde einen passenden Termin: ${window.location.origin}/meet/karsten-wysk\n`
         )
-        expect(promptText(tree)).toContain('Buche erst, nachdem ich eine davon ausdrücklich bestätigt habe.')
+        expect(promptText(tree)).toContain('Buche erst nach meiner Bestätigung.')
         expect(copyButton(tree).props.title).toBe('Prompt kopieren')
     })
 

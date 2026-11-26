@@ -3073,7 +3073,7 @@
     "Try out alldone.app": "Probar alldone.app",
     "Book with your AI agent": "Reservar con tu agente de IA",
     "Booking agent hint description": "Tu agente de IA puede encontrar un horario y reservar por ti si puede usar un navegador o herramientas MCP. No todos los chatbots pueden abrir páginas web o reservar. Copia este prompt en tu agente:",
-    "Booking agent prompt": "Ayúdame a reservar una reunión a través de esta página: %{url}\nPregúntame por mis preferencias (días, horarios, duración, zona horaria) y por los datos que falten para la reserva (nombre, correo electrónico, nota opcional). Después consulta los horarios disponibles y propónme opciones adecuadas. Reserva solo cuando haya confirmado expresamente una de ellas.",
+    "Booking agent prompt": "Encuentra una cita adecuada: %{url}\nUsa el contexto disponible (nombre, correo, zona horaria, preferencias) y mi calendario, si está conectado. Pregunta solo por lo que falte. Reserva solo tras mi confirmación.",
     "Copy prompt": "Copiar prompt",
     "Prompt copied": "Prompt copiado",
     "Could not copy the prompt": "No se pudo copiar. Selecciona el texto de arriba y cópialo manualmente.",
