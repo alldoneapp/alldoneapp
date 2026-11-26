@@ -307,7 +307,6 @@ export default function MeetingBookingPage({ navigation }) {
                 </View>
 
                 <BookingAgentHint slug={page.slug || slug} />
-                <BookingHumanHint />
 
                 <View style={localStyles.timeZoneBar}>
                     <Text style={localStyles.timeZoneLabel}>{translate('Times shown in')}</Text>
@@ -532,30 +531,6 @@ export function BookingAgentHint({ slug }) {
                           : ''}
                 </Text>
             </View>
-        </View>
-    )
-}
-
-// AT-3161 follow-up (Karsten, 2026-11-26): right under the "For AI agents" box, a short note that people
-// book on this page itself, so the agent box does not read as the only way. Same quiet note style, no action.
-export function BookingHumanHint() {
-    const titleId = 'booking-human-info-title'
-    return (
-        <View
-            style={[localStyles.agentInfo, localStyles.humanInfo]}
-            testID="booking-human-hint"
-            role="note"
-            aria-labelledby={titleId}
-        >
-            <View style={localStyles.agentInfoHeader}>
-                <Icon name="user" size={16} color={colors.Text03} style={localStyles.agentInfoIcon} />
-                <Text nativeID={titleId} testID="booking-human-info-title" style={localStyles.agentInfoTitle}>
-                    {translate('Booking human info title')}
-                </Text>
-            </View>
-            <Text testID="booking-human-info-description" style={localStyles.agentInfoText}>
-                {translate('Booking human info description')}
-            </Text>
         </View>
     )
 }
@@ -843,10 +818,6 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Grey300,
         backgroundColor: themed.Surface,
-    },
-    // The "For humans" note under it: same look, 8px below the agent box (its 16px bottom margin minus 8).
-    humanInfo: {
-        marginTop: -8,
     },
     agentInfoHeader: {
         flexDirection: 'row',

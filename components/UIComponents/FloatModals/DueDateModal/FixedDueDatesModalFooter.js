@@ -21,6 +21,7 @@ export default function FixedDueDatesModalFooter({
     setVisibleCalendar,
     updateParentGoalReminderDate,
     showAutoPostpone,
+    wrapSingleTaskPostpone,
     goal,
     animateGoalPostpone,
     postponeProject,
@@ -63,6 +64,7 @@ export default function FixedDueDatesModalFooter({
                     saveDueDateBeforeSaveTask={saveDueDateBeforeSaveTask}
                     animateGoalPostpone={animateGoalPostpone}
                     postponeProject={postponeProject}
+                    wrapSingleTaskPostpone={wrapSingleTaskPostpone}
                 />
             )}
         </View>

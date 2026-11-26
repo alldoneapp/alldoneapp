@@ -23,6 +23,12 @@ import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import { applyPostponeToGoalTaskList } from './applyPostponeToGoalTaskList'
 import { postponeGoalWithMotion } from '../../../TaskListView/OpenTasksView/goalPostponeMotion'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import EmailArchiveOption from './EmailArchiveOption'
+import {
+    getPostponeEmailArchiveData,
+    useEmailPostponeArchiveOption,
+    wrapPostponeWithEmailArchive,
+} from './emailPostponeArchive'
 
 import { themed } from '../../../../Themes/colorMode'
 
@@ -62,6 +68,24 @@ function DueDateModal({
     )
 
     const parentGoalId = task ? task.parentGoalId : ''
+
+    // AT-3164: "Archive email in Gmail", shown only while the linked email is still in the inbox.
+    const emailArchiveData = getPostponeEmailArchiveData({
+        task,
+        inEditTask,
+        multipleTasks,
+        inParentGoal,
+        postponeProject,
+        updateParentGoalReminderDate,
+        goal,
+    })
+    const emailArchiveOption = useEmailPostponeArchiveOption(emailArchiveData)
+
+    // Decided when a date is confirmed. Cancelling the dialog never reaches this.
+    const withEmailArchive = write =>
+        emailArchiveOption.shouldArchive()
+            ? wrapPostponeWithEmailArchive(write, { archiveData: emailArchiveData })
+            : write
 
     useEffect(() => {
         if (parentGoalId) {
@@ -139,6 +163,8 @@ function DueDateModal({
 
     const wrappedSaveDueDate = (date, isObserved) => {
         if (postponeProject) return runProjectPostpone(date)
+        // The archive choice is read now, at the click; the write itself runs a tick later.
+        const saveSingleTask = withEmailArchive(() => saveDueDateBeforeSaveTask(task, date, isObserved))
         const write = async () => {
             if (multipleTasks && tasks && tasks.length > 0) {
                 if (!saveDueDateBeforeSaveTask) {
@@ -154,7 +180,7 @@ function DueDateModal({
                     rejectOnError: animateGoalPostpone,
                 })
             } else if (saveDueDateBeforeSaveTask) {
-                return saveDueDateBeforeSaveTask(task, date, isObserved)
+                return saveSingleTask()
             } else if (updateParentGoalReminderDate) {
                 return updateParentGoalReminderDate(date)
             } else {
@@ -171,6 +197,7 @@ function DueDateModal({
 
     const wrappedSetToBacklog = isObserved => {
         if (postponeProject) return runProjectPostpone(BACKLOG_DATE_NUMERIC)
+        const backlogSingleTask = withEmailArchive(() => setToBacklogBeforeSaveTask(task, isObserved))
         const write = async () => {
             if (multipleTasks && tasks && tasks.length > 0) {
                 if (!setToBacklogBeforeSaveTask) {
@@ -189,7 +216,7 @@ function DueDateModal({
                     rejectOnError: animateGoalPostpone,
                 })
             } else if (setToBacklogBeforeSaveTask) {
-                return setToBacklogBeforeSaveTask(task, isObserved)
+                return backlogSingleTask()
             } else if (updateParentGoalReminderDate) {
                 return updateParentGoalReminderDate(BACKLOG_DATE_NUMERIC)
             } else {
@@ -221,6 +248,9 @@ function DueDateModal({
                     description={description}
                     showTabs={showTabs}
                 />
+                {emailArchiveOption.visible && (
+                    <EmailArchiveOption checked={emailArchiveOption.checked} onToggle={emailArchiveOption.toggle} />
+                )}
                 {visibleCalendar ? (
                     <View>
                         <DueDateCalendarModal
@@ -294,6 +324,7 @@ function DueDateModal({
                             goal={goal}
                             animateGoalPostpone={animateGoalPostpone}
                             postponeProject={postponeProject ? () => runProjectPostpone(undefined, 'auto') : undefined}
+                            wrapSingleTaskPostpone={withEmailArchive}
                         />
                     </View>
                 )}

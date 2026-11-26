@@ -36,6 +36,7 @@ export default function AutoPostpone({
     saveDueDateBeforeSaveTask,
     animateGoalPostpone = false,
     postponeProject,
+    wrapSingleTaskPostpone,
 }) {
     const dispatch = useDispatch()
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -91,7 +92,8 @@ export default function AutoPostpone({
                     updatesDueDate: !isObservedTabActive,
                     updatesObservedDate: isObservedTabActive,
                 },
-                write
+                // AT-3164: the postpone dialog archives the linked email after this write succeeds.
+                wrapSingleTaskPostpone ? wrapSingleTaskPostpone(write) : write
             )
             Promise.resolve(applyPromise).catch(error => {
                 console.error('AutoPostpone: failed to apply auto-postpone', error)

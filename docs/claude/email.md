@@ -530,6 +530,34 @@ Pinned by the AT-3151 block in `utils/backends/openTasks.test.js` and by
 `utils/Gmail/emailTaskOrigin.test.js`. The second test checks that the helper agrees with the badge
 helpers.
 
+## Postponing an email task can archive its email in Gmail (AT-3164, 2026-11-26)
+
+The postpone dialog (`DueDateModal`, so the swipe popup, the row's date tag, the detail view and the
+drag modal alike) shows **"Archive email in Gmail"** for a single open Gmail task while its email is
+still in the inbox, **checked by default**. The task takes over the follow-up: it comes back on the
+chosen date in Alldone. No Gmail snooze, and nothing ever moves the mail back to the inbox. Decided
+with Karsten:
+
+- **Where**: every single-task postpone. Not for several tasks, a goal, a project, Outlook tasks, or
+  the edit-mode date picker (that only sets a draft saved later) (`getPostponeEmailArchiveData`).
+- **Visible only on positive evidence**: the dialog asks `getMessageStates` (read-only) on open, and
+  the option appears only when a linked message reports `inInbox: true`. Offline, an expired
+  connection, another user's mailbox or an unknown state hide it silently. A date picked before the
+  answer arrives postpones without archiving.
+- **Archive = the existing `archive` action** (`archiveEmailInBackground`, shared with the
+  completion modal): `threads.modify({ removeLabelIds: ['INBOX'] })` on the whole thread, like
+  Gmail's own button. UNREAD and every other label stay. Karsten chose the thread over the single
+  message.
+- **Only on confirmation, only after the task moved**: picking a date, Someday or Auto postpone is the
+  confirmation; closing the dialog is the cancel and touches nothing. The choice is read at the click
+  (`shouldArchive`), and `wrapPostponeWithEmailArchive` archives only after the task write resolved,
+  so a failed postpone never leaves the mail gone from both places (it alerts "…so the email was not
+  archived"). A failed archive alerts on its own ("The task was postponed, but …"); the task stays
+  postponed. Undoing the postpone does not move the mail back.
+- `DueDate.js` (detail view) now returns its write promise so the archive waits for it.
+
+Pinned by `DueDateModal/emailPostponeArchive.test.js` and `DueDateModal/DueDateModalEmailArchive.test.js`.
+
 ## The email a task was created from opens the task's chat (AT-3022)
 
 `continueEmailThread` only writes the **later** mail of a thread into its task's chat, and skips the

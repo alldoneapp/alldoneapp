@@ -3,7 +3,7 @@ import renderer, { act } from 'react-test-renderer'
 import moment from 'moment-timezone'
 import * as Localization from '../../utils/WebShims/Localization'
 
-import MeetingBookingPage, { BookingAgentHint, BookingHumanHint } from './MeetingBookingPage'
+import MeetingBookingPage from './MeetingBookingPage'
 import { BOOKING_LANGUAGE_STORAGE_KEY } from './bookingLanguage'
 import { setLanguage, translate } from '../../i18n/TranslationService'
 import {
@@ -536,27 +536,8 @@ describe('MeetingBookingPage agent info box (AT-3161)', () => {
         const description = tree.root.findByProps({ children: translate('Booking agent info description') }).props
             .children
         expect(description).toContain('connected to Alldone')
-        expect(description).not.toMatch(/chatbot/i)
+        expect(description).toContain('Not every chatbot')
         expect(description).not.toMatch(/browser/i)
-    })
-
-    test('a "For humans" note sits right under it and says the page itself books, with no action', async () => {
-        const tree = await renderPage()
-
-        const agentHint = tree.root.findByType(BookingAgentHint)
-        const siblings = agentHint.parent.children
-        // Compare types, not instances: a failing instance comparison makes Jest print the whole tree.
-        expect(siblings[siblings.indexOf(agentHint) + 1]?.type).toBe(BookingHumanHint)
-
-        const note = tree.root.findByProps({ testID: 'booking-human-hint' })
-        expect(note.props.role).toBe('note')
-        const title = tree.root.findByProps({ testID: 'booking-human-info-title' })
-        expect(title.props.children).toBe('For humans')
-        expect(note.props['aria-labelledby']).toBe(title.props.nativeID)
-        expect(tree.root.findByProps({ testID: 'booking-human-info-description' }).props.children).toBe(
-            'You can also pick and book your meeting right here on this page.'
-        )
-        expect(note.findAll(node => typeof node.props.onPress === 'function')).toHaveLength(0)
     })
 
     test('the prompt sends the agent to the booking tools, not the browser, and asks before booking', async () => {
@@ -592,10 +573,6 @@ describe('MeetingBookingPage agent info box (AT-3161)', () => {
         expect(promptText(tree)).toContain('buche erst, wenn ich genau diesen bestätige')
         expect(promptText(tree)).toContain('nicht den Browser')
         expect(copyButton(tree).props.title).toBe('Prompt kopieren')
-        expect(tree.root.findByProps({ testID: 'booking-human-info-title' }).props.children).toBe('Für Menschen')
-        expect(tree.root.findByProps({ testID: 'booking-human-info-description' }).props.children).toBe(
-            'Du kannst deinen Termin auch direkt hier auf der Webseite auswählen und buchen.'
-        )
         await act(async () => tree.unmount())
 
         Localization.locale = 'es-ES'
@@ -605,10 +582,6 @@ describe('MeetingBookingPage agent info box (AT-3161)', () => {
         expect(promptText(tree)).toContain(`Reserva una cita: ${window.location.origin}/meet/karsten-wysk\n`)
         expect(promptText(tree)).toContain('no el navegador')
         expect(copyButton(tree).props.title).toBe('Copiar prompt')
-        expect(tree.root.findByProps({ testID: 'booking-human-info-title' }).props.children).toBe('Para personas')
-        expect(tree.root.findByProps({ testID: 'booking-human-info-description' }).props.children).toBe(
-            'También puedes elegir y reservar tu cita directamente aquí, en esta página.'
-        )
     })
 
     test('switching the language on the page switches the box', async () => {
@@ -618,7 +591,6 @@ describe('MeetingBookingPage agent info box (AT-3161)', () => {
         })
         expect(tree.root.findByProps({ testID: 'booking-agent-info-title' }).props.children).toBe('Für KI-Agenten')
         expect(copyButton(tree).props.title).toBe('Prompt kopieren')
-        expect(tree.root.findByProps({ testID: 'booking-human-info-title' }).props.children).toBe('Für Menschen')
     })
 
     test('copies the whole prompt and shows "Copied" for a moment', async () => {
@@ -685,6 +657,5 @@ describe('MeetingBookingPage agent info box (AT-3161)', () => {
         const tree = await renderPage()
 
         expect(tree.root.findAllByProps({ testID: 'booking-agent-hint' })).toHaveLength(0)
-        expect(tree.root.findAllByProps({ testID: 'booking-human-hint' })).toHaveLength(0)
     })
 })

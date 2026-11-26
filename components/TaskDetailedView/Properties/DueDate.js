@@ -9,12 +9,13 @@ import { setTaskDueDate, setTaskToBacklog } from '../../../utils/backends/Tasks/
 export default function DueDate({ projectId, task, disabled }) {
     const saveTaskDueDate = (taskToUpdate, dateTimestamp, isObservedTabActive) => {
         // In this context, isObservedTabActive is always false as we are not in the "Observed" tab.
-        setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, false, null)
+        // Returned so the dialog knows when the write settled (AT-3164 archives the email after it).
+        return setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, false, null)
     }
 
     const setTaskToBacklogInDetailedView = (taskToUpdate, isObservedTabActive) => {
         // In this context, isObservedTabActive is always false.
-        setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, false, null)
+        return setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, false, null)
     }
 
     return (

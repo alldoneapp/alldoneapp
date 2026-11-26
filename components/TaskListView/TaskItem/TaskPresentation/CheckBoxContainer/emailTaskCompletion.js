@@ -34,7 +34,9 @@ const runArchiveRequest = async (archiveData, archiveEmailAction) => {
     }
 }
 
-const archiveEmailInBackground = (archiveData, archiveEmailAction) => {
+// Shared with the postpone dialog's "Archive email in Gmail" option (AT-3164): one retry on a
+// transient error, and concurrent requests for the same messages share one call.
+export const archiveEmailInBackground = (archiveData, archiveEmailAction) => {
     const requestKey = getArchiveRequestKey(archiveData)
     const existingRequest = archiveRequestsInFlight.get(requestKey)
     if (existingRequest) return existingRequest
