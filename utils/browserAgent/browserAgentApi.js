@@ -42,6 +42,8 @@ const CONSEQUENTIAL_TOOLS = new Set([
     'update_gmail_email',
     'create_calendar_event',
     'update_calendar_event',
+    // Public booking pages (AT-3161): creates an event in the host's calendar and mails the visitor.
+    'book_meeting',
     'delete_calendar_event',
     'browser_click',
     'browser_type',
@@ -109,15 +111,17 @@ export const parseToolResult = (name, result) => {
 /**
  * A minimal JSON-RPC client for the Alldone MCP server, authenticated with the page's session.
  * `getIdToken` must resolve the signed-in user's Firebase ID token (or null when signed out).
+ * `anonymous: true` is for public endpoints (the booking page MCP, AT-3161): no token is read and
+ * no Authorization header is sent, so a session can never leak to them.
  */
-export const createMcpSessionClient = ({ endpoint, getIdToken, fetchImpl }) => {
+export const createMcpSessionClient = ({ endpoint, getIdToken, fetchImpl, anonymous = false }) => {
     let nextId = 1
     const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null)
 
     const rpc = async (method, params) => {
         if (!doFetch) throw new AlldoneToolError('fetch is not available in this environment')
-        const token = await getIdToken()
-        if (!token) throw new AlldoneToolError('Not signed in to Alldone. Sign in in this tab first.')
+        const token = anonymous ? null : await getIdToken()
+        if (!anonymous && !token) throw new AlldoneToolError('Not signed in to Alldone. Sign in in this tab first.')
 
         const response = await doFetch(endpoint, {
             method: 'POST',
@@ -126,7 +130,7 @@ export const createMcpSessionClient = ({ endpoint, getIdToken, fetchImpl }) => {
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
                 Accept: 'application/json',
-                Authorization: `Bearer ${token}`,
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 [BROWSER_AGENT_CLIENT_HEADER]: BROWSER_AGENT_CLIENT_NAME,
             },
             body: JSON.stringify({ jsonrpc: '2.0', id: nextId++, method, ...(params ? { params } : {}) }),
@@ -266,7 +270,14 @@ export const registerWebMcpTools = (modelContext, tools, callTool, { onError } =
 //
 // A user who switched browser agents off (Settings → MCP) still gets nothing at all, not a stub.
 
-export const AGENT_API_STATES = Object.freeze({ READY: 'ready', LOADING: 'loading', SIGNED_OUT: 'signed_out' })
+// `public_booking` (AT-3161): on a public /meet/<slug> page the API offers that page's booking tools
+// to anybody, signed in or not (utils/browserAgent/publicBookingAgentApi.js).
+export const AGENT_API_STATES = Object.freeze({
+    READY: 'ready',
+    LOADING: 'loading',
+    SIGNED_OUT: 'signed_out',
+    PUBLIC_BOOKING: 'public_booking',
+})
 export const AGENT_API_MANIFEST_ID = 'alldone-agent-api'
 export const AGENT_API_ATTRIBUTE = 'data-alldone-agent-api'
 export const AGENT_API_STATE_ATTRIBUTE = 'data-alldone-agent-api-state'
@@ -382,7 +393,7 @@ export const writeAgentManifest = (win, manifest) => {
 
 // The `alldone.tools` shortcut: any snake_case name is a function that calls that tool. Once the tool
 // list is known, `Object.keys(alldone.tools)` lists it, so an agent that enumerates finds the tools.
-const createToolsProxy = (callTool, getKnownToolNames) => {
+export const createToolsProxy = (callTool, getKnownToolNames) => {
     const functions = new Map()
     const toolFunction = name => {
         if (!functions.has(name)) {
@@ -430,7 +441,7 @@ const clearDocumentState = win => {
 
 // Defines `window.alldone` (enumerable, so `Object.keys(window)` lists it) together with the DOM
 // markers. Returns the uninstall function; it only removes what is still this installation's.
-const defineWindowApi = (win, api, manifest) => {
+export const defineWindowApi = (win, api, manifest) => {
     try {
         Object.defineProperty(win, WINDOW_API_NAME, {
             value: api,
@@ -485,7 +496,19 @@ const waitForReadyApi = (win, timeoutMs = DEFAULT_WHEN_READY_TIMEOUT_MS) =>
  * drops the cache. Returns an uninstall function that only removes the API it installed itself;
  * the function also carries `updateManifest(status)` so the WebMCP outcome can be published.
  */
-export const installWindowApi = (win, { listTools, callTool, getStatus }) => {
+export const installWindowApi = (
+    win,
+    {
+        listTools,
+        callTool,
+        getStatus,
+        // AT-3161: the public booking page installs the same API with its own state, help and docs.
+        state = AGENT_API_STATES.READY,
+        buildInstructions = buildAgentInstructions,
+        buildManifest = buildAgentManifest,
+        docs = DOCS_PATH,
+    }
+) => {
     if (!win) return () => {}
     let toolsPromise = null
     let knownToolNames = []
@@ -506,13 +529,13 @@ export const installWindowApi = (win, { listTools, callTool, getStatus }) => {
         }
         return toolsPromise
     }
-    const status = () => ({ state: AGENT_API_STATES.READY, ...(getStatus ? getStatus() : {}) })
-    const instructions = () => buildAgentInstructions({ ...status(), toolNames: knownToolNames })
+    const status = () => ({ state, ...(getStatus ? getStatus() : {}) })
+    const instructions = () => buildInstructions({ ...status(), toolNames: knownToolNames })
 
     let api = null
     api = Object.freeze({
         version: BROWSER_AGENT_API_VERSION,
-        state: AGENT_API_STATES.READY,
+        state,
         listTools: () => loadTools(),
         callTool: (name, args) => callTool(name, args),
         tools: createToolsProxy(callTool, () => knownToolNames),
@@ -524,21 +547,20 @@ export const installWindowApi = (win, { listTools, callTool, getStatus }) => {
         status,
         help: instructions,
         toString: instructions,
-        docs: DOCS_PATH,
+        docs,
         [Symbol.toStringTag]: 'Alldone',
     })
 
     const { uninstall, updateManifest } = defineWindowApi(
         win,
         api,
-        buildAgentManifest({ state: AGENT_API_STATES.READY, ...(getStatus ? getStatus() : {}) })
+        buildManifest({ state, ...(getStatus ? getStatus() : {}) })
     )
     if (typeof win.dispatchEvent === 'function' && typeof win.CustomEvent === 'function') {
         win.dispatchEvent(new win.CustomEvent(BROWSER_AGENT_READY_EVENT, { detail: { version: api.version } }))
     }
 
-    uninstall.updateManifest = next =>
-        win[WINDOW_API_NAME] === api && updateManifest(buildAgentManifest({ state: AGENT_API_STATES.READY, ...next }))
+    uninstall.updateManifest = next => win[WINDOW_API_NAME] === api && updateManifest(buildManifest({ state, ...next }))
     return uninstall
 }
 
@@ -589,7 +611,7 @@ export const installWindowApiStub = (win, { state = AGENT_API_STATES.SIGNED_OUT 
  * before the tool list arrives skips the WebMCP registration, so a quickly replaced session (account
  * switch, settings change) can never register its tools on top of the next one's.
  */
-export const installBrowserAgentApi = async ({ win, client, onError, signal }) => {
+export const installBrowserAgentApi = async ({ win, client, onError, signal, windowApiOptions = {}, announcement }) => {
     const modelContext = getModelContext(win)
     let webMcpRegistered = 0
     let disposeWebMcp = () => {}
@@ -597,6 +619,7 @@ export const installBrowserAgentApi = async ({ win, client, onError, signal }) =
     const getStatus = () => ({ webMcpSupported: !!modelContext, webMcpRegistered })
 
     const disposeWindowApi = installWindowApi(win, {
+        ...windowApiOptions,
         listTools: client.listTools,
         callTool: client.callTool,
         getStatus,
@@ -618,12 +641,14 @@ export const installBrowserAgentApi = async ({ win, client, onError, signal }) =
     if (!disposed && !(signal && signal.aborted)) {
         announce(
             win,
-            AGENT_API_STATES.READY,
-            `[Alldone] Browser agent API ready: window.alldone — run alldone.help(), await alldone.listTools(), await alldone.callTool(name, args). ${
-                webMcpRegistered
-                    ? `${webMcpRegistered} tools are also registered with WebMCP (document.modelContext).`
-                    : 'WebMCP is not available in this browser.'
-            } Docs: ${DOCS_PATH}`
+            windowApiOptions.state || AGENT_API_STATES.READY,
+            announcement
+                ? announcement({ webMcpRegistered })
+                : `[Alldone] Browser agent API ready: window.alldone — run alldone.help(), await alldone.listTools(), await alldone.callTool(name, args). ${
+                      webMcpRegistered
+                          ? `${webMcpRegistered} tools are also registered with WebMCP (document.modelContext).`
+                          : 'WebMCP is not available in this browser.'
+                  } Docs: ${DOCS_PATH}`
         )
     }
 

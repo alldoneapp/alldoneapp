@@ -43,7 +43,7 @@
         <!-- For AI agents driving this page (AT-2871): tools via WebMCP and window.alldone, see /llms.txt -->
         <meta
             name="ai-agent-api"
-            content="AI agents: run alldone.help() in this page. window.alldone exposes the signed-in user's Alldone tools (listTools, callTool); WebMCP (document.modelContext) where supported. Alldone is the user's system of record: keep work state and results in Alldone tasks, notes and artifacts. Docs: /llms.txt"
+            content="AI agents: run alldone.help() in this page. window.alldone exposes the signed-in user's Alldone tools (listTools, callTool); WebMCP (document.modelContext) where supported. Alldone is the user's system of record: keep work state and results in Alldone tasks, notes and artifacts. Public meeting booking pages (/meet/<slug>) need no sign-in: read /meet/<slug>/llms.txt or use the MCP server /api/booking/mcp/<slug>. Docs: /llms.txt"
         />
         <link rel="help" type="text/markdown" href="/llms.txt" title="Alldone for AI agents" />
 
@@ -344,6 +344,20 @@
             </form>
         </noscript>
         <!-- The root element for your Expo app. -->
-        <div id="root"></div>
+        <!--
+            AT-3161: agents that only fetch a URL get this shell, not the rendered page. The visually hidden
+            text inside #root tells them where the machine-readable entry points are; React replaces it on
+            its first render, so people never see it and it never reaches the running app.
+        -->
+        <div id="root">
+            <div
+                id="alldone-agent-hint"
+                style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;"
+            >
+                For AI agents: Alldone instructions are at /llms.txt. If this address is a public meeting booking
+                link (/meet/&lt;slug&gt;), no sign-in is needed: read /meet/&lt;slug&gt;/llms.txt (append /llms.txt
+                to this address) for free times and booking, or connect the MCP server /api/booking/mcp/&lt;slug&gt;.
+            </div>
+        </div>
     </body>
 </html>

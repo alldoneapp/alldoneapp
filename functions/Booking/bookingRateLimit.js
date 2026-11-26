@@ -26,6 +26,16 @@ const BOOKING_LIMITS = {
     recipient: { limit: 3, windowMs: DAY_MS },
 }
 
+// AT-3161: availability lookups are public too, and every one of them reads the host's connected
+// calendars (Google/Microsoft free/busy). The web page asks for one day per click, so a person
+// browsing all 31 days in all three durations needs about 100 lookups; agents ask for whole ranges
+// and need fewer. The limits only stop scripted hammering. The page bucket is hourly, not daily,
+// so somebody who exhausts it on purpose blocks a booking page for at most an hour.
+const SLOT_LOOKUP_LIMITS = {
+    slotsIp: { limit: 300, windowMs: HOUR_MS },
+    slotsPage: { limit: 1000, windowMs: HOUR_MS },
+}
+
 const hashKey = (kind, value) =>
     crypto
         .createHash('sha256')
@@ -38,25 +48,14 @@ function getClientIp(req) {
     return req?.ip || req?.connection?.remoteAddress || 'unknown'
 }
 
-/**
- * Consumes one booking from each applicable bucket, or none when any of them is exhausted.
- * Returns { allowed: true } or { allowed: false, limitedBy: 'ip' | 'page' | 'recipient' }.
- */
-async function consumeBookingQuota(
-    db,
-    { ip, pageUserId, slug, recipientEmail, now = Date.now(), limits = BOOKING_LIMITS }
-) {
-    const buckets = [
-        ip ? { kind: 'ip', value: ip } : null,
-        pageUserId || slug ? { kind: 'page', value: `${pageUserId || ''}/${slug || ''}` } : null,
-        recipientEmail ? { kind: 'recipient', value: recipientEmail } : null,
-    ]
-        .filter(Boolean)
-        .map(bucket => ({
-            ...bucket,
-            ...limits[bucket.kind],
-            ref: db.collection(COLLECTION).doc(hashKey(bucket.kind, bucket.value)),
-        }))
+// Consumes one unit from each bucket, or none when any of them is exhausted.
+async function consumeQuotaBuckets(db, rawBuckets, { now, limits }) {
+    const buckets = rawBuckets.filter(Boolean).map(bucket => ({
+        ...bucket,
+        ...limits[bucket.kind],
+        ref: db.collection(COLLECTION).doc(hashKey(bucket.kind, bucket.value)),
+    }))
+    if (buckets.length === 0) return { allowed: true }
 
     return db.runTransaction(async transaction => {
         const snapshots = await Promise.all(buckets.map(bucket => transaction.get(bucket.ref)))
@@ -81,4 +80,46 @@ async function consumeBookingQuota(
     })
 }
 
-module.exports = { BOOKING_LIMITS, COLLECTION, consumeBookingQuota, getClientIp, hashKey }
+/**
+ * Consumes one booking from each applicable bucket, or none when any of them is exhausted.
+ * Returns { allowed: true } or { allowed: false, limitedBy: 'ip' | 'page' | 'recipient' }.
+ */
+async function consumeBookingQuota(
+    db,
+    { ip, pageUserId, slug, recipientEmail, now = Date.now(), limits = BOOKING_LIMITS }
+) {
+    return consumeQuotaBuckets(
+        db,
+        [
+            ip ? { kind: 'ip', value: ip } : null,
+            pageUserId || slug ? { kind: 'page', value: `${pageUserId || ''}/${slug || ''}` } : null,
+            recipientEmail ? { kind: 'recipient', value: recipientEmail } : null,
+        ],
+        { now, limits }
+    )
+}
+
+/**
+ * AT-3161: one availability lookup, per client IP and per booking page.
+ * Returns { allowed: true } or { allowed: false, limitedBy: 'slotsIp' | 'slotsPage' }.
+ */
+async function consumeSlotLookupQuota(db, { ip, pageUserId, slug, now = Date.now(), limits = SLOT_LOOKUP_LIMITS }) {
+    return consumeQuotaBuckets(
+        db,
+        [
+            ip ? { kind: 'slotsIp', value: ip } : null,
+            pageUserId || slug ? { kind: 'slotsPage', value: `${pageUserId || ''}/${slug || ''}` } : null,
+        ],
+        { now, limits }
+    )
+}
+
+module.exports = {
+    BOOKING_LIMITS,
+    COLLECTION,
+    SLOT_LOOKUP_LIMITS,
+    consumeBookingQuota,
+    consumeSlotLookupQuota,
+    getClientIp,
+    hashKey,
+}

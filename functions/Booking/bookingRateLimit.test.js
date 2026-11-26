@@ -89,3 +89,37 @@ describe('public booking rate limits (security audit 2026-11, #10)', () => {
         expect(getClientIp({ headers: {}, ip: '5.6.7.8' })).toBe('5.6.7.8')
     })
 })
+
+describe('availability lookup limits (AT-3161)', () => {
+    const { consumeSlotLookupQuota, SLOT_LOOKUP_LIMITS } = require('./bookingRateLimit')
+    const slotLimits = { slotsIp: { limit: 2, windowMs: 1000 }, slotsPage: { limit: 3, windowMs: 1000 } }
+
+    test('caps lookups per IP and per page, in buckets separate from bookings', async () => {
+        const db = makeDb()
+        const lookup = (ip, now = 0) =>
+            consumeSlotLookupQuota(db, { ip, pageUserId: 'owner', slug: 'page', now, limits: slotLimits })
+
+        await expect(lookup('1.1.1.1')).resolves.toEqual({ allowed: true })
+        await expect(lookup('1.1.1.1')).resolves.toEqual({ allowed: true })
+        await expect(lookup('1.1.1.1')).resolves.toEqual({ allowed: false, limitedBy: 'slotsIp' })
+        await expect(lookup('2.2.2.2')).resolves.toEqual({ allowed: true })
+        await expect(lookup('3.3.3.3')).resolves.toEqual({ allowed: false, limitedBy: 'slotsPage' })
+        // A new window starts over.
+        await expect(lookup('1.1.1.1', 1000)).resolves.toEqual({ allowed: true })
+        // Booking quota is untouched by lookups.
+        await expect(
+            consumeBookingQuota(db, {
+                ip: '1.1.1.1',
+                pageUserId: 'owner',
+                slug: 'page',
+                recipientEmail: 'a@b.c',
+                limits,
+            })
+        ).resolves.toEqual({ allowed: true })
+    })
+
+    test('the production page bucket is hourly, so exhausting it blocks a page for an hour at most', () => {
+        expect(SLOT_LOOKUP_LIMITS.slotsPage.windowMs).toBe(60 * 60 * 1000)
+        expect(SLOT_LOOKUP_LIMITS.slotsIp.limit).toBeGreaterThanOrEqual(100)
+    })
+})

@@ -455,8 +455,12 @@ export default function AppContent() {
                     <WorkspaceOverlayLayer>
                         <AnalyticsConsentManager />
                     </WorkspaceOverlayLayer>
-                    {/* A stub while loading/signed out, the tools once signed in (AT-2890). */}
-                    <BrowserAgentApiBridge sessionReady={!!(loggedIn && processedInitialURL)} />
+                    {/* A stub while loading/signed out, the tools once signed in (AT-2890). A public
+                        booking page installs its own booking tools instead (AT-3161). */}
+                    <BrowserAgentApiBridge
+                        sessionReady={!!(loggedIn && processedInitialURL)}
+                        publicPage={!!publicPageUrl}
+                    />
                 </>
             )}
             {loggedIn === null && !publicPageUrl ? (

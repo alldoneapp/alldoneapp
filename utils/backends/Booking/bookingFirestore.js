@@ -43,7 +43,9 @@ export const bookPublicMeeting = async payload => {
     const response = await fetch(`${getPublicBookingApiBase()}/api/booking/book`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        // Labels the booking as made on the web page (AT-3161); agents calling the API directly
+        // are labelled for the host as such. Only a label, never an access decision.
+        body: JSON.stringify({ ...payload, client: 'alldone-web' }),
     })
     return await parseJsonResponse(response)
 }

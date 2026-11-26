@@ -198,6 +198,61 @@ MCP server serves: `mcpServerSimple.test.js` checks every tool the MCP text ment
 and permission guidance: connected clients may truncate longer text. Both GET discovery and
 `initialize` return the same compact text; the test checks the length and equality of both.
 
+## Public booking pages are an agent entry point without an account (AT-3161)
+
+Anybody can point an AI agent at a booking link (`/meet/<slug>`) and let it find times and book, with
+the same reach as the page's own form and nothing more. This is the one agent surface that is not
+the signed-in `/mcpServer`: it has no identity, so it gets no Alldone data, only the page's three
+operations in `functions/Booking/publicBooking.js` (`getPublicBookingPageInfo`, `findPublicSlots`,
+`bookPublicMeeting`, transport-free `{ status, body }` with a machine-readable `code`). Every surface
+runs those three, so validation, limits and the double-booking lock cannot drift apart:
+
+- **REST**, unchanged routes: `/api/booking/page/<slug>`, `/slots`, `/book`.
+- **MCP**: `/api/booking/mcp/<slug>` (tools bound to the page) and `/api/booking/mcp` (`slug` in every
+  call), stateless Streamable HTTP with JSON answers, no auth (`publicBookingMcp.js`). Tools
+  `get_booking_page`, `find_available_times`, `book_meeting`; instructions under 512 characters.
+- **Browser**: on the page, `window.alldone` in state `public_booking` plus WebMCP, built from the
+  same pieces as the signed-in bridge (`utils/browserAgent/publicBookingAgentApi.js`, installed by
+  `MeetingBookingPage`). It is an anonymous MCP client of the endpoint above and never reads a
+  Firebase token. `BrowserAgentApiBridge` stands aside on a public page (`publicPage` from
+  `AppContent`); before, an agent there got a "sign in" stub, or an endless "loading" one because
+  Firebase never starts on that page. Opened inside the app, the page leaves a signed-in user's own
+  `ready` API alone.
+- **Discovery**: `/meet/<slug>/llms.txt` (hosting rewrite to `bookingApi`, `publicBookingAgentDocs.js`;
+  the host's display name is flattened to one line), a section in `/llms.txt`, the `ai-agent-api`
+  meta tag, and a visually hidden hint inside `#root` in `index.html` for agents that only fetch the
+  URL and get the SPA shell (React replaces it on first render). The service worker never answers
+  `/api/booking/` or `/meet/*/llms.txt`.
+- **For visitors** (visible): a collapsed "Book with your AI agent" line under the page heading
+  (`BookingAgentHint` in `MeetingBookingPage.js`; Karsten chose "top, collapsed" so the form stays
+  first on a phone). It opens a short note that the agent needs browser or MCP access (not every
+  chatbot can book), a copyable prompt and a "Copy prompt" button. The prompt
+  (`bookingAgentPrompt.js`, key `Booking agent prompt`, in the page language) links
+  `getAppLinkOrigin()` + `/meet/<page.slug>`: the origin the page runs on and the canonical slug,
+  never a fixed host. It asks the agent to collect preferences and missing details, propose options
+  and book only after explicit confirmation. `copyBookingText` reports failure (the shared
+  `copyTextToClipboard` swallows it), so "Copied" only shows when the copy worked.
+
+Rules the operations enforce for every caller (the web page included): availability is computed in
+the **host's** timezone (the caller's zone used to move the working hours; it is now display only:
+`displayStart`/`displayEnd`, and the visitor's confirmation mail); nothing in the past is offered or
+booked (the engine had no "now" clamp); a duration the page does not offer and an unknown timezone
+are refused instead of silently replaced; slot ranges are capped at 31 days (the constant existed,
+unenforced) and lookups are rate limited per IP and page (`consumeSlotLookupQuota`, hourly buckets
+in `bookingRateLimits`). Bookings of one host run under a lease lock (`bookingLock.js`,
+server-only `bookingLocks/{sha256}`, 90 s lease, waits up to 15 s, else `code: busy`), and inside it
+the bookings stored in the last 15 minutes (`startMs`/`endMs`, buffers applied) are checked too,
+because free/busy can lag behind an event inserted a moment ago; older ones are left to the calendar,
+so a host who deletes a booked event gets the slot back. An `idempotencyKey` (stored only as a hash) makes an agent's
+retry return the first booking without a second event, mail or quota; a key reused for another slot
+is refused. Bookings carry `bookedVia` (`web` when the page's own client says so, `api`, `mcp`,
+`browser_agent`); it is a label for the host (event description, "Booked via" row in the host mail),
+never an access decision. Karsten's decisions (2026-11-26): agent bookings confirm at once like the
+web form, and the agent surfaces are on for every active booking page with no extra setting.
+Pinned by `functions/Booking/*.test.js` (`publicBooking`, `publicBookingMcp`, `publicBookingAgentDocs`,
+`bookingLock`, `bookingRateLimit`, `bookingSettings`), `utils/browserAgent/publicBookingAgentApi.test.js`,
+the agent block of `MeetingBookingPage.test.js` and `BrowserAgentApiBridge.test.js`.
+
 ## The alldone.team specialists are assistant templates
 
 Connor Consultant (Story Builder), Judy Job and Ricky Returns (Property Screener) are added to a
