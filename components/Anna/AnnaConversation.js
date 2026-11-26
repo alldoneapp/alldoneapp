@@ -56,8 +56,6 @@ import { isAnnaProjectSelectable } from './annaProjectSelection'
 import { scopeAnnaThreads } from './annaThreadScope'
 import { generateTaskFromPreConfig } from '../../utils/assistantHelper'
 import { ANNA_TEMPLATE_ROUTE_CHAT, getAnnaTemplateMessageText, getAnnaTemplateRoute } from './annaTemplateRouting'
-import ComposerModelButton from '../ChatsView/ChatDV/EditorView/BotOption/ComposerModelButton'
-import { useThreadAssistantModel } from '../ChatsView/ChatDV/EditorView/BotOption/threadAssistantModelState'
 
 const MESSAGES_PER_PAGE = 50
 // AT-3119: a loading day is smaller than the whole chat's first load (AnnaConversationSkeleton).
@@ -68,9 +66,6 @@ const THREAD_SKELETON_ROWS = [
 // AT-3032: below this composer width the Templates button drops its label (icon only, same
 // accessible name), so +, Templates, mic, call and send stay on one row on the narrowest phones.
 export const ANNA_TEMPLATES_COMPACT_WIDTH = 360
-// AT-3162: the model button right of Templates names the model; below this width it drops the name
-// first (icon only, the name stays in its accessible label), before Templates has to.
-export const ANNA_MODEL_COMPACT_WIDTH = 480
 // The Templates list (up to 520px) is wider than the chat pane, so it opens upwards over the
 // window rather than inside the pane; without a viewport it would be pushed into the workspace
 // pane (window.__alldoneWorkspaceViewport). Phones get the usual bottom sheet.
@@ -183,15 +178,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const composer = useRef(null)
     const composerForm = useRef(null)
     const [compactTemplates, setCompactTemplates] = useState(false)
-    const [compactModel, setCompactModel] = useState(false)
-    // AT-3162: the model button pins the chat on screen, exactly like the model choice in the
-    // comment popup (AT-2502): the same field on the same chat document, which the server reads when
-    // it answers a message here. Nothing chosen leaves the assistant's own model in place.
-    const {
-        model: threadModel,
-        isSupported: canPinThreadModel,
-        updateModel: pinThreadModel,
-    } = useThreadAssistantModel(conversation.projectId, conversation.id, 'topics')
     // AT-3082: a template that runs as its own task tells this chat that it started and, with Anna's
     // summary, when it has its result (preConfigOriginNotice on the server). Since AT-3153 the chat
     // starts templates itself (`runTemplate` below, which names the chat its message landed in); this
@@ -208,10 +194,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         if (!form) return
         const measure = () => {
             const width = form.getBoundingClientRect().width
-            if (width > 0) {
-                setCompactTemplates(width < ANNA_TEMPLATES_COMPACT_WIDTH)
-                setCompactModel(width < ANNA_MODEL_COMPACT_WIDTH)
-            }
+            if (width > 0) setCompactTemplates(width < ANNA_TEMPLATES_COMPACT_WIDTH)
         }
         measure()
         if (typeof ResizeObserver === 'undefined') return
@@ -754,8 +737,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                 />
                             </div>
                             <div className="anna-composer-toolbar">
-                                {/* AT-3029/AT-3032: +, Templates and (AT-3162) the model on the left; mic,
-                                    call and send on the right. */}
+                                {/* AT-3029/AT-3032: + and Templates on the left; mic, call and send on the right. */}
                                 <div className="anna-composer-tools">
                                     <div className="anna-composer-attachment">
                                         <AddFeedAttachButton
@@ -795,22 +777,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                             getPopoverViewport={getTemplatesViewport}
                                         />
                                     </div>
-                                    {canPinThreadModel && (
-                                        <div className="anna-composer-model">
-                                            <ComposerModelButton
-                                                selectedModel={threadModel}
-                                                assistantModel={assistant?.model}
-                                                onSelectModel={pinThreadModel}
-                                                compact={compactModel}
-                                                position={ANNA_TEMPLATES_POSITION}
-                                                getPopoverViewport={getTemplatesViewport}
-                                                // While another project's chat opens, a pin would land on
-                                                // the chat being left.
-                                                disabled={switching}
-                                                testID="anna-composer-model-button"
-                                            />
-                                        </div>
-                                    )}
                                 </div>
                                 <div className="anna-composer-actions">
                                     {dictationAvailable && (

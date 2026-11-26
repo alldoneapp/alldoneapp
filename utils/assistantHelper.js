@@ -35,15 +35,8 @@ import { createObjectMessage } from './backends/Chats/chatsComments'
 import { buildBotSpinnerTrigger, endBotSpinnerWait } from '../components/ChatsView/Utils/botSpinnerTrigger'
 import { buildAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
 import { resolvePreConfigTaskReasoningEffort } from '../functions/Assistant/preConfigTaskReasoningEffort'
-import {
-    getThreadAssistantModelOverride,
-    normalizeThreadAssistantModelSelection,
-} from '../functions/Assistant/threadAssistantModel'
-import {
-    readThreadAssistantModelOverride,
-    setThreadAssistantModelOverride,
-} from './backends/Assistants/threadAssistantModel'
-import { primeThreadAssistantModel } from '../components/ChatsView/ChatDV/EditorView/BotOption/threadAssistantModelState'
+import { getThreadAssistantModelOverride } from '../functions/Assistant/threadAssistantModel'
+import { readThreadAssistantModelOverride } from './backends/Assistants/threadAssistantModel'
 import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW, getTaskExecutionMode } from './taskExecutionMode'
 import { ASSISTANT_WORKFLOW_FIRST_STEP_ID, resolveAssistantWorkflowExecutionMode } from './assistantWorkflow'
 import {
@@ -187,11 +180,7 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
             skipNavigation = false,
             projectId: customProjectId = null,
             onAssistantRunSettled = null,
-            // AT-3162: the model picked in the assistant line for this new chat. Null (or the
-            // inherit entry) leaves the assistant's own model, exactly as before.
-            assistantModelOverride = null,
         } = options
-        const pinnedModel = normalizeThreadAssistantModelSelection(assistantModelOverride)
 
         try {
             const selectedProjectId = checkIfSelectedProject(selectedProjectIndex)
@@ -224,16 +213,6 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
                 isAssistantEnabled: enableAssistant,
             })
             logEvent('new_chat', { id: chatId })
-
-            // AT-3162: pin the chosen model on the new chat BEFORE its first message exists. That
-            // message starts the assistant run, and the run reads the chat's pin (AT-2502) to pick
-            // its model, so a pin written afterwards would only apply to the second answer. Written
-            // by the client, as the comment popup does, after the callable has created the chat and
-            // its access projection (an earlier update would be denied, see above).
-            if (pinnedModel) {
-                const stored = await setThreadAssistantModelOverride(projectId, chatId, 'topics', pinnedModel)
-                primeThreadAssistantModel(projectId, chatId, stored)
-            }
 
             // Enable assistant BEFORE creating the message so the trigger condition is met.
             // Scoped to the chat we just created: `createObjectMessage` below resolves the trigger

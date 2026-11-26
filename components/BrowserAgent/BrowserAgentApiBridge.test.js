@@ -128,6 +128,11 @@ describe('BrowserAgentApiBridge (AT-2871)', () => {
         expect(resolveBrowserAgentPageState({ ...base, loggedIn: false })).toBe('signed_out')
         expect(resolveBrowserAgentPageState({ ...base, isAnonymous: true })).toBe('signed_out')
         expect(resolveBrowserAgentPageState({ ...base, loggedIn: null })).toBe('loading')
+        // AT-3161: a public booking page installs its own booking tools; the bridge stands aside,
+        // in particular no "sign in" or endless "loading" stub (Firebase never starts there).
+        expect(resolveBrowserAgentPageState({ ...base, publicPage: true })).toBeNull()
+        expect(resolveBrowserAgentPageState({ ...base, loggedIn: null, publicPage: true })).toBeNull()
+        expect(resolveBrowserAgentPageState({ ...base, loggedIn: false, publicPage: true })).toBeNull()
     })
 
     test('never sends the token of another account than the one the page shows', async () => {

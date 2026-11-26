@@ -16,6 +16,9 @@ import useWindowSize from '../../utils/useWindowSize'
 import { getSafeAreaViewportHeightCap } from '../../utils/modalSafeArea'
 
 import { adaptiveColor, themed } from '../../Themes/colorMode'
+import { AGENT_API_STATES, WINDOW_API_NAME } from '../../utils/browserAgent/browserAgentApi'
+import { installPublicBookingAgentApi } from '../../utils/browserAgent/publicBookingAgentApi'
+import { ensureWebMcpOriginTrialToken } from '../../utils/browserAgent/webMcpOriginTrial'
 
 const PUBLIC_BOOKING_DAYS_TO_SHOW = 31
 
@@ -32,6 +35,36 @@ function buildPublicBookingDays({ timeZone, allowSameDayBooking, includeWeekends
             .add(index + firstBookableDayOffset, 'days')
             .startOf('day')
     ).filter(day => includeWeekends || (day.day() !== 0 && day.day() !== 6))
+}
+
+// AT-3161: external AI agents pointed at this page get its booking tools (window.alldone, WebMCP),
+// with no sign-in. A signed-in user's full tool set already on the page (the page was opened inside
+// the app) is left alone; on a directly opened link the app's own bridge stands aside.
+export function usePublicBookingAgentApi(slug) {
+    useEffect(() => {
+        if (typeof window === 'undefined' || !slug) return undefined
+        const existing = window[WINDOW_API_NAME]
+        if (existing && existing.state === AGENT_API_STATES.READY) return undefined
+
+        ensureWebMcpOriginTrialToken()
+        const controller = typeof AbortController === 'function' ? new AbortController() : null
+        let dispose = null
+        installPublicBookingAgentApi({
+            win: window,
+            slug,
+            origin: window.location.origin,
+            signal: controller ? controller.signal : undefined,
+            onError: (error, toolName) =>
+                console.warn('[BookingAgentApi] WebMCP registration failed', toolName || '', error?.message || error),
+        }).then(disposeApi => {
+            if (controller && controller.signal.aborted) disposeApi()
+            else dispose = disposeApi
+        })
+        return () => {
+            if (controller) controller.abort()
+            if (dispose) dispose()
+        }
+    }, [slug])
 }
 
 function formatZoneLabel(zone) {
@@ -71,6 +104,7 @@ export default function MeetingBookingPage({ navigation }) {
     const [success, setSuccess] = useState(null)
     const [displayTimeZone, setDisplayTimeZone] = useState(null)
     const [pickerOpen, setPickerOpen] = useState(false)
+    usePublicBookingAgentApi(slug)
 
     // The host's timezone drives availability (working hours + day boundaries) and is
     // always sent to the backend. The visitor's timezone is the default for display so

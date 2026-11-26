@@ -1696,8 +1696,6 @@
     "Select model": "Modell auswählen",
     "Model for this thread": "Modell für diesen Thread",
     "This model is used only in this thread": "Dieses Modell wird nur in diesem Thread verwendet",
-    "Model for the next chat": "Modell für den nächsten Chat",
-    "Used for the chat your next message starts": "Gilt für den Chat, den deine nächste Nachricht startet",
     "Only for this thread": "Nur für diesen Thread",
     "Assistant default": "Standard des Assistenten",
     "AI Settings": "KI-Einstellungen",

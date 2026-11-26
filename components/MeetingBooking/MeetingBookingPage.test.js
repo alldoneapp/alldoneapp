@@ -420,3 +420,43 @@ describe('MeetingBookingPage', () => {
         guessSpy.mockRestore()
     })
 })
+
+describe('MeetingBookingPage agent API (AT-3161)', () => {
+    beforeEach(() => {
+        jest.spyOn(console, 'info').mockImplementation(() => {})
+        delete window.alldone
+        getPublicBookingPage.mockReturnValue(new Promise(() => {}))
+    })
+
+    afterEach(() => {
+        delete window.alldone
+        jest.restoreAllMocks()
+    })
+
+    test("offers the page's booking tools to agents, without sign-in, and removes them on unmount", async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
+        })
+
+        expect(window.alldone.state).toBe('public_booking')
+        expect(window.alldone.docs).toBe('/meet/karsten-wysk/llms.txt')
+
+        await act(async () => tree.unmount())
+        expect('alldone' in window).toBe(false)
+    })
+
+    test("leaves a signed-in user's own tools alone when the page opens inside the app", async () => {
+        const ownApi = { state: 'ready' }
+        Object.defineProperty(window, 'alldone', { value: ownApi, configurable: true, enumerable: true })
+
+        let tree
+        await act(async () => {
+            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
+        })
+
+        expect(window.alldone).toBe(ownApi)
+        await act(async () => tree.unmount())
+        expect(window.alldone).toBe(ownApi)
+    })
+})

@@ -1,6 +1,6 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import AnnaConversation, { ANNA_MODEL_COMPACT_WIDTH, ANNA_TEMPLATES_COMPACT_WIDTH } from './AnnaConversation'
+import AnnaConversation, { ANNA_TEMPLATES_COMPACT_WIDTH } from './AnnaConversation'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
@@ -104,19 +104,6 @@ jest.mock('../MyDayView/AssistantLine/AssistantOptions/Search/AssistantTaskSearc
     mockTemplates = props
     return <button type="button" aria-label="Templates" data-compact={props.compact ? 'true' : 'false'} />
 })
-// AT-3162: the model button right of Templates, and the comment popup's per-thread model state it
-// drives (the real hook is pinned in ThreadAssistantModelUI.test.js).
-let mockModelButton
-jest.mock('../ChatsView/ChatDV/EditorView/BotOption/ComposerModelButton', () => props => {
-    mockModelButton = props
-    return <button type="button" aria-label="Select model" data-compact={props.compact ? 'true' : 'false'} />
-})
-let mockThreadModel = { model: null, isSupported: true }
-const mockUpdateThreadModel = jest.fn()
-const mockUseThreadAssistantModel = jest.fn(() => ({ ...mockThreadModel, updateModel: mockUpdateThreadModel }))
-jest.mock('../ChatsView/ChatDV/EditorView/BotOption/threadAssistantModelState', () => ({
-    useThreadAssistantModel: (...args) => mockUseThreadAssistantModel(...args),
-}))
 let mockDictationSupported = true
 jest.mock('../../hooks/useRambleRecorder', () => ({ isDictationSupported: () => mockDictationSupported }))
 jest.mock('../UIControls/RambleButton', () => ({
@@ -389,19 +376,19 @@ it('follows viewport resizing after focus without pulling a reader away from old
     }
 })
 
-it('orders the toolbar as +, Templates and model on the left, then mic, call and send on the right (AT-3029, AT-3032, AT-3162)', () => {
+it('orders the toolbar as + and Templates on the left, then mic, call and send on the right (AT-3029, AT-3032)', () => {
     render()
     const labels = selector =>
         [...container.querySelector(selector).querySelectorAll('button')].map(node => node.getAttribute('aria-label'))
-    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates', 'Select model'])
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
     // An empty draft shows its mic in Send's place (AT-3025), still on the right.
     expect(labels('.anna-composer-actions')).toEqual(['Talk with Existing assistant', 'Dictate'])
     type('Draft')
-    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates', 'Select model'])
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
     expect(labels('.anna-composer-actions')).toEqual(['Dictate', 'Talk with Existing assistant', 'Send message'])
     // Offline hides only the mic; the rest keep their places.
     render({ offline: true })
-    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates', 'Select model'])
+    expect(labels('.anna-composer-tools')).toEqual(['Select kind of file to add', 'Templates'])
     expect(labels('.anna-composer-actions')).toEqual(['Talk with Existing assistant', 'Send message'])
 })
 
@@ -482,112 +469,6 @@ describe('no project chip in the composer (AT-3055) and Templates beside the + (
             expect(mockTemplates.compact).toBe(false)
             act(() => root.unmount())
             expect(observer.disconnect).toHaveBeenCalledTimes(1)
-        } finally {
-            global.ResizeObserver = originalObserver
-        }
-    })
-})
-
-describe('model selection right of Templates (AT-3162)', () => {
-    beforeEach(() => {
-        mockModelButton = undefined
-        mockThreadModel = { model: null, isSupported: true }
-        mockUpdateThreadModel.mockClear()
-        mockUseThreadAssistantModel.mockClear()
-    })
-
-    it('sits directly right of Templates, on the left side of the toolbar', () => {
-        render()
-        const tools = [...container.querySelectorAll('.anna-composer-tools button')].map(node =>
-            node.getAttribute('aria-label')
-        )
-        expect(tools).toEqual(['Select kind of file to add', 'Templates', 'Select model'])
-        expect(container.querySelector('.anna-composer-actions [aria-label="Select model"]')).toBeNull()
-    })
-
-    it('pins the chat on screen, through the comment popup’s per-thread model state', () => {
-        render({
-            conversation: { projectId: 'p2', id: 'AnnaChat20261126u1', assistantId: 'a1' },
-            assistant: { uid: 'a1', displayName: 'Anna', model: 'MODEL_GPT6_SOL' },
-        })
-        expect(mockUseThreadAssistantModel).toHaveBeenLastCalledWith('p2', 'AnnaChat20261126u1', 'topics')
-        expect(mockModelButton.selectedModel).toBeNull()
-        expect(mockModelButton.assistantModel).toBe('MODEL_GPT6_SOL')
-        // The picker's choice is stored on the thread exactly as the comment popup stores it.
-        expect(mockModelButton.onSelectModel).toBe(mockUpdateThreadModel)
-        // Opens upwards over the window, like Templates beside it.
-        expect(mockModelButton.position[0]).toBe('top')
-        expect(mockModelButton.getPopoverViewport()).toEqual(
-            expect.objectContaining({ top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight })
-        )
-    })
-
-    it('shows the model already pinned on this chat', () => {
-        mockThreadModel = { model: 'MODEL_DEEPSEEK_V4_FLASH', isSupported: true }
-        render()
-        expect(mockModelButton.selectedModel).toBe('MODEL_DEEPSEEK_V4_FLASH')
-    })
-
-    // The pin is a field of the chat the message is answered in; askToBotSecondGen never carries a
-    // model and the server resolves it there (AT-2502). So what must hold is that the chat the button
-    // pins is the chat the message goes to, and that sending does not rewrite the pin.
-    it('sends into the chat it pins, and sending leaves the pin alone', async () => {
-        mockThreadModel = { model: 'MODEL_DEEPSEEK_V4_FLASH', isSupported: true }
-        render()
-        expect(mockUseThreadAssistantModel).toHaveBeenLastCalledWith('p1', 'anna_u1', 'topics')
-        await click('Show me my tasks')
-        await submit()
-        await act(async () => {})
-        expect(runHttpsCallableFunction).toHaveBeenCalledWith(
-            'askToBotSecondGen',
-            expect.objectContaining({ projectId: 'p1', objectId: 'anna_u1', objectType: 'topics' }),
-            { timeout: 3600000 }
-        )
-        const [, request] = runHttpsCallableFunction.mock.calls.find(([name]) => name === 'askToBotSecondGen')
-        expect(request).not.toHaveProperty('model')
-        expect(mockUpdateThreadModel).not.toHaveBeenCalled()
-    })
-
-    it('is not offered for a chat that cannot carry a pin', () => {
-        mockThreadModel = { model: null, isSupported: false }
-        render()
-        expect(container.querySelector('[aria-label="Select model"]')).toBeNull()
-    })
-
-    it('cannot pin while another project’s chat is still opening', () => {
-        render({ switching: true })
-        expect(mockModelButton.disabled).toBe(true)
-        render({ switching: false })
-        expect(mockModelButton.disabled).toBe(false)
-    })
-
-    it('drops the model name before Templates drops its label', () => {
-        const originalObserver = global.ResizeObserver
-        const observers = []
-        global.ResizeObserver = class {
-            constructor(callback) {
-                this.callback = callback
-                this.observe = jest.fn()
-                this.disconnect = jest.fn()
-                observers.push(this)
-            }
-        }
-        try {
-            render()
-            const form = container.querySelector('form')
-            const observer = observers.find(item => item.observe.mock.calls.some(([node]) => node === form))
-            const width = value =>
-                jest.spyOn(form, 'getBoundingClientRect').mockReturnValue({ width: value, toJSON: () => ({}) })
-            expect(ANNA_MODEL_COMPACT_WIDTH).toBeGreaterThan(ANNA_TEMPLATES_COMPACT_WIDTH)
-            width(ANNA_MODEL_COMPACT_WIDTH)
-            act(() => observer.callback())
-            expect([mockModelButton.compact, mockTemplates.compact]).toEqual([false, false])
-            width(ANNA_MODEL_COMPACT_WIDTH - 1)
-            act(() => observer.callback())
-            expect([mockModelButton.compact, mockTemplates.compact]).toEqual([true, false])
-            width(ANNA_TEMPLATES_COMPACT_WIDTH - 1)
-            act(() => observer.callback())
-            expect([mockModelButton.compact, mockTemplates.compact]).toEqual([true, true])
         } finally {
             global.ResizeObserver = originalObserver
         }

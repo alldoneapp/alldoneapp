@@ -350,15 +350,24 @@ function resolveEarliestBookableStart(settings = {}, requestedTimeZone, now = un
     return (now ? moment(now) : moment()).tz(zone).startOf('day').add(1, 'day')
 }
 
-async function findPublicBookingSlots(page, { start, end, timeZone, durationMinutes }) {
+function resolvePublicAvailabilityTimeZone(settings = {}, requestedTimeZone) {
+    return resolveSameDayBoundaryTimeZone(settings, requestedTimeZone)
+}
+
+async function findPublicBookingSlots(page, { start, end, timeZone, durationMinutes, now = undefined }) {
     const settings = page.settings || {}
     const resolvedDurationMinutes = resolvePublicDuration(settings, durationMinutes)
-    const resolvedTimeZone = timeZone || settings.timeZone || 'UTC'
+    // AT-3161: working hours, weekends and day boundaries are the HOST's, so availability is always
+    // computed in the host's timezone. The caller's timeZone used to win here, which let a direct
+    // API call (or an agent that naturally sends its own zone) move the 09:00-17:00 window into the
+    // host's night. The web page always sent the host zone, so it sees no change. A visitor's zone
+    // is only a display choice; publicBooking.js converts the options for it.
+    const resolvedTimeZone = resolvePublicAvailabilityTimeZone(settings, timeZone)
 
     // Single funnel: both GET /slots and the re-check inside POST /book come through here,
     // so clamping the search window is all the enforcement the same-day rule needs.
     let effectiveStart = start
-    const earliestBookableStart = resolveEarliestBookableStart(settings, timeZone)
+    const earliestBookableStart = resolveEarliestBookableStart(settings, timeZone, now)
     if (earliestBookableStart) {
         const requestedEnd = moment.parseZone(end)
         if (requestedEnd.isValid() && !requestedEnd.isAfter(earliestBookableStart)) {
@@ -377,6 +386,25 @@ async function findPublicBookingSlots(page, { start, end, timeZone, durationMinu
         if (requestedStart.isValid() && requestedStart.isBefore(earliestBookableStart)) {
             effectiveStart = earliestBookableStart.format()
         }
+    }
+
+    // AT-3161: nothing in the past is bookable. The availability engine generates slots for any
+    // range it is given, and the web page only avoided the past by starting today's search at
+    // "now" itself; a direct API or agent call for an earlier range (with same-day booking on)
+    // got slots that had already started, and the booking re-check accepted them.
+    const nowMoment = now ? moment(now) : moment()
+    const requestedEndMoment = moment.parseZone(end)
+    if (requestedEndMoment.isValid() && !requestedEndMoment.isAfter(nowMoment)) {
+        return {
+            success: true,
+            timeZone: resolvedTimeZone,
+            durationMinutes: resolvedDurationMinutes,
+            options: [],
+            message: 'The requested range is in the past.',
+        }
+    }
+    if (moment.parseZone(effectiveStart).isBefore(nowMoment)) {
+        effectiveStart = nowMoment.clone().tz(resolvedTimeZone).format()
     }
 
     const result = await findCalendarAvailabilityForAssistantRequest({
@@ -403,6 +431,7 @@ module.exports = {
     DEFAULT_BOOKING_SETTINGS,
     clampMinFreeHoursToWorkingHours,
     MAX_BOOKING_RANGE_DAYS,
+    MAX_PUBLIC_SLOT_OPTIONS,
     ALLOWED_BOOKING_DURATIONS,
     buildDefaultSlug,
     findPublicBookingSlots,
@@ -412,6 +441,7 @@ module.exports = {
     getPublicBookingPage,
     normalizeBookingSettings,
     resolveEarliestBookableStart,
+    resolvePublicAvailabilityTimeZone,
     resolvePublicDuration,
     resolveSameDayBoundaryTimeZone,
     saveBookingSettings,

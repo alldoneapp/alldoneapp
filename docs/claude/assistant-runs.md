@@ -695,40 +695,6 @@ never badge — that would be one read per visible task. `threadAssistantModelSt
 cache the row, the picker and the badge share; it is deliberately not redux, since a slice keyed by
 object id re-renders every subscriber on every write (AT-2336) for state that concerns one thread.
 
-### The composers pick the model right of Templates (AT-3162, 2026-11-26)
-
-The Anna composer and the assistant line (My Day, project task lists, assistant board — all
-`AssistantOptions`) carry a model button directly right of Templates: `ComposerModelButton`, which
-opens the **same** `ThreadAssistantModelModal` in an `AppPopover`. No second menu, no second field:
-both write `assistantModelOverride` through `setThreadAssistantModelOverride`, and the server resolves
-it exactly as above. The choice applies to **the current chat only** (product decision 2026-11-26):
-
-- **Anna** pins the chat on screen through `useThreadAssistantModel(projectId, conversation.id,
-'topics')`. Nothing travels with the message; `askToBotSecondGen` still sends no model. The daily
-  rollover starts a fresh, unpinned chat — that is intended, not a bug. Disabled while a project switch
-  is resolving, since the pin would land on the chat being left.
-- **The assistant line** starts a new chat with every send, so it holds the choice in local state and
-  passes `assistantModelOverride` to `createBotQuickTopic`, which pins the new chat **after** the
-  callable created it (an earlier client update is denied, the access projection does not exist yet)
-  and **before** `createObjectMessage` — that message starts the run, and a later pin would only
-  reach the second answer. The button returns to the assistant's model after the send and gets the
-  choice back if the chat could not be created. No choice means no option and no extra write.
-
-`ComposerModelButton` requires the picker lazily: the modal's module reaches `HelperFunctions`, the
-store and the Firebase client, and a static import broke every composer test that renders the
-button. Pinned in `ComposerModelButton.test.js`, `AssistantOptions.test.js`, `AnnaConversation.test.js`
-and `utils/assistantHelper.quickTopicModel.test.js` (ordering of pin vs. first message).
-
-**Layout: a third control on the left needs width tiers, and an RN-web view does not shrink.** The
-model chip names the model (max 180px, ellipsized), so it must be allowed to shrink: react-native-web
-gives every View `flex-shrink: 0`, and without `flexShrink: 1` on the button the ellipsis never
-applies and the chip slides under the call/send buttons instead (the toolbars report no overflow
-while that happens, because the left side overflows its own box). Tiers, measured in Chromium against
-the real markup at 316–1000px: Anna drops the model name below a 480px form (`ANNA_MODEL_COMPACT_WIDTH`),
-Templates' label below 360px as before, and gaps close to 2px below a 290px composer container. The
-assistant line measures its toolbar with `onLayout`: model icon-only below 420px (always on phones),
-Templates icon-only below 320px, and the toolbar keeps an 8px `gap` between its sides.
-
 ## A scheduled assistant task needs no approval of its content (decision 2026-11-09)
 
 Any project member, and the user's own assistants, may change a project assistant task's prompt,

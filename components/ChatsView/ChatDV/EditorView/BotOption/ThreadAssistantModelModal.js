@@ -27,16 +27,7 @@ import { themed } from '../../../../../Themes/colorMode'
  * The inherit entry is listed FIRST and names the model it would fall back to, so the choice
  * reads as "follow the assistant (Sol)" rather than as an abstract reset.
  */
-export default function ThreadAssistantModelModal({
-    closeModal,
-    selectedModel,
-    assistantModel,
-    updateModel,
-    // AT-3162: the composers' model button reuses this picker. The assistant line applies the
-    // choice to the chat its next message starts, so it says so instead of "this thread".
-    title = 'Model for this thread',
-    description = 'This model is used only in this thread',
-}) {
+export default function ThreadAssistantModelModal({ closeModal, selectedModel, assistantModel, updateModel }) {
     const [, height] = useWindowSize()
 
     const assistantName = getThreadAssistantModelName(assistantModel)
@@ -68,7 +59,11 @@ export default function ThreadAssistantModelModal({
     return (
         <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
-                <ModalHeader closeModal={closeModal} title={translate(title)} description={translate(description)} />
+                <ModalHeader
+                    closeModal={closeModal}
+                    title={translate('Model for this thread')}
+                    description={translate('This model is used only in this thread')}
+                />
                 {options.map(data => (
                     <OptionItem
                         key={data.model}

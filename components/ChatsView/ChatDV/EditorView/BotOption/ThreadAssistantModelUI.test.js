@@ -119,30 +119,6 @@ describe('the per-thread model UI (AT-2502)', () => {
 
         // Without a way back the pin would be a one-way door: a thread could be moved off the
         // assistant's model and never returned to it.
-        it('says "this thread" by default and takes a composer\'s own wording (AT-3162)', () => {
-            const header = tree => tree.root.findByType('ModalHeader').props
-
-            expect(header(renderPicker())).toEqual(
-                expect.objectContaining({
-                    title: 'Model for this thread',
-                    description: 'This model is used only in this thread',
-                })
-            )
-            expect(
-                header(
-                    renderPicker({
-                        title: 'Model for the next chat',
-                        description: 'Used for the chat your next message starts',
-                    })
-                )
-            ).toEqual(
-                expect.objectContaining({
-                    title: 'Model for the next chat',
-                    description: 'Used for the chat your next message starts',
-                })
-            )
-        })
-
         it('offers a way back to the assistant model, first, naming it', () => {
             const tree = renderPicker()
 

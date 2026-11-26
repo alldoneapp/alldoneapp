@@ -22,6 +22,7 @@ const {
     findPublicBookingSlots,
     normalizeBookingSettings,
     resolveEarliestBookableStart,
+    resolvePublicAvailabilityTimeZone,
     resolveSameDayBoundaryTimeZone,
     slugify,
     validateBookingSettings,
@@ -258,5 +259,73 @@ describe('same-day booking setting (AT-2271)', () => {
 
         const call = findCalendarAvailabilityForAssistantRequest.mock.calls[0][0]
         expect(call.timeMin).toBe('2026-08-20T09:00:00+02:00')
+    })
+})
+
+describe('public availability is computed in the host timezone, never in the past (AT-3161)', () => {
+    const NOW = moment.tz('2026-08-12T14:10:00', 'Europe/Berlin').valueOf()
+    const HOST_SETTINGS = { timeZone: 'Europe/Berlin', availableDurations: [30], durationMinutes: 30 }
+
+    beforeEach(() => {
+        findCalendarAvailabilityForAssistantRequest.mockReset()
+        findCalendarAvailabilityForAssistantRequest.mockResolvedValue({
+            success: true,
+            timeZone: 'Europe/Berlin',
+            options: [],
+        })
+    })
+
+    test("a visitor timezone does not move the host's working hours", async () => {
+        // Working hours 09:00-17:00 are the host's. With the visitor zone they would have been
+        // 09:00-17:00 New York, i.e. 15:00-23:00 in Berlin.
+        await findPublicBookingSlots(
+            { userId: 'u1', settings: HOST_SETTINGS },
+            {
+                start: '2026-08-20T00:00:00-04:00',
+                end: '2026-08-21T00:00:00-04:00',
+                timeZone: 'America/New_York',
+                durationMinutes: 30,
+                now: NOW,
+            }
+        )
+
+        expect(findCalendarAvailabilityForAssistantRequest.mock.calls[0][0].timeZone).toBe('Europe/Berlin')
+    })
+
+    test('a page without a valid host zone falls back to the visitor zone, as the day boundary does', () => {
+        expect(resolvePublicAvailabilityTimeZone({ timeZone: 'Not/AZone' }, 'Asia/Tokyo')).toBe('Asia/Tokyo')
+        expect(resolvePublicAvailabilityTimeZone({}, '')).toBe('UTC')
+    })
+
+    test('a range that is already over returns nothing without reading the calendar', async () => {
+        const result = await findPublicBookingSlots(
+            { userId: 'u1', settings: { ...HOST_SETTINGS, allowSameDayBooking: true } },
+            {
+                start: '2026-08-10T09:00:00+02:00',
+                end: '2026-08-11T17:00:00+02:00',
+                timeZone: 'Europe/Berlin',
+                durationMinutes: 30,
+                now: NOW,
+            }
+        )
+
+        expect(result).toEqual(expect.objectContaining({ success: true, options: [] }))
+        expect(findCalendarAvailabilityForAssistantRequest).not.toHaveBeenCalled()
+    })
+
+    test('with same-day booking on, today is searched from now, not from the start of the day', async () => {
+        await findPublicBookingSlots(
+            { userId: 'u1', settings: { ...HOST_SETTINGS, allowSameDayBooking: true } },
+            {
+                start: '2026-08-12T00:00:00+02:00',
+                end: '2026-08-12T23:59:59+02:00',
+                timeZone: 'Europe/Berlin',
+                durationMinutes: 30,
+                now: NOW,
+            }
+        )
+
+        const call = findCalendarAvailabilityForAssistantRequest.mock.calls[0][0]
+        expect(call.timeMin).toBe('2026-08-12T14:10:00+02:00')
     })
 })

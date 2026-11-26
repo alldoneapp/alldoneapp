@@ -27,7 +27,11 @@ import { ensureWebMcpOriginTrialToken } from '../../utils/browserAgent/webMcpOri
  * all, not even the stub. The MCP server enforces both as well, so this gate only decides whether the
  * page advertises anything.
  */
-export const resolveBrowserAgentPageState = ({ loggedIn, uid, isAnonymous, enabled, sessionReady }) => {
+export const resolveBrowserAgentPageState = ({ loggedIn, uid, isAnonymous, enabled, sessionReady, publicPage }) => {
+    // AT-3161: a public page (/meet/<slug>) installs its own window.alldone with that page's booking
+    // tools for everybody (MeetingBookingPage). A "sign in" stub there would send an external agent
+    // the wrong way, and a signed-in visitor's own tools are not what that page is about.
+    if (publicPage) return null
     if (isAnonymous || loggedIn === false) return AGENT_API_STATES.SIGNED_OUT
     // Still booting, or signed in while the user document has not arrived yet.
     if (loggedIn !== true || !uid) return AGENT_API_STATES.LOADING
@@ -35,7 +39,7 @@ export const resolveBrowserAgentPageState = ({ loggedIn, uid, isAnonymous, enabl
     return sessionReady ? AGENT_API_STATES.READY : AGENT_API_STATES.LOADING
 }
 
-export default function BrowserAgentApiBridge({ sessionReady = true }) {
+export default function BrowserAgentApiBridge({ sessionReady = true, publicPage = false }) {
     const loggedIn = useSelector(state => state.loggedIn)
     const uid = useSelector(state => state.loggedUser.uid)
     const isAnonymous = useSelector(state => !!state.loggedUser.isAnonymous)
@@ -47,7 +51,7 @@ export default function BrowserAgentApiBridge({ sessionReady = true }) {
         Array.isArray(state.loggedUser.mcpDisabledTools) ? state.loggedUser.mcpDisabledTools.join(',') : ''
     )
 
-    const pageState = resolveBrowserAgentPageState({ loggedIn, uid, isAnonymous, enabled, sessionReady })
+    const pageState = resolveBrowserAgentPageState({ loggedIn, uid, isAnonymous, enabled, sessionReady, publicPage })
 
     useEffect(() => {
         if (typeof window === 'undefined' || !pageState) return undefined
