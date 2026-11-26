@@ -5,9 +5,10 @@
 // runtime (the OpenAI client comes with it), so it repeats the runtime's two rules: no model means
 // Sol, and replaced keys follow their successors. This holds the copy in step with the original.
 //
-// Only the pure key resolution is under test, so the OpenAI client is stubbed (virtual: the suite
-// then also runs where functions/node_modules is not installed).
-jest.mock('openai', () => function OpenAI() {}, { virtual: true })
+// Only the pure key resolution is under test, so the OpenAI client is stubbed. Not as a virtual
+// mock: `openai` is installed, and functions/Tests/virtualMocks.test.js forbids virtual mocks for
+// modules that resolve.
+jest.mock('openai', () => function OpenAI() {})
 
 const { normalizeModelKey } = require('./assistantModelRuntime')
 const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
