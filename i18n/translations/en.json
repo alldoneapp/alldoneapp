@@ -3101,7 +3101,7 @@
     "Try out alldone.app": "Try out alldone.app",
     "Book with your AI agent": "Book with your AI agent",
     "Booking agent hint description": "Your AI agent can find a time and book for you if it can use a browser or MCP tools. Not every chatbot can open web pages or book. Copy this prompt into your agent:",
-    "Booking agent prompt": "Help me book a meeting through this page: %{url}\nAsk me about my preferences (days, times, duration, time zone) and for any booking details you still need (name, email, optional note). Then check the available times and suggest suitable options. Only book once I have explicitly confirmed one of them.",
+    "Booking agent prompt": "Find a suitable meeting time: %{url}\nUse existing context (name, email, time zone, preferences) and my calendar, if connected. Ask only for missing details. Book only after I confirm.",
     "Copy prompt": "Copy prompt",
     "Prompt copied": "Prompt copied",
     "Could not copy the prompt": "Could not copy. Select the text above and copy it manually.",

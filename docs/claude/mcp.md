@@ -229,8 +229,11 @@ runs those three, so validation, limits and the double-booking lock cannot drift
   chatbot can book), a copyable prompt and a "Copy prompt" button. The prompt
   (`bookingAgentPrompt.js`, key `Booking agent prompt`, in the page language) links
   `getAppLinkOrigin()` + `/meet/<page.slug>`: the origin the page runs on and the canonical slug,
-  never a fixed host. It asks the agent to collect preferences and missing details, propose options
-  and book only after explicit confirmation. `copyBookingText` reports failure (the shared
+  never a fixed host. It is kept as short as practical (Karsten, follow-up to !957): find a time,
+  use the context the agent already has (name, email, time zone, preferences) and the visitor's own
+  calendar _if connected_ (never implying it always is, nor meaning the agent's calendar), ask only
+  for what is missing, book only after confirmation. The URL ends its line so no punctuation sticks
+  to the link. `copyBookingText` reports failure (the shared
   `copyTextToClipboard` swallows it), so "Copied" only shows when the copy worked.
 
 Rules the operations enforce for every caller (the web page included): availability is computed in

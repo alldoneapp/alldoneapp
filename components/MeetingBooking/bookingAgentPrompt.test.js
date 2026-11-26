@@ -22,19 +22,37 @@ describe('bookingAgentPrompt (AT-3161)', () => {
         expect(getBookingPageUrl('demo')).toBe(`${window.location.origin}/meet/demo`)
     })
 
-    test('the prompt carries the URL once and requires confirmation, in every language', () => {
+    test('the prompt is short, carries the URL once, prefers known context and requires confirmation', () => {
         const url = 'https://mystaging.alldone.app/meet/anna-team'
-        const confirmations = {
-            en: 'Only book once I have explicitly confirmed',
-            de: 'Buche erst, nachdem ich eine davon ausdrücklich bestätigt habe',
-            es: 'Reserva solo cuando haya confirmado expresamente',
+        const expected = {
+            en: [
+                'Use existing context (name, email, time zone, preferences)',
+                'my calendar, if connected',
+                'Ask only for missing details',
+                'Book only after I confirm',
+            ],
+            de: [
+                'Nutze vorhandenen Kontext (Name, E-Mail, Zeitzone, Präferenzen)',
+                'falls verbunden, meinen Kalender',
+                'Frage nur nach fehlenden Angaben',
+                'Buche erst nach meiner Bestätigung',
+            ],
+            es: [
+                'Usa el contexto disponible (nombre, correo, zona horaria, preferencias)',
+                'mi calendario, si está conectado',
+                'Pregunta solo por lo que falte',
+                'Reserva solo tras mi confirmación',
+            ],
         }
-        Object.entries(confirmations).forEach(([language, confirmation]) => {
+        Object.entries(expected).forEach(([language, phrases]) => {
             setLanguage(language)
             const prompt = buildBookingAgentPrompt(url)
             expect(prompt.split(url)).toHaveLength(2)
-            expect(prompt).toContain(confirmation)
+            // The URL ends its line, so no sentence punctuation sticks to the link.
+            expect(prompt).toContain(`${url}\n`)
+            phrases.forEach(phrase => expect(prompt).toContain(phrase))
             expect(prompt).not.toContain('%{')
+            expect(prompt.length - url.length).toBeLessThan(220)
         })
     })
 
