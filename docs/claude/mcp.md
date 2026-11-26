@@ -223,6 +223,15 @@ runs those three, so validation, limits and the double-booking lock cannot drift
   meta tag, and a visually hidden hint inside `#root` in `index.html` for agents that only fetch the
   URL and get the SPA shell (React replaces it on first render). The service worker never answers
   `/api/booking/` or `/meet/*/llms.txt`.
+- **For visitors** (visible): a collapsed "Book with your AI agent" line under the page heading
+  (`BookingAgentHint` in `MeetingBookingPage.js`; Karsten chose "top, collapsed" so the form stays
+  first on a phone). It opens a short note that the agent needs browser or MCP access (not every
+  chatbot can book), a copyable prompt and a "Copy prompt" button. The prompt
+  (`bookingAgentPrompt.js`, key `Booking agent prompt`, in the page language) links
+  `getAppLinkOrigin()` + `/meet/<page.slug>`: the origin the page runs on and the canonical slug,
+  never a fixed host. It asks the agent to collect preferences and missing details, propose options
+  and book only after explicit confirmation. `copyBookingText` reports failure (the shared
+  `copyTextToClipboard` swallows it), so "Copied" only shows when the copy worked.
 
 Rules the operations enforce for every caller (the web page included): availability is computed in
 the **host's** timezone (the caller's zone used to move the working hours; it is now display only:
