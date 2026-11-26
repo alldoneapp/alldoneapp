@@ -2258,6 +2258,8 @@
     "Select model": "Seleccionar modelo",
     "Model for this thread": "Modelo para este hilo",
     "This model is used only in this thread": "Este modelo se usa solo en este hilo",
+    "Model for the next chat": "Modelo para el próximo chat",
+    "Used for the chat your next message starts": "Se usa en el chat que inicia tu próximo mensaje",
     "Only for this thread": "Solo para este hilo",
     "Assistant default": "Valor por defecto del asistente",
     "Very low": "Muy baja",
