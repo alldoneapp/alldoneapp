@@ -55,10 +55,9 @@ import { themed } from '../../../../Themes/colorMode'
 // as an unserializable base64 embed that vanishes on submit (AT-2441), and a paste does the same.
 const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageFormat', 'videoFormat']
 
-// AT-3162: with the model button the toolbar's left side holds +, Templates and the model. Below
-// these toolbar widths the model shows only its icon (always on phones), and below the second one
-// Templates does too, so the call and send buttons are never overlapped (as in the Anna composer).
-export const ASSISTANT_LINE_MODEL_COMPACT_WIDTH = 420
+// AT-3162: with the model button the toolbar's left side holds +, Templates and the model icon.
+// Below this toolbar width Templates shows only its icon too, so the call and send buttons are
+// never overlapped (as in the Anna composer).
 export const ASSISTANT_LINE_TEMPLATES_COMPACT_WIDTH = 320
 
 /**
@@ -447,9 +446,6 @@ export default function AssistantOptions({
                                 onSelectModel={selection =>
                                     setNextChatModel(normalizeThreadAssistantModelSelection(selection))
                                 }
-                                compact={
-                                    isMobile || (toolbarWidth > 0 && toolbarWidth < ASSISTANT_LINE_MODEL_COMPACT_WIDTH)
-                                }
                                 title={'Model for the next chat'}
                                 description={'Used for the chat your next message starts'}
                                 testID="assistant-line-model-button"
@@ -587,7 +583,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        // AT-3162: the shrinking model name never runs into the call and send buttons.
+        // AT-3162: the left side's controls never run into the call and send buttons.
         gap: 8,
         height: ASSISTANT_TOOLBAR_CONTROL_SIZE,
         marginTop: ASSISTANT_COMPOSER_TOOLBAR_GAP,
@@ -597,7 +593,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         gap: 4,
     },
-    // AT-3162: the left side gives way first on a narrow line; the model name ellipsizes.
+    // AT-3162: the left side gives way first on a narrow line.
     toolbarSideLeft: {
         flexShrink: 1,
         minWidth: 0,

@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+import { Text } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import ComposerModelButton from './ComposerModelButton'
@@ -56,9 +57,7 @@ const renderButton = (props = {}) =>
     )
 
 const buttonOf = tree => tree.root.findByProps({ testID: 'composer-model-button' })
-const textOf = tree => JSON.stringify(tree.toJSON())
-// The visible label only (react-native-web renders <Text> as a div holding the string).
-const shownLabel = (tree, text) => textOf(tree).includes(`"children":[${JSON.stringify(text)}]`)
+const tooltipOf = tree => tree.root.findByProps({ className: 'composer-model-button' }).props.title
 
 describe('ComposerModelButton (AT-3162)', () => {
     beforeEach(() => {
@@ -66,35 +65,50 @@ describe('ComposerModelButton (AT-3162)', () => {
         setLanguage('en')
     })
 
-    it('names the assistant model while nothing is chosen', () => {
+    // AT-3162 follow-up: the button is a quiet icon at every width; the model it runs on is only in
+    // its accessible label and its hover tooltip.
+    it('shows only the icon, naming the assistant model in its label and tooltip', () => {
         const tree = renderButton()
 
-        expect(shownLabel(tree, 'Sol')).toBe(true)
-        expect(buttonOf(tree).props.accessibilityLabel).toBe('Select model: Sol')
+        expect(tree.root.findAllByType(Text)).toHaveLength(0)
+        expect(tree.root.findAllByType('Icon')).toHaveLength(1)
+        expect(buttonOf(tree).props.accessibilityLabel).toBe('Select model: Use assistant model (Sol)')
+        expect(tooltipOf(tree)).toBe('Select model: Use assistant model (Sol)')
         expect(tree.root.findAll(node => node.props.testID === 'composer-model-button-pinned')).toHaveLength(0)
     })
 
-    it('names and marks a chosen model', () => {
+    it('names and marks a chosen model without showing its name', () => {
         const tree = renderButton({ selectedModel: 'MODEL_DEEPSEEK_V4_FLASH' })
 
-        expect(shownLabel(tree, 'DeepSeek Flash')).toBe(true)
-        expect(shownLabel(tree, 'Sol')).toBe(false)
+        expect(tree.root.findAllByType(Text)).toHaveLength(0)
+        expect(buttonOf(tree).props.accessibilityLabel).toBe('Select model: DeepSeek Flash')
+        expect(tooltipOf(tree)).toBe('Select model: DeepSeek Flash')
         expect(tree.root.findAll(node => node.props.testID === 'composer-model-button-pinned').length).toBeGreaterThan(
             0
         )
     })
 
+    it('ignores a stale compact prop: there is no labelled variant left', () => {
+        const tree = renderButton({ compact: false })
+
+        expect(tree.root.findAllByType(Text)).toHaveLength(0)
+    })
+
+    // The production assistant behind this follow-up still stores the replaced key and runs on Sol.
+    it.each([
+        ['a replaced key', 'MODEL_GPT5_6_SOL', 'Sol'],
+        ['no model at all', undefined, 'Sol'],
+        ['a replaced Luna key', 'MODEL_GPT5_6_LUNA', 'Luna'],
+    ])('names the model the server runs for %s', (_label, assistantModel, name) => {
+        const tree = renderButton({ assistantModel })
+
+        expect(buttonOf(tree).props.accessibilityLabel).toBe(`Select model: Use assistant model (${name})`)
+    })
+
     it('still says something true for an assistant on a model outside the menu', () => {
         const tree = renderButton({ assistantModel: 'MODEL_GPT5_5' })
 
-        expect(buttonOf(tree).props.accessibilityLabel).toBe('Select model: Assistant default')
-    })
-
-    it('keeps the name in the accessible label when it shows only the icon', () => {
-        const tree = renderButton({ compact: true, selectedModel: 'MODEL_DEEPSEEK_V4_FLASH' })
-
-        expect(shownLabel(tree, 'DeepSeek Flash')).toBe(false)
-        expect(buttonOf(tree).props.accessibilityLabel).toBe('Select model: DeepSeek Flash')
+        expect(buttonOf(tree).props.accessibilityLabel).toBe('Select model: Use assistant model')
     })
 
     it('opens the comment popup’s model picker with the current state and closes it again', () => {

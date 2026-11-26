@@ -256,9 +256,7 @@ Follower lists are member-writable and outlive membership, so `TaskCommentServic
 `projects/{id}.userIds` (`shared/projectMemberRecipients.js`); removing a member also cleans the
 project's `followers` documents. `/api/booking/book` is rate limited per IP, page and recipient
 (`Booking/bookingRateLimit.js`, server-only `bookingRateLimits`, hashed ids; give it a TTL policy on
-`expiresAt`) and its visitor mail has a fixed subject and no echoed note. Since AT-3161 slot lookups
-are limited too, and bookings of one host are serialized by a lease lock (`bookingLocks`, same TTL
-advice); the public booking MCP endpoint and agent rules are in `mcp.md`. Chat media are fetched only
+`expiresAt`) and its visitor mail has a fixed subject and no echoed note. Chat media are fetched only
 from this project's Storage bucket, without redirects (`shared/storageMediaUrl.js`).
 
 ## The iOS shell answers native bridge calls from its own main frame only (NV-33)

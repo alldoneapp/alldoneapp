@@ -12,8 +12,8 @@ import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 import {
     INHERIT_ASSISTANT_MODEL,
     THREAD_ASSISTANT_MODEL_OPTIONS,
-    getThreadAssistantModelName,
 } from '../../../../../functions/Assistant/threadAssistantModel'
+import { getAssistantDefaultModelOption } from './assistantDefaultModel'
 import { themed } from '../../../../../Themes/colorMode'
 
 /**
@@ -24,8 +24,9 @@ import { themed } from '../../../../../Themes/colorMode'
  * assistant's own model. Without it a thread could be pinned but never unpinned, and "select a
  * model" would be a one-way door.
  *
- * The inherit entry is listed FIRST and names the model it would fall back to, so the choice
- * reads as "follow the assistant (Sol)" rather than as an abstract reset.
+ * The inherit entry is listed FIRST and names, on a line of its own under it, the model it falls
+ * back to (AT-3162), so the choice reads as "follow the assistant: GPT 6.1 Sol" rather than as an
+ * abstract reset. The model entries show their Gold rate in the same place.
  */
 export default function ThreadAssistantModelModal({
     closeModal,
@@ -39,14 +40,14 @@ export default function ThreadAssistantModelModal({
 }) {
     const [, height] = useWindowSize()
 
-    const assistantName = getThreadAssistantModelName(assistantModel)
-    // The name is handed over as an interpolation param, NOT spliced into an already-translated
-    // string: `OptionItem` translates `text` itself, so a finished sentence arrives there as an
-    // unknown key and renders as `[missing "en.Use assistant model (Luna)" translation]`
-    // (AT-2512). Keeping the whole label in one key also lets a translator place the bracket.
+    // `assistantModel` is the ASSISTANT's own setting, never the chat's override: this line names
+    // what choosing the entry would fall back to. Resolved as the server resolves it, so an
+    // assistant still storing a replaced key (`MODEL_GPT5_6_SOL`) or no model at all is named too.
+    // `OptionItem` translates the key itself (AT-2512: never hand it a finished string).
+    const assistantDefault = getAssistantDefaultModelOption(assistantModel)
     const inheritOption = {
-        text: assistantName ? 'Use assistant model with name' : 'Use assistant model',
-        textParams: assistantName ? { name: assistantName } : undefined,
+        text: 'Use assistant model',
+        subtitleKey: assistantDefault?.labelKey,
         model: INHERIT_ASSISTANT_MODEL,
         shortcutKey: '',
     }

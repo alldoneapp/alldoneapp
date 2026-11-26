@@ -16,13 +16,8 @@ import useWindowSize from '../../utils/useWindowSize'
 import { getSafeAreaViewportHeightCap } from '../../utils/modalSafeArea'
 
 import { adaptiveColor, themed } from '../../Themes/colorMode'
-import { AGENT_API_STATES, WINDOW_API_NAME } from '../../utils/browserAgent/browserAgentApi'
-import { installPublicBookingAgentApi } from '../../utils/browserAgent/publicBookingAgentApi'
-import { ensureWebMcpOriginTrialToken } from '../../utils/browserAgent/webMcpOriginTrial'
-import { buildBookingAgentPrompt, copyBookingText, getBookingPageUrl } from './bookingAgentPrompt'
 
 const PUBLIC_BOOKING_DAYS_TO_SHOW = 31
-const AGENT_PROMPT_COPY_FEEDBACK_MS = 2000
 
 // The timezone picker overlay's existing per-side gap, and the card's fixed
 // height cap. Both are now floors/ceilings resolved against the safe area.
@@ -37,36 +32,6 @@ function buildPublicBookingDays({ timeZone, allowSameDayBooking, includeWeekends
             .add(index + firstBookableDayOffset, 'days')
             .startOf('day')
     ).filter(day => includeWeekends || (day.day() !== 0 && day.day() !== 6))
-}
-
-// AT-3161: external AI agents pointed at this page get its booking tools (window.alldone, WebMCP),
-// with no sign-in. A signed-in user's full tool set already on the page (the page was opened inside
-// the app) is left alone; on a directly opened link the app's own bridge stands aside.
-export function usePublicBookingAgentApi(slug) {
-    useEffect(() => {
-        if (typeof window === 'undefined' || !slug) return undefined
-        const existing = window[WINDOW_API_NAME]
-        if (existing && existing.state === AGENT_API_STATES.READY) return undefined
-
-        ensureWebMcpOriginTrialToken()
-        const controller = typeof AbortController === 'function' ? new AbortController() : null
-        let dispose = null
-        installPublicBookingAgentApi({
-            win: window,
-            slug,
-            origin: window.location.origin,
-            signal: controller ? controller.signal : undefined,
-            onError: (error, toolName) =>
-                console.warn('[BookingAgentApi] WebMCP registration failed', toolName || '', error?.message || error),
-        }).then(disposeApi => {
-            if (controller && controller.signal.aborted) disposeApi()
-            else dispose = disposeApi
-        })
-        return () => {
-            if (controller) controller.abort()
-            if (dispose) dispose()
-        }
-    }, [slug])
 }
 
 function formatZoneLabel(zone) {
@@ -106,7 +71,6 @@ export default function MeetingBookingPage({ navigation }) {
     const [success, setSuccess] = useState(null)
     const [displayTimeZone, setDisplayTimeZone] = useState(null)
     const [pickerOpen, setPickerOpen] = useState(false)
-    usePublicBookingAgentApi(slug)
 
     // The host's timezone drives availability (working hours + day boundaries) and is
     // always sent to the backend. The visitor's timezone is the default for display so
@@ -305,8 +269,6 @@ export default function MeetingBookingPage({ navigation }) {
                     </View>
                 </View>
 
-                <BookingAgentHint slug={page.slug || slug} />
-
                 <View style={localStyles.timeZoneBar}>
                     <Text style={localStyles.timeZoneLabel}>{translate('Times shown in')}</Text>
                     <TouchableOpacity
@@ -456,78 +418,6 @@ export default function MeetingBookingPage({ navigation }) {
                     }}
                     onClose={() => setPickerOpen(false)}
                 />
-            )}
-        </View>
-    )
-}
-
-// AT-3161: tells visitors they can hand this page to their own AI agent, with a ready prompt.
-// Collapsed by default under the heading (Karsten, 2026-11-26) so the form stays first on a phone.
-export function BookingAgentHint({ slug }) {
-    const [open, setOpen] = useState(false)
-    const [copyState, setCopyState] = useState('idle') // 'idle' | 'copied' | 'failed'
-    const resetTimer = useRef(null)
-    useEffect(() => () => clearTimeout(resetTimer.current), [])
-
-    const prompt = buildBookingAgentPrompt(getBookingPageUrl(slug))
-
-    const onCopy = async () => {
-        clearTimeout(resetTimer.current)
-        const copied = await copyBookingText(prompt)
-        setCopyState(copied ? 'copied' : 'failed')
-        // A failure stays until the next try: the visitor needs the hint to copy by hand.
-        if (copied) resetTimer.current = setTimeout(() => setCopyState('idle'), AGENT_PROMPT_COPY_FEEDBACK_MS)
-    }
-
-    return (
-        <View style={localStyles.agentHint} testID="booking-agent-hint">
-            <TouchableOpacity
-                testID="booking-agent-hint-toggle"
-                role="button"
-                aria-expanded={open}
-                style={localStyles.agentHintToggle}
-                onPress={() => setOpen(current => !current)}
-            >
-                <Text style={localStyles.agentHintToggleText}>{translate('Book with your AI agent')}</Text>
-                <Text style={localStyles.agentHintCaret}>{open ? '▾' : '▸'}</Text>
-            </TouchableOpacity>
-            {open && (
-                <View style={localStyles.agentHintPanel} testID="booking-agent-hint-panel">
-                    <Text style={localStyles.agentHintText}>{translate('Booking agent hint description')}</Text>
-                    <View style={localStyles.agentPromptBox}>
-                        <Text testID="booking-agent-prompt" style={localStyles.agentPromptText} selectable>
-                            {prompt}
-                        </Text>
-                    </View>
-                    <View style={localStyles.agentHintActions}>
-                        <Button
-                            testID="booking-agent-prompt-copy"
-                            type={copyState === 'copied' ? 'secondary' : 'primary'}
-                            icon={copyState === 'copied' ? 'check' : 'copy'}
-                            iconSize={16}
-                            iconGap={8}
-                            title={translate(copyState === 'copied' ? 'Copied' : 'Copy prompt')}
-                            onPress={onCopy}
-                            accessible
-                            role="button"
-                            buttonStyle={localStyles.agentCopyButton}
-                        />
-                        <Text
-                            testID="booking-agent-prompt-copy-status"
-                            aria-live="polite"
-                            style={[
-                                localStyles.agentCopyStatus,
-                                copyState === 'failed' && localStyles.agentCopyStatusError,
-                            ]}
-                        >
-                            {copyState === 'copied'
-                                ? translate('Prompt copied')
-                                : copyState === 'failed'
-                                  ? translate('Could not copy the prompt')
-                                  : ''}
-                        </Text>
-                    </View>
-                </View>
             )}
         </View>
     )
@@ -805,65 +695,6 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 24,
-    },
-    agentHint: {
-        marginTop: -12,
-        marginBottom: 16,
-    },
-    agentHintToggle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        alignSelf: 'flex-start',
-        minHeight: 44,
-        paddingVertical: 8,
-    },
-    agentHintToggleText: {
-        ...styles.subtitle2,
-        color: colors.Primary300,
-        marginRight: 6,
-    },
-    agentHintCaret: {
-        ...styles.caption2,
-        color: colors.Primary300,
-    },
-    agentHintPanel: {
-        padding: 14,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: colors.Grey300,
-        backgroundColor: themed.Surface,
-    },
-    agentHintText: {
-        ...styles.body2,
-        color: colors.Text02,
-    },
-    agentPromptBox: {
-        marginTop: 10,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: 6,
-        backgroundColor: adaptiveColor('#F7F8FA'),
-    },
-    agentPromptText: {
-        ...styles.body2,
-        color: colors.Text01,
-    },
-    agentHintActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        marginTop: 12,
-    },
-    agentCopyButton: {
-        marginRight: 12,
-    },
-    agentCopyStatus: {
-        ...styles.caption2,
-        color: colors.Text03,
-        flexShrink: 1,
-    },
-    agentCopyStatusError: {
-        color: colors.UtilityRed200,
     },
     languageSelector: {
         flexDirection: 'row',

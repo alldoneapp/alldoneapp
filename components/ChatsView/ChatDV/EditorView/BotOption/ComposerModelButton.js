@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { useDispatch } from 'react-redux'
 
 import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 import Icon from '../../../../Icon'
-import styles, { colors } from '../../../../styles/global'
+import { colors } from '../../../../styles/global'
 import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
 import { translate } from '../../../../../i18n/TranslationService'
 import { getThreadAssistantModelName } from '../../../../../functions/Assistant/threadAssistantModel'
+import { getAssistantDefaultModelName } from './assistantDefaultModel'
 
 // The picker is required only when it opens: its module reaches `utils/HelperFunctions`, and with
 // it the redux store and the Firebase client. A static import would drag all of that into every
@@ -26,15 +27,16 @@ const DEFAULT_POSITION = ['top', 'bottom', 'left', 'right']
  * Where the choice goes is the caller's: the Anna composer pins the chat on screen, the assistant
  * line applies it to the chat its next message starts.
  *
- * `selectedModel` is null while the assistant's own model applies; the button then names that model,
- * so the user sees what the next answer runs on without opening the picker. A chosen model is
- * marked with the same dot as the badged assistant avatar.
+ * It shows only the chip icon, at every width, so it stays a quiet extra beside "Templates" rather
+ * than a second pill. A chosen model is marked with the same dot as the badged assistant avatar.
+ * The model the next answer runs on is in its accessible label and its hover tooltip:
+ * "Select model: Terra" when chosen, "Select model: Use assistant model (Sol)" while
+ * `selectedModel` is null and the assistant's own model applies.
  */
 export default function ComposerModelButton({
     selectedModel,
     assistantModel,
     onSelectModel,
-    compact = false,
     position = DEFAULT_POSITION,
     getPopoverViewport,
     title,
@@ -77,8 +79,14 @@ export default function ComposerModelButton({
     }
 
     const pinnedName = getThreadAssistantModelName(selectedModel)
-    const name = pinnedName || getThreadAssistantModelName(assistantModel) || translate('Assistant default')
-    const accessibilityLabel = `${translate('Select model')}: ${name}`
+    // Resolved as the server resolves the assistant's model (a replaced key, no model at all).
+    const assistantName = getAssistantDefaultModelName(assistantModel)
+    const current = pinnedName
+        ? pinnedName
+        : assistantName
+          ? translate('Use assistant model with name', { name: assistantName })
+          : translate('Use assistant model')
+    const accessibilityLabel = `${translate('Select model')}: ${current}`
 
     const PickerModal = isOpen ? getPickerModal() : null
 
@@ -104,56 +112,39 @@ export default function ComposerModelButton({
             contentLocation={null}
             disableReposition
         >
-            <TouchableOpacity
-                style={[localStyles.button, compact && localStyles.buttonCompact, disabled && localStyles.disabled]}
-                onPress={open}
-                disabled={disabled}
-                accessibilityRole={'button'}
-                accessibilityLabel={accessibilityLabel}
-                accessibilityState={{ expanded: isOpen, disabled }}
-                testID={testID}
-            >
-                <View style={localStyles.iconWrap}>
-                    <Icon name="cpu" size={16} color={colors.Text03} />
-                    {!!pinnedName && (
-                        <View pointerEvents="none" testID={`${testID}-pinned`} style={localStyles.pinnedDot} />
-                    )}
-                </View>
-                {!compact && (
-                    <Text style={[styles.subtitle2, localStyles.text]} numberOfLines={1}>
-                        {name}
-                    </Text>
-                )}
-            </TouchableOpacity>
+            {/* The wrapper carries the hover tooltip: react-native-web does not forward `title`. */}
+            <div className="composer-model-button" title={accessibilityLabel} style={WRAPPER_STYLE}>
+                <TouchableOpacity
+                    style={[localStyles.button, disabled && localStyles.disabled]}
+                    onPress={open}
+                    disabled={disabled}
+                    accessibilityRole={'button'}
+                    accessibilityLabel={accessibilityLabel}
+                    accessibilityState={{ expanded: isOpen, disabled }}
+                    testID={testID}
+                >
+                    <View style={localStyles.iconWrap}>
+                        <Icon name="cpu" size={16} color={colors.Text03} />
+                        {!!pinnedName && (
+                            <View pointerEvents="none" testID={`${testID}-pinned`} style={localStyles.pinnedDot} />
+                        )}
+                    </View>
+                </TouchableOpacity>
+            </div>
         </AppPopover>
     )
 }
 
+const WRAPPER_STYLE = { display: 'flex', flexShrink: 0 }
+
 const localStyles = StyleSheet.create({
-    // Same pill as the Templates button beside it (AssistantTaskSearchButtonWrapper).
+    // AT-3162: icon only and borderless, like Templates once it drops its label, but a size
+    // smaller, so it reads as a secondary control.
     button: {
-        flexDirection: 'row',
-        alignItems: 'center',
+        width: 32,
         height: 32,
-        // react-native-web views do not shrink by default; this one gives way first in a narrow
-        // toolbar, and its model name ellipsizes instead of pushing the send button out.
-        flexShrink: 1,
-        minWidth: 0,
-        maxWidth: 180,
-        paddingLeft: 10,
-        paddingRight: 10,
         borderRadius: 16,
-        borderWidth: 1,
-        borderColor: colors.Grey300,
-    },
-    buttonCompact: {
-        flexShrink: 0,
-        width: 36,
-        height: 36,
-        paddingLeft: 0,
-        paddingRight: 0,
-        borderRadius: 18,
-        borderWidth: 0,
+        alignItems: 'center',
         justifyContent: 'center',
     },
     disabled: {
@@ -161,7 +152,6 @@ const localStyles = StyleSheet.create({
     },
     iconWrap: {
         position: 'relative',
-        flexShrink: 0,
     },
     pinnedDot: {
         position: 'absolute',
@@ -171,11 +161,5 @@ const localStyles = StyleSheet.create({
         height: 7,
         borderRadius: 100,
         backgroundColor: colors.Primary100,
-    },
-    text: {
-        color: colors.Text02,
-        marginLeft: 6,
-        flexShrink: 1,
-        minWidth: 0,
     },
 })

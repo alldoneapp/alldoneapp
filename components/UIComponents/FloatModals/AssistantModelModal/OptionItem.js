@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
-import styles from '../../../styles/global'
+import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
 import Shortcut, { SHORTCUT_LIGHT } from '../../../UIControls/Shortcut'
 import { translate } from '../../../../i18n/TranslationService'
@@ -16,10 +16,14 @@ import AssistantModelGoldRate from '../../AssistantModelGoldRate'
  * must therefore supply that value as `textParams` and let the key interpolate it, rather than
  * building the sentence itself: a pre-translated string reaches `translate()` as an unknown key
  * and renders as `[missing "en.…" translation]` (AT-2512).
+ *
+ * `subtitleKey` (also a translation key) adds a secondary line under the label. The thread picker
+ * uses it to name the model its "Use assistant model" entry stands for (AT-3162), in the place where
+ * the model entries show their Gold rate.
  */
 export default function OptionItem({ modelData, selectedModel, selectModel, disabledShorcut }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    let { text, textParams, model, shortcutKey, tokensPerGold } = modelData
+    let { text, textParams, subtitleKey, model, shortcutKey, tokensPerGold } = modelData
 
     const selectOption = () => {
         selectModel(model)
@@ -30,6 +34,7 @@ export default function OptionItem({ modelData, selectedModel, selectModel, disa
             <Hotkeys keyName={shortcutKey} onKeyDown={selectOption} filter={e => true} disabled={disabledShorcut}>
                 <View style={localStyles.containerOption}>
                     <Text style={localStyles.text}>{translate(text, textParams)}</Text>
+                    {!!subtitleKey && <Text style={localStyles.subtitle}>{translate(subtitleKey)}</Text>}
                     <AssistantModelGoldRate tokensPerGold={tokensPerGold} />
                 </View>
                 <View style={{ justifyContent: 'center', flexDirection: 'row' }}>
@@ -57,5 +62,11 @@ const localStyles = StyleSheet.create({
     text: {
         ...styles.subtitle1,
         color: '#ffffff',
+    },
+    // Same secondary line as the assistant popup's "Select model" row (SelectModelOption).
+    subtitle: {
+        ...styles.caption1,
+        color: colors.Text03,
+        marginTop: 2,
     },
 })

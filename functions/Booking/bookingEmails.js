@@ -77,7 +77,6 @@ function buildHostEmailHtml({
     durationMinutes,
     eventHtmlLink,
     joinUrl,
-    bookedViaText = '',
 }) {
     const rows = [
         buildDetailRow('Name', escapeHtml(visitorName)),
@@ -90,8 +89,6 @@ function buildHostEmailHtml({
     ]
     if (meetingTimeText) rows.push(buildDetailRow('When', escapeHtml(meetingTimeText)))
     if (Number.isFinite(durationMinutes)) rows.push(buildDetailRow('Duration', `${durationMinutes} minutes`))
-    // AT-3161: the host should know when an AI agent, not the person, filled in the form.
-    if (bookedViaText) rows.push(buildDetailRow('Booked via', escapeHtml(bookedViaText)))
     const joinRow = buildJoinRow(joinUrl)
     if (joinRow) rows.push(joinRow)
     if (note) {
@@ -138,7 +135,6 @@ async function sendBookingNotificationToHost({
     durationMinutes,
     eventHtmlLink,
     joinUrl,
-    bookedViaText = '',
 }) {
     try {
         const hostData = (await getUserData(userId)) || {}
@@ -160,7 +156,6 @@ async function sendBookingNotificationToHost({
             durationMinutes,
             eventHtmlLink,
             joinUrl,
-            bookedViaText,
         })
 
         const sendSmtpEmail = {

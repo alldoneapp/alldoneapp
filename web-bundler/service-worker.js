@@ -40,10 +40,6 @@ const NAVIGATION_DENYLIST = [
     /\/mcpOAuthCallback/,
     /\/mcpClientOAuthCallback/,
     /\/\.well-known\/oauth/,
-    // AT-3161: agent docs and the public booking API/MCP endpoint are not the app shell; never
-    // cache them as navigations or fall back to index.html for them.
-    /^\/api\/booking\//,
-    /^\/meet\/[^/]+\/llms\.txt$/,
 ]
 
 // Navigations stay network-first (hosting serves index.html with no-cache on

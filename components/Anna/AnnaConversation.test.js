@@ -1,6 +1,6 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import AnnaConversation, { ANNA_MODEL_COMPACT_WIDTH, ANNA_TEMPLATES_COMPACT_WIDTH } from './AnnaConversation'
+import AnnaConversation, { ANNA_TEMPLATES_COMPACT_WIDTH } from './AnnaConversation'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
@@ -561,7 +561,9 @@ describe('model selection right of Templates (AT-3162)', () => {
         expect(mockModelButton.disabled).toBe(false)
     })
 
-    it('drops the model name before Templates drops its label', () => {
+    // AT-3162 follow-up: the model button is icon only at every width, so only Templates follows the
+    // composer width; the model button is never handed a width tier.
+    it('keeps the model button icon only while Templates drops its label', () => {
         const originalObserver = global.ResizeObserver
         const observers = []
         global.ResizeObserver = class {
@@ -578,16 +580,16 @@ describe('model selection right of Templates (AT-3162)', () => {
             const observer = observers.find(item => item.observe.mock.calls.some(([node]) => node === form))
             const width = value =>
                 jest.spyOn(form, 'getBoundingClientRect').mockReturnValue({ width: value, toJSON: () => ({}) })
-            expect(ANNA_MODEL_COMPACT_WIDTH).toBeGreaterThan(ANNA_TEMPLATES_COMPACT_WIDTH)
-            width(ANNA_MODEL_COMPACT_WIDTH)
-            act(() => observer.callback())
-            expect([mockModelButton.compact, mockTemplates.compact]).toEqual([false, false])
-            width(ANNA_MODEL_COMPACT_WIDTH - 1)
-            act(() => observer.callback())
-            expect([mockModelButton.compact, mockTemplates.compact]).toEqual([true, false])
-            width(ANNA_TEMPLATES_COMPACT_WIDTH - 1)
-            act(() => observer.callback())
-            expect([mockModelButton.compact, mockTemplates.compact]).toEqual([true, true])
+            for (const [value, templatesCompact] of [
+                [1000, false],
+                [ANNA_TEMPLATES_COMPACT_WIDTH, false],
+                [ANNA_TEMPLATES_COMPACT_WIDTH - 1, true],
+            ]) {
+                width(value)
+                act(() => observer.callback())
+                expect(mockTemplates.compact).toBe(templatesCompact)
+                expect(mockModelButton).not.toHaveProperty('compact')
+            }
         } finally {
             global.ResizeObserver = originalObserver
         }

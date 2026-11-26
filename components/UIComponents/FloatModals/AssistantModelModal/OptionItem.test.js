@@ -70,4 +70,33 @@ describe('AssistantModelModal OptionItem', () => {
 
         expect(labels).toContain('Use assistant model (Luna)')
     })
+    // AT-3162: the thread picker names the model behind "Use assistant model" on a line under it.
+    // The line is a translation key too, resolved before it reaches the screen.
+    test('renders a translated subtitle line under the label, and none without one', () => {
+        const withSubtitle = renderer.create(
+            <OptionItem
+                modelData={{
+                    text: 'Use assistant model',
+                    subtitleKey: 'GPT 5_6 Terra',
+                    model: 'INHERIT_ASSISTANT_MODEL',
+                    shortcutKey: '',
+                }}
+                selectedModel="MODEL_GPT6_SOL"
+                selectModel={jest.fn()}
+            />
+        )
+        expect(withSubtitle.root.findAllByType(Text).map(node => node.props.children)).toEqual([
+            'Use assistant model',
+            'GPT 5.6 Terra',
+        ])
+
+        const without = renderer.create(
+            <OptionItem
+                modelData={{ text: 'Use assistant model', model: 'INHERIT_ASSISTANT_MODEL', shortcutKey: '' }}
+                selectedModel="MODEL_GPT6_SOL"
+                selectModel={jest.fn()}
+            />
+        )
+        expect(without.root.findAllByType(Text).map(node => node.props.children)).toEqual(['Use assistant model'])
+    })
 })

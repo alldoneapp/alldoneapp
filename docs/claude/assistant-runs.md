@@ -719,15 +719,31 @@ store and the Firebase client, and a static import broke every composer test tha
 button. Pinned in `ComposerModelButton.test.js`, `AssistantOptions.test.js`, `AnnaConversation.test.js`
 and `utils/assistantHelper.quickTopicModel.test.js` (ordering of pin vs. first message).
 
-**Layout: a third control on the left needs width tiers, and an RN-web view does not shrink.** The
-model chip names the model (max 180px, ellipsized), so it must be allowed to shrink: react-native-web
-gives every View `flex-shrink: 0`, and without `flexShrink: 1` on the button the ellipsis never
-applies and the chip slides under the call/send buttons instead (the toolbars report no overflow
-while that happens, because the left side overflows its own box). Tiers, measured in Chromium against
-the real markup at 316–1000px: Anna drops the model name below a 480px form (`ANNA_MODEL_COMPACT_WIDTH`),
-Templates' label below 360px as before, and gaps close to 2px below a 290px composer container. The
-assistant line measures its toolbar with `onLayout`: model icon-only below 420px (always on phones),
-Templates icon-only below 320px, and the toolbar keeps an 8px `gap` between its sides.
+**Layout: the model button is icon only at every width (follow-up, 2026-11-26).** The first version
+named the model in an outlined pill ("Standard des Assis…") and needed width tiers to keep it off the
+call/send buttons. The product call was to make it less prominent: `ComposerModelButton` is now a
+borderless 32px chip icon, no text and no `compact` prop. A chosen model keeps the dot. The model
+lives in the accessible label and in a hover `title` on a wrapping `<div>` (react-native-web does not
+forward `title`): "Select model: Terra", or "Select model: Use assistant model (Sol)" while the
+assistant's model applies. Only Templates still follows the width: Anna below a 360px form
+(`ANNA_TEMPLATES_COMPACT_WIDTH`), the assistant line below a 320px toolbar
+(`ASSISTANT_LINE_TEMPLATES_COMPACT_WIDTH`, measured with `onLayout`). Gaps close to 2px below a 290px
+Anna composer container.
+
+**"Use assistant model" names the model on a second line, resolved like the server.** The picker's
+first entry shows the assistant's own model (the menu label, "GPT 6.1 Sol") under its label, through
+`OptionItem`'s `subtitleKey` (a translation key, like `text`), where the model entries show their Gold
+rate. The SAME line appears in the comment popup, the Anna composer and the assistant line, because all
+three open this one picker and hand it the assistant's `model` (never the chat's pin). The name comes
+from `BotOption/assistantDefaultModel.js` (`getAssistantDefaultModelOption`), not from a raw menu
+lookup: an assistant saved before the GPT-6 menu still stores `MODEL_GPT5_6_SOL` (production
+"Alldone CTO" did) and one may store no model, and the server runs Sol for both
+(`normalizeModelKey`). The raw lookup named neither, so the entry showed no model and the composer
+button said "Assistant default". A key outside the current menu (a retired model the server still
+serves, e.g. `MODEL_GPT5_5`) gives no name rather than a wrong one. The client cannot import
+`assistantModelRuntime.js` (OpenAI client), so it repeats the two rules;
+`functions/Assistant/assistantDefaultModelParity.test.js` holds the copy in step. The comment popup's
+"Select model" row (`SelectModelOption`) uses the same resolver.
 
 ## A scheduled assistant task needs no approval of its content (decision 2026-11-09)
 

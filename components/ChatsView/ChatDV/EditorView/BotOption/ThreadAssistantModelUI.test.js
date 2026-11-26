@@ -1,6 +1,7 @@
 import React from 'react'
 import fs from 'fs'
 import path from 'path'
+import { Text } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import SelectModelOption from './SelectModelOption'
@@ -98,6 +99,16 @@ describe('the per-thread model UI (AT-2502)', () => {
 
             expect(textsOf(tree)).toContain('Assistant default')
         })
+
+        // AT-3162 follow-up: an assistant still storing the replaced Sol key runs on Sol, and the row
+        // said "Assistant default · Assistant default" for it.
+        it('names the model the server runs for a replaced key', () => {
+            const tree = renderer.create(
+                <SelectModelOption threadModel={null} assistantModel={'MODEL_GPT5_6_SOL'} onPress={jest.fn()} />
+            )
+
+            expect(textsOf(tree)).toContain('Sol · Assistant default')
+        })
     })
 
     describe('the picker', () => {
@@ -116,6 +127,13 @@ describe('the per-thread model UI (AT-2502)', () => {
             tree.root.findAll(node => typeof node.type === 'function' && node.type.name === 'OptionItem', {
                 deep: false,
             })
+        // The RENDERED lines of the inherit entry (label, then the line under it).
+        const inheritLines = tree =>
+            optionsOf(tree)[0]
+                .findAllByType(Text)
+                .map(node => node.props.children)
+                // The selected entry's check mark is an icon-font glyph; only the lines a user reads count.
+                .filter(text => typeof text === 'string' && !/^[\uE000-\uF8FF]$/.test(text))
 
         // Without a way back the pin would be a one-way door: a thread could be moved off the
         // assistant's model and never returned to it.
@@ -143,16 +161,34 @@ describe('the per-thread model UI (AT-2502)', () => {
             )
         })
 
-        it('offers a way back to the assistant model, first, naming it', () => {
+        it('offers a way back to the assistant model, first, naming it on a line of its own', () => {
             const tree = renderPicker()
 
             expect(optionsOf(tree)[0].props.modelData.model).toBe('INHERIT_ASSISTANT_MODEL')
-            // Asserted on the RENDERED text rather than on `modelData.text`. Asserting the prop is
+            // Asserted on the RENDERED text rather than on `modelData`. Asserting the prop is
             // precisely what let AT-2512 ship: `OptionItem` translates that prop, so a finished
             // sentence handed to it rendered as `[missing "en.…" translation]` in production while
             // this test stayed green on the string that never reached the screen.
             expect(textsOf(tree)).not.toContain('[missing')
-            expect(textsOf(tree)).toContain('Use assistant model (Sol)')
+            // AT-3162 follow-up: the model under the label, as the menu names it below.
+            expect(inheritLines(tree)).toEqual(['Use assistant model', 'GPT 6.1 Sol'])
+        })
+
+        // The line names the ASSISTANT's model, resolved like the server: never the chat's pin, and
+        // also for an assistant on a replaced key or without a model (the production case).
+        it.each([
+            ['a replaced Sol key', 'MODEL_GPT5_6_SOL', 'GPT 6.1 Sol'],
+            ['a replaced Luna key', 'MODEL_GPT5_6_LUNA', 'GPT 6 Luna'],
+            ['no model at all', undefined, 'GPT 6.1 Sol'],
+            ['a blank model', '  ', 'GPT 6.1 Sol'],
+        ])('names the model the server runs for %s', (_label, assistantModel, expected) => {
+            expect(inheritLines(renderPicker({ assistantModel }))).toEqual(['Use assistant model', expected])
+        })
+
+        it('names the assistant model, not the pinned one, while a chat is pinned', () => {
+            const tree = renderPicker({ selectedModel: 'MODEL_DEEPSEEK_V4_FLASH', assistantModel: 'MODEL_GPT6_LUNA' })
+
+            expect(inheritLines(tree)).toEqual(['Use assistant model', 'GPT 6 Luna'])
         })
 
         it('offers every selectable model with its Gold rate', () => {
@@ -196,30 +232,35 @@ describe('the per-thread model UI (AT-2502)', () => {
             }
 
             it.each([
-                ['MODEL_GPT6_SOL', 'Use assistant model (Sol)'],
-                ['MODEL_GPT5_6_TERRA', 'Use assistant model (Terra)'],
-                ['MODEL_GPT6_LUNA', 'Use assistant model (Luna)'],
-                ['MODEL_DEEPSEEK_V4_FLASH', 'Use assistant model (DeepSeek Flash)'],
+                ['MODEL_GPT6_SOL', 'GPT 6.1 Sol'],
+                ['MODEL_GPT5_6_TERRA', 'GPT 5.6 Terra'],
+                ['MODEL_GPT6_LUNA', 'GPT 6 Luna'],
+                ['MODEL_DEEPSEEK_V4_FLASH', 'DeepSeek V4 Flash'],
             ])('names %s without a missing-translation placeholder', (assistantModel, expected) => {
-                expectLabel(renderPicker({ assistantModel }), expected)
+                const tree = renderPicker({ assistantModel })
+
+                expectLabel(tree, expected)
+                expect(inheritLines(tree)).toEqual(['Use assistant model', expected])
             })
 
-            // A model key that is no longer selectable resolves to no name at all, so the label has
-            // to fall back to the bare key rather than render an empty bracket.
-            it('falls back to the unnamed label when the assistant model has no name', () => {
+            // A model key that is no longer selectable resolves to no name at all, so the entry
+            // shows its label alone rather than an empty or wrong line.
+            it('shows no model line when the assistant model has no name', () => {
                 const tree = renderPicker({ assistantModel: 'MODEL_RETIRED' })
 
                 expectLabel(tree, 'Use assistant model')
-                expect(textsOf(tree)).not.toContain('Use assistant model (')
+                expect(inheritLines(tree)).toEqual(['Use assistant model'])
             })
 
-            it('translates the whole label, bracket included, in every locale', () => {
+            it('translates the label and the model line in every locale', () => {
                 try {
                     setLanguage('de')
-                    expectLabel(renderPicker(), 'Assistenten-Modell verwenden (Sol)')
+                    expect(textsOf(renderPicker())).not.toContain('[missing')
+                    expect(inheritLines(renderPicker())).toEqual(['Assistenten-Modell verwenden', 'GPT 6.1 Sol'])
 
                     setLanguage('es')
-                    expectLabel(renderPicker(), 'Usar el modelo del asistente (Sol)')
+                    expect(textsOf(renderPicker())).not.toContain('[missing')
+                    expect(inheritLines(renderPicker())).toEqual(['Usar el modelo del asistente', 'GPT 6.1 Sol'])
                 } finally {
                     setLanguage('en')
                 }

@@ -7,6 +7,7 @@ import styles, { colors } from '../../../../styles/global'
 import Shortcut, { SHORTCUT_LIGHT } from '../../../../UIControls/Shortcut'
 import { translate } from '../../../../../i18n/TranslationService'
 import { getThreadAssistantModelName } from '../../../../../functions/Assistant/threadAssistantModel'
+import { getAssistantDefaultModelName } from './assistantDefaultModel'
 
 /**
  * The "Select model" row of the assistant popup (AT-2502).
@@ -21,9 +22,10 @@ export default function SelectModelOption({ threadModel, assistantModel, onPress
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const pinnedName = getThreadAssistantModelName(threadModel)
-    const assistantName = getThreadAssistantModelName(assistantModel)
-    // An assistant configured with a model outside the selectable menu (a retired key) has no
-    // friendly name. Saying "Assistant default" is still true and is better than an empty line.
+    // AT-3162: resolved as the server does, so an assistant storing a replaced key
+    // (`MODEL_GPT5_6_SOL`) or no model is named. One with a model outside the menu (a retired key)
+    // still has no friendly name. Saying "Assistant default" is still true and is better than an empty line.
+    const assistantName = getAssistantDefaultModelName(assistantModel)
     const displayName = pinnedName || assistantName || translate('Assistant default')
     const subtitle = pinnedName ? translate('Only for this thread') : translate('Assistant default')
 

@@ -6,10 +6,7 @@ import React from 'react'
 import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
-import AssistantOptions, {
-    ASSISTANT_LINE_MODEL_COMPACT_WIDTH,
-    ASSISTANT_LINE_TEMPLATES_COMPACT_WIDTH,
-} from './AssistantOptions'
+import AssistantOptions, { ASSISTANT_LINE_TEMPLATES_COMPACT_WIDTH } from './AssistantOptions'
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import openAssistantEditor from '../openAssistantEditor'
 import {
@@ -417,12 +414,14 @@ describe('AssistantOptions model selection (AT-3162)', () => {
         expect(button.props.selectedModel).toBeNull()
         expect(button.props.title).toBe('Model for the next chat')
         expect(button.props.description).toBe('Used for the chat your next message starts')
-        expect(button.props.compact).toBe(false)
+        // AT-3162 follow-up: icon only at every width, so no width tier is handed over.
+        expect(button.props).not.toHaveProperty('compact')
     })
 
-    // Measured in Chromium against the real markup: below these widths the labels would push the
-    // model button into the call and send buttons.
-    it('drops the model name, then the Templates label, as the toolbar narrows', async () => {
+    // Measured in Chromium against the real markup (AT-3162): below this width the Templates label
+    // would push the controls into the call and send buttons. The model button is icon only at
+    // every width (follow-up), so it never takes part.
+    it('drops the Templates label as the toolbar narrows, the model button stays icon only', async () => {
         const tree = await renderOptions()
         const toolbar = tree.root.findByProps({ testID: 'assistant-composer-toolbar' })
         const templates = () => tree.root.findByType('AssistantTaskSearchButtonWrapper').props.compact
@@ -431,24 +430,23 @@ describe('AssistantOptions model selection (AT-3162)', () => {
                 toolbar.props.onLayout({ nativeEvent: { layout: { width } } })
             })
 
-        // Unmeasured: both keep their labels.
-        expect([modelButtonOf(tree).props.compact, templates()]).toEqual([false, false])
-        layout(ASSISTANT_LINE_MODEL_COMPACT_WIDTH)
-        expect([modelButtonOf(tree).props.compact, templates()]).toEqual([false, false])
-        layout(ASSISTANT_LINE_MODEL_COMPACT_WIDTH - 1)
-        expect([modelButtonOf(tree).props.compact, templates()]).toEqual([true, false])
+        // Unmeasured: Templates keeps its label.
+        expect(templates()).toBe(false)
+        layout(ASSISTANT_LINE_TEMPLATES_COMPACT_WIDTH)
+        expect(templates()).toBe(false)
         layout(ASSISTANT_LINE_TEMPLATES_COMPACT_WIDTH - 1)
-        expect([modelButtonOf(tree).props.compact, templates()]).toEqual([true, true])
+        expect(templates()).toBe(true)
         // A hidden line measures 0: keep the last real layout.
         layout(0)
-        expect([modelButtonOf(tree).props.compact, templates()]).toEqual([true, true])
+        expect(templates()).toBe(true)
+        expect(modelButtonOf(tree).props).not.toHaveProperty('compact')
     })
 
-    it('shows only the icon on phones', async () => {
+    it('shows the same icon-only button on phones', async () => {
         mockState.smallScreenNavigation = true
         const tree = await renderOptions()
 
-        expect(modelButtonOf(tree).props.compact).toBe(true)
+        expect(modelButtonOf(tree).props).not.toHaveProperty('compact')
     })
 
     // Default behaviour must not change: no picked model, no override option at all.

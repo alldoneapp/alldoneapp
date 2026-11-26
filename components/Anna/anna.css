@@ -2865,13 +2865,12 @@
     align-items: center;
     flex: none;
 }
-/* AT-3162: the model button right of Templates. It is the one control on this side allowed to
-   shrink: its model name ellipsizes before the row could push the send button out. */
+/* AT-3162: the model button right of Templates, always icon only (the model is in its label and
+   tooltip), so it never needs to shrink. */
 .anna-composer-model {
     display: flex;
     align-items: center;
-    flex: 0 1 auto;
-    min-width: 0;
+    flex: none;
 }
 /* AT-3055: the composer has no project chip any more (it sat on the field's top edge since AT-3032);
    the assistant picker at the top of the sidebar is the only switch. No slot, no reserved room. */
