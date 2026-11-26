@@ -7,6 +7,8 @@
 jest.mock('firebase-admin', () => ({ firestore: jest.fn() }))
 
 const {
+    adoptTaskEmailStar,
+    findStarEntriesForMessage,
     starEmailOfCreatedTask,
     resumePendingTaskEmailStar,
     syncTaskEmailStarOnTaskUpdate,
@@ -56,8 +58,13 @@ function createFakeGmail({ starred = [], missing = [], failModify = [] } = {}) {
     starred.forEach(id => labels.set(id, new Set(['INBOX', 'STARRED'])))
     const calls = []
     const failures = [...failModify]
+    let historyId = 1000
     const gmail = {
         users: {
+            getProfile: jest.fn(async () => {
+                calls.push({ type: 'getProfile' })
+                return { data: { historyId: String(historyId) } }
+            }),
             messages: {
                 get: jest.fn(async ({ id }) => {
                     calls.push({ type: 'get', id })
@@ -78,6 +85,7 @@ function createFakeGmail({ starred = [], missing = [], failModify = [] } = {}) {
                     ;(requestBody.addLabelIds || []).forEach(label => current.add(label))
                     ;(requestBody.removeLabelIds || []).forEach(label => current.delete(label))
                     labels.set(id, current)
+                    historyId += 1
                     return { data: { id, labelIds: [...current] } }
                 }),
             },
@@ -437,6 +445,113 @@ describe('gmailTaskStar (AT-3165)', () => {
             expect(mail.isStarred('m1')).toBe(true)
             expect(mail.calls.filter(call => call.type === 'modify')).toEqual([])
         })
+    })
+})
+
+describe('stars the user set in Gmail (AT-3165 follow-up)', () => {
+    it('adoptExistingStar: the star that created the task belongs to it and goes on Done', async () => {
+        const db = createFakeDatabase()
+        const mail = createFakeGmail({ starred: ['m1'] })
+        db.docs.set('items/p1/tasks/t1', emailTask())
+        const result = await starEmailOfCreatedTask(
+            {
+                userId: OWNER,
+                connectionKey: CONNECTION,
+                messageId: 'm1',
+                projectId: 'p1',
+                taskId: 't1',
+                adoptExistingStar: true,
+            },
+            { database: db, withGmail: mail.withGmail }
+        )
+        expect(result.state).toBe('starred')
+        // Not read as the user's own star: no messages.get, the entry is the task's.
+        expect(mail.calls.filter(call => call.type === 'get')).toEqual([])
+        expect(db.docs.get(`users/${OWNER}/gmailTaskStars/t1`)).toMatchObject({
+            wasStarredBefore: false,
+            state: 'starred',
+            origin: 'gmail_star',
+        })
+
+        await syncTaskEmailStarOnTaskUpdate(
+            { projectId: 'p1', taskId: 't1', before: emailTask(), after: emailTask({ inDone: true }) },
+            { database: db, withGmail: mail.withGmail }
+        )
+        expect(mail.isStarred('m1')).toBe(false)
+    })
+
+    it("without adoptExistingStar a star that was there before stays the user's (unchanged !965 rule)", async () => {
+        const db = createFakeDatabase()
+        const mail = createFakeGmail({ starred: ['m1'] })
+        const result = await createStarredTask({ db, mail })
+        expect(result.state).toBe('preexisting')
+        await syncTaskEmailStarOnTaskUpdate(
+            { projectId: 'p1', taskId: 't1', before: emailTask(), after: emailTask({ inDone: true }) },
+            { database: db, withGmail: mail.withGmail }
+        )
+        expect(mail.isStarred('m1')).toBe(true)
+    })
+
+    it('Done records the mailbox history position after the removal; reopening clears it', async () => {
+        const db = createFakeDatabase()
+        const mail = createFakeGmail()
+        await createStarredTask({ db, mail })
+        const options = { database: db, withGmail: mail.withGmail }
+        await syncTaskEmailStarOnTaskUpdate(
+            { projectId: 'p1', taskId: 't1', before: emailTask(), after: emailTask({ inDone: true }) },
+            options
+        )
+        const types = mail.calls.map(call => call.type)
+        expect(types.lastIndexOf('getProfile')).toBeGreaterThan(types.lastIndexOf('modify'))
+        // Star (1001) and removal (1002) both lie at or below the recorded position.
+        expect(db.docs.get(`users/${OWNER}/gmailTaskStars/t1`).doneHistoryId).toBe('1002')
+
+        await syncTaskEmailStarOnTaskUpdate(
+            { projectId: 'p1', taskId: 't1', before: emailTask({ inDone: true }), after: emailTask() },
+            options
+        )
+        expect(db.docs.get(`users/${OWNER}/gmailTaskStars/t1`).doneHistoryId).toBeNull()
+    })
+
+    it("adoptTaskEmailStar records the star as the task's, but never moves an entry of another message", async () => {
+        const db = createFakeDatabase()
+        const mail = createFakeGmail({ starred: ['m1'] })
+        await createStarredTask({ db, mail }) // preexisting entry on m1
+        expect(
+            await adoptTaskEmailStar(
+                { userId: OWNER, connectionKey: CONNECTION, messageId: 'm1', projectId: 'p1', taskId: 't1' },
+                { database: db }
+            )
+        ).toEqual({ adopted: true })
+        expect(db.docs.get(`users/${OWNER}/gmailTaskStars/t1`)).toMatchObject({
+            wasStarredBefore: false,
+            state: 'starred',
+            origin: 'gmail_star',
+        })
+        expect(
+            await adoptTaskEmailStar(
+                { userId: OWNER, connectionKey: CONNECTION, messageId: 'm2', projectId: 'p1', taskId: 't1' },
+                { database: db }
+            )
+        ).toEqual({ adopted: false, reason: 'other_message' })
+        expect(db.docs.get(`users/${OWNER}/gmailTaskStars/t1`).messageId).toBe('m1')
+    })
+
+    it('findStarEntriesForMessage matches the connection key or the same mailbox address', async () => {
+        const db = createFakeDatabase({
+            [`users/${OWNER}/gmailTaskStars/a`]: { messageId: 'm1', connectionKey: CONNECTION, gmailEmail: 'x@y.z' },
+            [`users/${OWNER}/gmailTaskStars/b`]: {
+                messageId: 'm1',
+                connectionKey: 'legacy-project',
+                gmailEmail: 'x@y.z',
+            },
+            [`users/${OWNER}/gmailTaskStars/c`]: { messageId: 'm1', connectionKey: 'other', gmailEmail: 'other@y.z' },
+        })
+        const entries = await findStarEntriesForMessage(
+            { userId: OWNER, connectionKey: CONNECTION, gmailEmail: 'X@y.z', messageId: 'm1' },
+            { database: db }
+        )
+        expect(entries.map(entry => entry.taskId).sort()).toEqual(['a', 'b'])
     })
 })
 

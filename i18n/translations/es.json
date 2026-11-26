@@ -1881,6 +1881,8 @@
     "Process unread only": "Procesar solo no leídos",
     "Only inbox messages": "Solo mensajes de la bandeja de entrada",
     "Auto-archive all labeled emails": "Archivar automáticamente todos los correos etiquetados",
+    "Create a task when I star an email in Gmail": "Crear una tarea cuando destaco un correo en Gmail",
+    "Only stars you set from now on. The star goes away when the task is done.": "Solo las estrellas que pongas a partir de ahora. La estrella desaparece cuando la tarea está hecha.",
     "Classify incoming Gmail messages into the configured labels.": "Clasifica los mensajes entrantes de Gmail en las etiquetas configuradas.",
     "Classify incoming Gmail messages into the configured labels": "Clasifica los mensajes entrantes de Gmail en las etiquetas configuradas.",
     "Rules": "Reglas",

@@ -57,6 +57,13 @@ describe('GmailLabelingSettings helpers', () => {
         expect(sanitizeConfigForSave({ autoArchiveAllLabeled: true }).autoArchiveAllLabeled).toBe(true)
     })
 
+    test('the Gmail star import switch (AT-3165) is on unless it was switched off', () => {
+        expect(normalizeConfig('project-1').createTaskOnStar).toBe(true)
+        expect(normalizeConfig('project-1', { createTaskOnStar: false }).createTaskOnStar).toBe(false)
+        expect(sanitizeConfigForSave({ createTaskOnStar: false }).createTaskOnStar).toBe(false)
+        expect(sanitizeConfigForSave({}).createTaskOnStar).toBe(true)
+    })
+
     test('treats legacy saved configs as custom prompt mode', () => {
         const normalized = normalizeConfig('project-1', {
             prompt: 'Legacy custom prompt',

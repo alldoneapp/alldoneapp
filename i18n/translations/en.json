@@ -1890,6 +1890,8 @@
     "Process unread only": "Process unread only",
     "Only inbox messages": "Only inbox messages",
     "Auto-archive all labeled emails": "Auto-archive all labeled emails",
+    "Create a task when I star an email in Gmail": "Create a task when I star an email in Gmail",
+    "Only stars you set from now on. The star goes away when the task is done.": "Only stars you set from now on. The star goes away when the task is done.",
     "Classify incoming Gmail messages into the configured labels.": "Classify incoming Gmail messages into the configured labels.",
     "Classify incoming Gmail messages into the configured labels": "Classify incoming Gmail messages into the configured labels.",
     "Rules": "Rules",

@@ -814,6 +814,23 @@ describe('gold, premium and the Stripe link are server-owned', () => {
         )
         await assertFails(updateDoc(doc(memberDb, `users/${MEMBER_ID}/gmailTaskStars/task-1`), { messageId: 'm2' }))
     })
+
+    it('keeps the Gmail star import cursor and claims (AT-3165) server-written', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), `users/${MEMBER_ID}/gmailStarImports/cursor_key`), {
+                historyId: '100',
+            })
+        })
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertSucceeds(getDoc(doc(memberDb, `users/${MEMBER_ID}/gmailStarImports/cursor_key`)))
+        // A rewound cursor would replay old stars into tasks.
+        await assertFails(
+            updateDoc(doc(memberDb, `users/${MEMBER_ID}/gmailStarImports/cursor_key`), { historyId: '1' })
+        )
+        await assertFails(
+            setDoc(doc(memberDb, `users/${MEMBER_ID}/gmailStarImports/event_key_m1_5`), { state: 'created' })
+        )
+    })
 })
 
 describe('goal lock keys are written by the server (AT-2978)', () => {

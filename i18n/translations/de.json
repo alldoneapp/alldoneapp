@@ -1950,6 +1950,8 @@
     "Process unread only": "Nur ungelesene verarbeiten",
     "Only inbox messages": "Nur Posteingangs-Nachrichten",
     "Auto-archive all labeled emails": "Alle gekennzeichneten E-Mails automatisch archivieren",
+    "Create a task when I star an email in Gmail": "Task anlegen, wenn ich eine E-Mail in Gmail mit Stern markiere",
+    "Only stars you set from now on. The star goes away when the task is done.": "Nur Sterne, die du ab jetzt setzt. Der Stern verschwindet, wenn der Task erledigt ist.",
     "Classify incoming Gmail messages into the configured labels.": "Klassifizieren Sie eingehende Gmail-Nachrichten in die konfigurierten Labels.",
     "Classify incoming Gmail messages into the configured labels": "Klassifizieren Sie eingehende Gmail-Nachrichten in die konfigurierten Labels.",
     "Rules": "Regeln",

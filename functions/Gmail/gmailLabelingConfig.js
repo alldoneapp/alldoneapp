@@ -113,6 +113,8 @@ function getDefaultGmailLabelingConfig(projectId, gmailEmail = '') {
         processUnreadOnly: true,
         onlyInbox: true,
         autoArchiveAllLabeled: false,
+        // AT-3165: a star set in Gmail creates an email task (Gmail/gmailStarTaskImport.js).
+        createTaskOnStar: true,
         lookbackDays: DEFAULT_LOOKBACK_DAYS,
         syncIntervalMinutes: DEFAULT_SYNC_INTERVAL_MINUTES,
         estimatedEmailsPerDay: DEFAULT_ESTIMATED_EMAILS_PER_DAY,
@@ -231,6 +233,8 @@ function normalizeConfigInput(projectId, input = {}, gmailEmail = '') {
             typeof input.autoArchiveAllLabeled === 'boolean'
                 ? input.autoArchiveAllLabeled
                 : defaultConfig.autoArchiveAllLabeled,
+        createTaskOnStar:
+            typeof input.createTaskOnStar === 'boolean' ? input.createTaskOnStar : defaultConfig.createTaskOnStar,
         lookbackDays: Number.isFinite(input.lookbackDays)
             ? Math.min(Math.max(Math.trunc(input.lookbackDays), 1), MAX_LOOKBACK_DAYS)
             : defaultConfig.lookbackDays,
@@ -338,6 +342,10 @@ function buildConfigWriteData(userId, projectId, configInput, gmailEmail = '', e
     }
     if (typeof configInput.autoArchiveAllLabeled !== 'boolean') {
         normalizedConfig.autoArchiveAllLabeled = existingData?.autoArchiveAllLabeled === true
+    }
+    // Same for the star import switch (AT-3165): default on, an explicit off is kept.
+    if (typeof configInput.createTaskOnStar !== 'boolean') {
+        normalizedConfig.createTaskOnStar = existingData?.createTaskOnStar !== false
     }
 
     return {

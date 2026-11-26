@@ -126,7 +126,9 @@ server reads only the bound value:
 - Calendar routing feedback markers must carry the writer as `requestedByUserId`.
 - Gmail stars of email tasks (AT-3165): the task triggers change a mailbox only from the server-owned
   `users/{owner}/gmailTaskStars/{taskId}` entry written when the server starred it, never from the
-  task's unbound `gmailData` (see `email.md`).
+  task's unbound `gmailData` (see `email.md`). The Gmail star import's cursor, lease and claims
+  (`users/{uid}/gmailStarImports`) are server-owned too; it reopens a linked done task without a
+  registry entry only when the mailbox owner owns it.
 - A workflow step move names its mover in `workflowStepMove.actorUserId`; the task update fan-out
   acts on it (the parent conversation of a delegated task says who moved it, and the review notice
   stays quiet for an owner who moved the task onto their own step). On update a browser may stamp

@@ -149,6 +149,7 @@ function normalizeConfig(projectId, config = {}, gmailEmail = '') {
         processUnreadOnly: typeof config.processUnreadOnly === 'boolean' ? config.processUnreadOnly : true,
         onlyInbox: typeof config.onlyInbox === 'boolean' ? config.onlyInbox : true,
         autoArchiveAllLabeled: config.autoArchiveAllLabeled === true,
+        createTaskOnStar: config.createTaskOnStar !== false,
         lookbackDays: Number.isFinite(config.lookbackDays) ? String(config.lookbackDays) : '7',
         syncIntervalMinutes: Number.isFinite(config.syncIntervalMinutes) ? String(config.syncIntervalMinutes) : '5',
         maxMessagesPerRun: Number.isFinite(config.maxMessagesPerRun) ? String(config.maxMessagesPerRun) : '20',
@@ -174,6 +175,7 @@ function sanitizeConfigForSave(config) {
         processUnreadOnly: !!config.processUnreadOnly,
         onlyInbox: !!config.onlyInbox,
         autoArchiveAllLabeled: config.autoArchiveAllLabeled === true,
+        createTaskOnStar: config.createTaskOnStar !== false,
         lookbackDays: Number.isFinite(parsedLookbackDays)
             ? Math.min(Math.max(parsedLookbackDays, 1), MAX_LOOKBACK_DAYS)
             : 7,

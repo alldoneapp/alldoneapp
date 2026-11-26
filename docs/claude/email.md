@@ -606,6 +606,56 @@ Pinned by `functions/Gmail/gmailTaskStar.test.js`, the AT-3165 blocks of `emailL
 `serverSideGmailLabelingSync.test.js` and `UnreadMessageRow.test.js`, and the registry case in the
 rules emulator suite.
 
+### A star set in Gmail creates the email task (AT-3165 follow-up, 2026-11-26)
+
+`functions/Gmail/gmailStarTaskImport.js`. Decided with Karsten:
+
+- **Where the star is seen.** There is no Gmail push (no `users.watch`/Pub/Sub) in this codebase. The
+  only mailbox watcher is `pollGmailLabelingSecondGen` (every 5 min, labeling-enabled premium
+  connections), and its labeling cursor reads `messageAdded` only. The import runs on that same tick
+  (`runStarImportOnPollTick`, three call sites: labeling due, not due, labeling lock held) with its
+  **own** cursor over `history.list({ historyTypes: ['labelAdded'] })`, keeping only additions of
+  `STARRED`. Connections without labeling get nothing (Karsten's choice). Delay: up to one tick.
+- **Switch**: `createTaskOnStar` on the labeling config, default on ("Create a task when I star an
+  email in Gmail" in the labeling settings). Off drops the cursor.
+- **No backfill.** First run, switching it back on, a gap over `MAX_CURSOR_GAP_MS` (1 h since the
+  last successful run) and an expired history id (404) only store the mailbox's current historyId.
+  Stars from such a gap are not imported, on purpose.
+- **Creation**: `createTaskFromEmail` (the "Create task" path: title, routing, Gold, thread
+  continuation, linked-task guard) for the exact message id of the history record, on the
+  connection key of the poll. With `adoptExistingStar: true`, server-internal only (the callable's
+  `createTask` case never passes it): the star that asked for the task belongs to it
+  (`wasStarredBefore: false`, `origin: 'gmail_star'`), so **Done removes it** and reopening restores it
+  (Karsten's choice). A star that was already there when a task was created by a button stays
+  `preexisting` and is never removed, as before.
+- **Message already linked**: open task → nothing. Done task → **reopened to Open**
+  (`reactivateDoneTaskForAssistantWork({ toOpen: true })`; an assistant workflow task goes to its
+  first step) and the star is adopted for it (`adoptTaskEmailStar`). Reopening requires proof that the
+  star came after Done: its history record id is above `doneHistoryId` (mailbox historyId the Done
+  trigger reads right after removing the star), or, with no such record, the task's `completed` is
+  more than 10 minutes before the start of the history window. A linked task with no registry entry
+  is reopened only if the mailbox owner owns it.
+- **Alldone's own stars** (creation, reopen) never create or reopen anything: the registry entry is
+  written before the star call, so the event always finds a linked open task; Alldone never stars a
+  Done task.
+- **Duplicates and races**: a lease on `users/{uid}/gmailStarImports/cursor_{key}` (one run per
+  connection); a claim `event_{key}_{messageId}_{recordId}` per star event; every decision re-reads
+  the current state (message still starred and not in Trash/Spam/Drafts, linked task, open/done), so
+  a replay without its claim is still a no-op; `createTaskFromEmail`'s own guards cover a concurrent
+  click. At most 10 messages per run; a transient failure keeps the cursor before that event (3
+  attempts); insufficient Gold and no project access are final. `gmailStarImports` is server-owned in
+  firestore.rules (a rewound cursor would replay old stars).
+- **Limits**: a star within ~10 min after Done of a task without `doneHistoryId`, or set before the
+  Done trigger ran, does not reopen it. Unstarring in Gmail does not complete the task. A star on a
+  later message of a thread that already has a task continues that task (existing
+  `continueEmailThread` behaviour, which may reopen it) and is not adopted. Reopening on the owner's
+  own behalf does not reverse completion statistics (no cross-user marker).
+
+Pinned by `functions/Gmail/gmailStarTaskImport.test.js` (simulated mailbox with history ids, real
+registry logic in the loop), the "stars the user set in Gmail" block of `gmailTaskStar.test.js`, the
+`toOpen` cases of `doneTaskReactivation.test.js`, the switch cases in `gmailLabelingConfig.test.js` and
+`GmailLabelingSettings.test.js`, and the `gmailStarImports` rules emulator case.
+
 ## The email a task was created from opens the task's chat (AT-3022)
 
 `continueEmailThread` only writes the **later** mail of a thread into its task's chat, and skips the

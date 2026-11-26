@@ -129,8 +129,10 @@ service cloud.firestore {
       // reads its Someday holds, so the owner may read but not forge it.
       // gmailTaskStars (AT-3165): which Gmail star Alldone set for which email task; the task
       // triggers remove/restore stars only from these server-written entries.
+      // gmailStarImports (AT-3165): the star import's history cursor, lease and per-event claims; a
+      // forged cursor could replay old stars into tasks.
       return collectionName in ['goldTransactions', 'goldRewardClaims', 'goldChangeClaims', 'dailyPlans',
-        'gmailTaskStars'];
+        'gmailTaskStars', 'gmailStarImports'];
     }
 
     function ownerUpdatePreservesProjectMembership() {

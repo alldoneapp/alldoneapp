@@ -836,7 +836,18 @@ async function pickMemberProjectId(db, userId, candidateProjectIds) {
     return null
 }
 
-async function createTaskFromEmail({ userId, projectId, connection, userData, messageId, messageIds, labelName }) {
+// `adoptExistingStar` (server-internal, never from the callable): the user's own Gmail star asked for
+// this task (Gmail/gmailStarTaskImport.js), so that star belongs to the task and goes on Done.
+async function createTaskFromEmail({
+    userId,
+    projectId,
+    connection,
+    userData,
+    messageId,
+    messageIds,
+    labelName,
+    adoptExistingStar = false,
+}) {
     const candidateMessageIds = [
         ...new Set([messageId, ...(Array.isArray(messageIds) ? messageIds : [])].filter(Boolean)),
     ]
@@ -1089,6 +1100,7 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
             projectId: targetProjectId,
             taskId,
             provider: connection.provider,
+            adoptExistingStar: adoptExistingStar === true,
         })
         starState = starResult?.state || null
     }
@@ -1206,6 +1218,7 @@ module.exports = {
     pickMemberProjectId,
     getTaskForEmail,
     getProviderModule,
+    resolveConnectionOrThrow,
     GOLD_SOURCE_DRAFT_REPLY,
     GOLD_SOURCE_CREATE_TASK,
 }

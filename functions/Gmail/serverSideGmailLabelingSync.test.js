@@ -106,6 +106,10 @@ jest.mock('../Email/emailThreadContinuation', () => ({
 jest.mock('./gmailTaskStar', () => ({
     starEmailOfCreatedTask: jest.fn(async () => ({ state: 'starred' })),
 }))
+// AT-3165 follow-up: the Gmail star import rides on the poll tick (own suite: gmailStarTaskImport.test.js).
+jest.mock('./gmailStarTaskImport', () => ({
+    importStarredGmailMessages: jest.fn(async () => ({ state: 'ok', events: 0, results: [] })),
+}))
 jest.mock('../Email/emailThreadTopicStore', () => ({
     resolveEmailThreadTopicForMessage: jest.fn(async () => null),
     appendSentMessageToThreadTopic: jest.fn(async () => ({ written: 1, commentId: 'sent-comment' })),
@@ -134,6 +138,7 @@ const {
     getGmailLabelingLookupKeys,
     processSingleMessage,
     reconcileEmailCommentReadStateOnPollTick,
+    runStarImportOnPollTick,
     resolveEffectiveGmailLabelingConfig,
     resolveEffectiveLabelingConfig,
     resolvePostLabelAssistantModel,
@@ -2303,5 +2308,26 @@ describe('email conversations get their own topic', () => {
             expect(gmailContext.emailBundles).toBeUndefined()
             expect(emailTaskBundle.listEmailBundlesForSender).not.toHaveBeenCalled()
         })
+    })
+})
+
+describe('runStarImportOnPollTick (AT-3165 follow-up)', () => {
+    const { importStarredGmailMessages } = require('./gmailStarTaskImport')
+
+    test('hands the stored labeling config (with its createTaskOnStar switch) to the star import', async () => {
+        const config = { enabled: true, connectionId: 'email_google_x', createTaskOnStar: false }
+        await runStarImportOnPollTick('user-1', 'email_google_x', config)
+        expect(importStarredGmailMessages).toHaveBeenCalledWith({
+            userId: 'user-1',
+            connectionKey: 'email_google_x',
+            config,
+        })
+    })
+
+    test('never fails the poll tick', async () => {
+        jest.spyOn(console, 'warn').mockImplementation(() => {})
+        importStarredGmailMessages.mockRejectedValueOnce(new Error('boom'))
+        await expect(runStarImportOnPollTick('user-1', 'key', {})).resolves.toBeNull()
+        console.warn.mockRestore()
     })
 })

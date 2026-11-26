@@ -865,8 +865,35 @@ describe('emailLineService', () => {
                 projectId: 'p1',
                 taskId: 't-new',
                 provider: 'google',
+                // The button's star is only the task's if the email had none: never adopted.
+                adoptExistingStar: false,
             })
             expect(result).toMatchObject({ taskId: 't-new', projectId: 'p1', starState: 'starred' })
+        })
+
+        test('the callable cannot ask for adoptExistingStar; the server-side star import can', async () => {
+            await performEmailLineAction('u', 'email_google_test', {
+                action: 'createTask',
+                messageIds: ['m1'],
+                adoptExistingStar: true,
+                userData: googleConnectionUserData,
+            })
+            expect(starEmailOfCreatedTask).toHaveBeenLastCalledWith(
+                expect.objectContaining({ adoptExistingStar: false })
+            )
+
+            const { createTaskFromEmail } = require('./emailLineService')
+            await createTaskFromEmail({
+                userId: 'u',
+                projectId: 'email_google_test',
+                connection: { provider: 'google', emailAddress: 'me@gmail.com', connected: true },
+                userData: googleConnectionUserData,
+                messageId: 'm1',
+                adoptExistingStar: true,
+            })
+            expect(starEmailOfCreatedTask).toHaveBeenLastCalledWith(
+                expect.objectContaining({ messageId: 'm1', adoptExistingStar: true })
+            )
         })
 
         test('a failed star does not fail the created task', async () => {

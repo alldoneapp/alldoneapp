@@ -701,6 +701,23 @@ export default function GmailLabelingSettings({
                                     />
                                 </View>
 
+                                <View style={localStyles.switchRow}>
+                                    <Text style={[localStyles.inputLabel, localStyles.rowText]}>
+                                        {translate('Create a task when I star an email in Gmail')}
+                                    </Text>
+                                    <Switch
+                                        active={config.createTaskOnStar !== false}
+                                        activeSwitch={() => updateConfig({ createTaskOnStar: true })}
+                                        deactiveSwitch={() => updateConfig({ createTaskOnStar: false })}
+                                        disabled={!canManage}
+                                    />
+                                </View>
+                                <Text style={localStyles.helperText}>
+                                    {translate(
+                                        'Only stars you set from now on. The star goes away when the task is done.'
+                                    )}
+                                </Text>
+
                                 <Text style={localStyles.inputLabel}>Labeling mode</Text>
                                 <PromptModeSegment
                                     value={config.promptMode}

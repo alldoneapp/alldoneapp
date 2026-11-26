@@ -3403,6 +3403,23 @@ async function reconcileEmailCommentReadStateOnPollTick(userId, connectionKey, s
     }
 }
 
+// AT-3165 follow-up: a star the user sets in Gmail creates an email task (Gmail/gmailStarTaskImport.js).
+// Gmail has no push channel here, so the import rides on this five-minute tick for every enabled
+// labeling connection, with its own `labelAdded` cursor and lease. Best effort: never fails the tick.
+async function runStarImportOnPollTick(userId, connectionKey, config = {}) {
+    try {
+        const { importStarredGmailMessages } = require('./gmailStarTaskImport')
+        return await importStarredGmailMessages({ userId, connectionKey, config })
+    } catch (error) {
+        console.warn('[gmailLabeling] Gmail star import failed on poll tick', {
+            userId,
+            projectId: connectionKey,
+            error: error.message,
+        })
+        return null
+    }
+}
+
 async function processEnabledGmailLabelingConfigs(limit = 100) {
     const snapshot = await admin
         .firestore()
@@ -3443,12 +3460,13 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
                     projectId: syncKey,
                     syncIntervalMinutes: getConfiguredSyncIntervalMinutes(data),
                     emailCommentReadSync,
+                    starImport: await runStarImportOnPollTick(userId, syncKey, data),
                 })
                 continue
             }
 
             const result = await syncGmailLabeling(userId, syncKey)
-            results.push(result)
+            results.push({ ...result, starImport: await runStarImportOnPollTick(userId, syncKey, data) })
         } catch (error) {
             if (error?.code === 'premium-required') {
                 console.log('[gmailLabeling] Scheduled sync skipped because premium is required', {
@@ -3470,6 +3488,8 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
                     skippedReason: 'locked',
                     userId,
                     projectId: data.projectId,
+                    // The star import has its own lease; a running labeling sync does not block it.
+                    starImport: await runStarImportOnPollTick(userId, syncKey, data),
                 })
                 continue
             }
@@ -3519,6 +3539,7 @@ module.exports = {
     loadConfig,
     processEnabledGmailLabelingConfigs,
     reconcileEmailCommentReadStateOnPollTick,
+    runStarImportOnPollTick,
     processSingleMessage,
     recordMessageProcessingError,
     resolveEffectiveGmailLabelingConfig,

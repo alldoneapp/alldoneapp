@@ -18,6 +18,16 @@
 // firestore.rules). The task's `gmailData.accountUserId` only says where to look; the message id and
 // the connection come from the registry.
 //
+// Stars the user sets in Gmail (AT-3165 follow-up, Gmail/gmailStarTaskImport.js): a star that makes
+// Alldone create (or reopen) a task belongs to that task (decided with Karsten 2026-11-26): it is
+// recorded with `wasStarredBefore: false` and `origin: 'gmail_star'`, so Done removes it and
+// reopening puts it back, like a star Alldone set itself. A star that was there before a task was
+// created by a button stays the user's own (`preexisting`), as before.
+//
+// `doneHistoryId`: the mailbox historyId read right after the task reached Done. A star event the
+// import sees later with a history record id at or below it happened before Done (Alldone's own
+// star while the task was open, or the user's star that led to the task) and never reopens it.
+//
 // Gmail is touched with messages.modify on that one message, adding/removing STARRED only. INBOX,
 // UNREAD and every other label stay as they are, so archiving (on completion or on postponing,
 // AT-3164) is untouched.
@@ -35,6 +45,7 @@ const STATE_DELETED = 'deleted' // the task was deleted; terminal
 const STATE_MISSING = 'missing' // the message no longer exists in the mailbox; terminal
 
 const ACTIVE_STATES = new Set([STATE_PENDING, STATE_STARRED])
+const ORIGIN_GMAIL_STAR = 'gmail_star' // the user's own Gmail star created or reopened the task
 const GMAIL_RETRY_DELAY_MS = 400
 
 function trimString(value) {
@@ -161,7 +172,17 @@ async function writeEntry(ref, data) {
  * asks for a task for that email.
  */
 async function starEmailOfCreatedTask(
-    { userId, connectionKey, gmailEmail = '', messageId, threadId = '', projectId, taskId, provider = 'google' },
+    {
+        userId,
+        connectionKey,
+        gmailEmail = '',
+        messageId,
+        threadId = '',
+        projectId,
+        taskId,
+        provider = 'google',
+        adoptExistingStar = false,
+    },
     { database = admin.firestore(), withGmail = defaultWithGmail } = {}
 ) {
     const normalizedUserId = trimString(userId)
@@ -184,9 +205,14 @@ async function starEmailOfCreatedTask(
             // Another open task of this email already holds an Alldone star: this task shares it
             // and inherits whether the star was the user's before any task existed.
             const probe = { messageId: normalizedMessageId, connectionKey: normalizedConnectionKey }
-            const sharedWith = (await findOtherActiveEntries(database, normalizedUserId, probe, normalizedTaskId))[0]
+            const sharedWith = adoptExistingStar
+                ? null
+                : (await findOtherActiveEntries(database, normalizedUserId, probe, normalizedTaskId))[0]
             let wasStarredBefore
-            if (sharedWith) {
+            if (adoptExistingStar) {
+                // The user's star in Gmail is what created this task: it belongs to the task.
+                wasStarredBefore = false
+            } else if (sharedWith) {
                 wasStarredBefore = sharedWith.wasStarredBefore === true
             } else {
                 try {
@@ -224,6 +250,7 @@ async function starEmailOfCreatedTask(
                 wasStarredBefore,
                 state: STATE_PENDING,
                 createdAt: Date.now(),
+                ...(adoptExistingStar ? { origin: ORIGIN_GMAIL_STAR } : {}),
             }
             await writeEntry(ref, entry)
         }
@@ -343,6 +370,103 @@ async function removeStarForEntry({ database, withGmail, userId, ref, entry, tas
     return { state: entry.state, gmailChanged: false }
 }
 
+// After Done: where the mailbox history stood, so the star import (gmailStarTaskImport.js) can tell a
+// star set after Done (the user wants the task back) from an older star event it sees late. Read
+// AFTER the removal, so Alldone's own star changes all lie at or below it. Best effort: without it
+// the import falls back to the task's completion time.
+async function recordDoneHistoryId({ withGmail, userId, ref, entry }) {
+    try {
+        const profile = await withTransientRetry(() =>
+            withGmail(userId, entry.connectionKey, gmail => gmail.users.getProfile({ userId: 'me' }))
+        )
+        const historyId = profile?.data?.historyId ? String(profile.data.historyId) : ''
+        await writeEntry(ref, { doneHistoryId: historyId || null, doneAt: Date.now() })
+    } catch (error) {
+        console.warn('[gmailTaskStar] Could not record the mailbox history position at Done', {
+            userId,
+            taskId: entry.taskId,
+            error: error?.message || String(error),
+        })
+        try {
+            await writeEntry(ref, { doneHistoryId: null, doneAt: Date.now() })
+        } catch (_) {
+            // Nothing more to record.
+        }
+    }
+}
+
+/**
+ * Every registry entry (any state) Alldone recorded for one message of one connection. The star
+ * import uses it to recognise Alldone's own stars and the tasks already linked to the message.
+ */
+// The same mailbox can be reached under two keys (a legacy project key and its `email_…` connection
+// id), so an entry of the same Gmail address counts too; Gmail message ids are per mailbox.
+async function findStarEntriesForMessage(
+    { userId, connectionKey, gmailEmail = '', messageId },
+    { database = admin.firestore() } = {}
+) {
+    const normalizedUserId = trimString(userId)
+    const normalizedMessageId = trimString(messageId)
+    if (!normalizedUserId || !normalizedMessageId) return []
+    const snapshot = await database
+        .collection('users')
+        .doc(normalizedUserId)
+        .collection(REGISTRY_COLLECTION)
+        .where('messageId', '==', normalizedMessageId)
+        .get()
+    const entries = []
+    snapshot.forEach(doc => {
+        const data = doc.data() || {}
+        const sameKey = !!trimString(connectionKey) && data.connectionKey === trimString(connectionKey)
+        const email = trimString(gmailEmail).toLowerCase()
+        const sameMailbox = !!email && trimString(data.gmailEmail).toLowerCase() === email
+        if (!sameKey && !sameMailbox) return
+        entries.push({ ...data, taskId: doc.id })
+    })
+    return entries
+}
+
+/**
+ * The user's Gmail star reopened a done task (gmailStarTaskImport.js): that star now belongs to the
+ * task, so its next Done removes it (decided with Karsten 2026-11-26). The message is already
+ * starred, so Gmail is not called. An entry the task already has for ANOTHER message (a thread task
+ * whose star sits on its first email) is left alone.
+ */
+async function adoptTaskEmailStar(
+    { userId, connectionKey, gmailEmail = '', messageId, threadId = '', projectId, taskId },
+    { database = admin.firestore() } = {}
+) {
+    const normalizedUserId = trimString(userId)
+    const normalizedTaskId = trimString(taskId)
+    const normalizedMessageId = trimString(messageId)
+    if (!normalizedUserId || !normalizedTaskId || !normalizedMessageId || !trimString(connectionKey)) {
+        return { adopted: false, reason: 'missing_identity' }
+    }
+    const ref = getRegistryRef(database, normalizedUserId, normalizedTaskId)
+    const snapshot = await ref.get()
+    const existing = snapshot.exists ? snapshot.data() || {} : null
+    if (existing && existing.messageId && existing.messageId !== normalizedMessageId) {
+        return { adopted: false, reason: 'other_message' }
+    }
+    await writeEntry(ref, {
+        taskId: normalizedTaskId,
+        projectId: trimString(projectId),
+        connectionKey: trimString(connectionKey),
+        gmailEmail: trimString(gmailEmail).toLowerCase() || existing?.gmailEmail || '',
+        messageId: normalizedMessageId,
+        threadId: trimString(threadId) || existing?.threadId || '',
+        wasStarredBefore: false,
+        state: STATE_STARRED,
+        origin: ORIGIN_GMAIL_STAR,
+        starredAt: Date.now(),
+        doneHistoryId: null,
+        removedReason: null,
+        lastError: null,
+        ...(existing ? {} : { createdAt: Date.now() }),
+    })
+    return { adopted: true }
+}
+
 /**
  * onUpdateTask: Done removes the star, reopening puts it back. Only `inDone` counts; moving through
  * workflow steps (which changes `userId`/`stepHistory` but not `inDone`) never touches Gmail. Never
@@ -374,13 +498,23 @@ async function syncTaskEmailStarOnTaskUpdate(
                 finalState: STATE_REMOVED,
                 reason: 'done',
             })
+            await recordDoneHistoryId({ withGmail, userId, ref, entry })
             return { action: result.gmailChanged ? 'unstarred' : 'none', state: result.state }
         }
 
         // Reopened: star again what Alldone took away on Done (never a user's own star).
-        if (entry.state !== STATE_REMOVED || entry.wasStarredBefore === true) return { action: 'none' }
+        if (entry.state !== STATE_REMOVED || entry.wasStarredBefore === true) {
+            if (entry.doneHistoryId) await writeEntry(ref, { doneHistoryId: null })
+            return { action: 'none' }
+        }
         await modifyStar(withGmail, userId, entry.connectionKey, entry.messageId, true)
-        await writeEntry(ref, { state: STATE_STARRED, starredAt: Date.now(), removedReason: null, lastError: null })
+        await writeEntry(ref, {
+            state: STATE_STARRED,
+            starredAt: Date.now(),
+            removedReason: null,
+            lastError: null,
+            doneHistoryId: null,
+        })
         return { action: 'starred', state: STATE_STARRED }
     } catch (error) {
         console.warn('[gmailTaskStar] Could not sync the email star with the task state', {
@@ -469,6 +603,10 @@ module.exports = {
     STATE_REMOVED,
     STATE_DELETED,
     STATE_MISSING,
+    ORIGIN_GMAIL_STAR,
+    ACTIVE_STATES,
+    adoptTaskEmailStar,
+    findStarEntriesForMessage,
     isGmailEmailTask,
     starEmailOfCreatedTask,
     resumePendingTaskEmailStar,

@@ -37,6 +37,7 @@ const {
     buildDoneTaskReactivationUpdate,
     planDoneTaskReactivation,
     reactivateDoneTaskForAssistantWork,
+    selectOpenStepId,
     selectReactivationStepId,
 } = require('./doneTaskReactivation')
 const { buildCrossUserTaskStatusChange } = require('./taskStatusStatistics')
@@ -315,6 +316,29 @@ describe('reactivateDoneTaskForAssistantWork', () => {
             stepHistory: [-1],
             completed: null,
         })
+    })
+
+    test('toOpen (a Gmail star, AT-3165): back to Open with its owner even when the workflow has AI steps', async () => {
+        seed()
+
+        const result = await reopen({ assistantId: '', toOpen: true, reason: 'gmail_star' })
+
+        expect(result).toMatchObject({ reactivated: true, stepId: -1, stepLabel: 'Open', landsOnAiStep: false })
+        expect(storedTask()).toMatchObject({
+            done: false,
+            inDone: false,
+            currentReviewerId: OWNER,
+            userIds: [OWNER],
+            stepHistory: [-1],
+            completed: null,
+            workflowAiPromptOverride: null,
+        })
+    })
+
+    test('toOpen on an assistant workflow task, which has no Open, picks its first step', () => {
+        expect(selectOpenStepId(doneTask({ workflowTask: true }), hostWorkflow())).toBe(BUILD)
+        expect(selectOpenStepId(doneTask({ workflowTask: true }), {})).toBeNull()
+        expect(selectOpenStepId(doneTask(), hostWorkflow())).toBe(-1)
     })
 
     test('is idempotent: a retried or concurrent second call changes nothing', async () => {

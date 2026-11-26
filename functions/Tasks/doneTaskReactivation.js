@@ -170,13 +170,21 @@ const loadWorkflow = async (db, projectId, task) => {
  * Read-only: where the task would go if work started on it now, or null when it is not a done
  * top-level task. Lets the caller brief the VM before the reopen is written.
  */
-async function planDoneTaskReactivation({ db, projectId, taskId, assistantId = '' }) {
+// `toOpen`: the user (not an assistant) reopens the task, e.g. by starring its email in Gmail
+// (AT-3165): it goes back to Open like moveTasksFromDone to Open in the app; an assistant workflow
+// task, which has no Open, to its first step.
+const selectOpenStepId = (task, workflow = {}) =>
+    task?.workflowTask === true ? getSortedWorkflowStepIds(workflow || {})[0] || null : OPEN_STEP
+
+async function planDoneTaskReactivation({ db, projectId, taskId, assistantId = '', toOpen = false }) {
     if (!projectId || !taskId) return null
     const snapshot = await db.doc(`items/${projectId}/tasks/${taskId}`).get()
     const task = snapshot.exists ? { ...snapshot.data(), id: taskId } : null
     if (!task?.done || task.parentId || !task.userId) return null
     const workflow = await loadWorkflow(db, projectId, task)
-    const targetStepId = selectReactivationStepId(task, workflow, assistantId)
+    const targetStepId = toOpen
+        ? selectOpenStepId(task, workflow)
+        : selectReactivationStepId(task, workflow, assistantId)
     if (targetStepId === null || targetStepId === undefined) return null
     return {
         targetStepId,
@@ -201,12 +209,14 @@ async function reactivateDoneTaskForAssistantWork({
     note = '',
     fromConversation = null,
     editorName = '',
+    toOpen = false,
+    reason = 'assistant_work',
     now = Date.now,
     createId = () => crypto.randomUUID(),
 }) {
     if (!db || !projectId || !taskId || !actorUserId)
         throw new Error('db, projectId, taskId and actorUserId are required')
-    const plan = await planDoneTaskReactivation({ db, projectId, taskId, assistantId })
+    const plan = await planDoneTaskReactivation({ db, projectId, taskId, assistantId, toOpen })
     if (!plan) return { reactivated: false, reason: 'not_done' }
     const { workflow, targetStepId, landsOnAiStep } = plan
     const taskRef = db.doc(`items/${projectId}/tasks/${taskId}`)
@@ -259,7 +269,8 @@ async function reactivateDoneTaskForAssistantWork({
             ? 'Open'
             : (typeof workflow[targetStepId]?.description === 'string' && workflow[targetStepId].description.trim()) ||
               'Workflow step'
-    console.log('[doneTaskReactivation] Reopened a done task for renewed assistant work', {
+    console.log('[doneTaskReactivation] Reopened a done task', {
+        reason,
         projectId,
         taskId,
         stepId: targetStepId,
@@ -273,5 +284,6 @@ module.exports = {
     buildDoneTaskReactivationUpdate,
     planDoneTaskReactivation,
     reactivateDoneTaskForAssistantWork,
+    selectOpenStepId,
     selectReactivationStepId,
 }

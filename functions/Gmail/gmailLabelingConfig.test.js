@@ -33,6 +33,12 @@ describe('gmailLabelingConfig', () => {
         expect(normalizeConfigInput('project-1', { autoArchiveAllLabeled: true }).autoArchiveAllLabeled).toBe(true)
     })
 
+    test('the Gmail star import switch (AT-3165) defaults to on and keeps an explicit off', () => {
+        expect(normalizeConfigInput('project-1', {}).createTaskOnStar).toBe(true)
+        expect(normalizeConfigInput('project-1', { createTaskOnStar: false }).createTaskOnStar).toBe(false)
+        expect(normalizeConfigInput('project-1', { createTaskOnStar: 'no' }).createTaskOnStar).toBe(true)
+    })
+
     test('defaults new Gmail labeling configs to default prompt mode', () => {
         const config = normalizeConfigInput('project-1', {})
 
