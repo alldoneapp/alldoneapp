@@ -225,12 +225,15 @@ runs those three, so validation, limits and the double-booking lock cannot drift
   `/api/booking/` or `/meet/*/llms.txt`.
 - **For visitors** (visible): a compact, always visible "For AI agents" info box under the page heading
   (`BookingAgentHint` in `MeetingBookingPage.js`, `role="note"` labelled by its title): one line on who
-  can use it (agents connected to Alldone or with MCP; not every chatbot), the prompt as a three-line
+  can use it (agents connected to Alldone or with MCP), the prompt as a three-line
   preview (the full text is in the DOM, is what gets copied, and is shown whole after a failed copy) and
   one secondary "Copy prompt" button, its only action. Not shown on an inactive page. It replaced a
   "Book with your AI agent" expander (button + chevron, Karsten's first choice "top, collapsed"): agents
   driving the page with `browser_*` read that as a booking action, tried to open it and stopped at the
   browser approval gate (Karsten, 2026-11-26: "compact info box"; the label stays neutral, no "book").
+  Right under it a "For humans" note (`BookingHumanHint`, same note style, no action, also hidden on an
+  inactive page) says the visitor can pick and book on the page itself; the follow-up also dropped
+  "Not every chatbot can do this." from the agent box (Karsten, 2026-11-26).
   The prompt (`bookingAgentPrompt.js`, key `Booking agent prompt`, in the page language) links
   `getAppLinkOrigin()` + `/meet/<page.slug>` and ends with `/api/booking/mcp/<page.slug>`: the origin
   the page runs on and the canonical slug, never a fixed host; each URL ends its line. It tells the
