@@ -26,7 +26,7 @@
 
 // Firestore field names are permissive, but a raw model id is not: `gpt-5.6-sol` carries a
 // dot (which needs backtick quoting in every field path that reads it) and an OpenRouter id
-// like `openrouter:deepseek/deepseek-v4-flash-0731` carries a colon and a solidus. Keys are
+// like `openrouter:deepseek/deepseek-v4.1-flash-1017` carries a colon and a solidus. Keys are
 // therefore slugged down to `[a-z0-9_-]` so a rollup map stays directly addressable from the
 // console, a `select` in BigQuery and a `FieldPath` in code. The raw value is kept verbatim
 // on the ledger entry, so slugging loses nothing that cannot be recovered.

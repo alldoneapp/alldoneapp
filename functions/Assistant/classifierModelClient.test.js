@@ -32,7 +32,7 @@ describe('resolveClassifierClient', () => {
 
         expect(resolved).toEqual({
             client: { kind: 'openrouter', apiKey: 'sk-openrouter' },
-            model: 'deepseek/deepseek-v4-flash-0731',
+            model: 'deepseek/deepseek-v4.1-flash-1017',
             isOpenRouter: true,
         })
         expect(getOpenRouterClient).toHaveBeenCalledWith('sk-openrouter')

@@ -16,10 +16,10 @@ import { themed } from '../../../../Themes/colorMode'
 export { formatTemplateConflictField }
 
 const MODEL_LABELS = {
-    MODEL_GPT6_SOL: 'GPT 6.1 Sol',
-    MODEL_GPT5_6_TERRA: 'GPT 5.6 Terra',
+    MODEL_GPT6_SOL: 'GPT 6.2 Sol',
+    MODEL_GPT5_6_TERRA: 'GPT 6.1 Terra',
     MODEL_GPT6_LUNA: 'GPT 6 Luna',
-    MODEL_DEEPSEEK_V4_FLASH: 'DeepSeek V4 Flash',
+    MODEL_DEEPSEEK_V4_FLASH: 'DeepSeek V4.1 Flash',
 }
 
 export const formatTemplateConflictValue = (field, value, exists) => {

@@ -1072,7 +1072,7 @@ const modelSupportsNativeTools = modelKey => {
         modelKey === MODEL_GPT5_4_MINI ||
         modelKey === MODEL_GPT5_4_NANO ||
         modelKey === MODEL_GPT5_2 ||
-        // DeepSeek V4 Flash lists `tools` in its OpenRouter `supported_parameters`, and OpenRouter
+        // DeepSeek V4.1 Flash lists `tools` in its OpenRouter `supported_parameters`, and OpenRouter
         // serves them over the same Chat Completions tool-calling shape `getToolSchemas` produces.
         modelKey === MODEL_DEEPSEEK_V4_FLASH
     )
@@ -1145,7 +1145,7 @@ const getMaxTokensForModel = modelKey => {
     if (modelKey === MODEL_GPT5_4_MINI) return 128000
     if (modelKey === MODEL_GPT5_4_NANO) return 128000
     if (modelKey === MODEL_GPT5_2) return 128000
-    // DeepSeek V4 Flash advertises a 1,048,576-token window on OpenRouter. Held slightly under that
+    // DeepSeek V4.1 Flash advertises a 1,048,576-token window on OpenRouter. Held slightly under that
     // so the assistant's own context budgeting never builds a prompt the provider will reject.
     if (modelKey === MODEL_DEEPSEEK_V4_FLASH) return 1000000
 
@@ -2913,7 +2913,7 @@ async function interactWithChatStream(
 
     // Step 1: Get model config and cached environment
     const configStart = Date.now()
-    const model = getModel(modelKey) || 'gpt-6.1-sol'
+    const model = getModel(modelKey) || 'gpt-6.2-sol'
     const temperature = getTemperature(temperatureKey)
     const envFunctions = getCachedEnvFunctions() // Use cached version
     const configDuration = Date.now() - configStart
@@ -2927,7 +2927,7 @@ async function interactWithChatStream(
 
     const { OPEN_AI_KEY, PERPLEXITY_API_KEY, OPENROUTER_API_KEY } = envFunctions
 
-    // OpenRouter models (DeepSeek V4 Flash) speak Chat Completions, not the Responses API the
+    // OpenRouter models (DeepSeek V4.1 Flash) speak Chat Completions, not the Responses API the
     // OpenAI branch below is built on, so they take their own transport. It terminates at the same
     // stream contract, so everything downstream — the tool loop, Gold metering, progress status —
     // is unchanged. Checked before Perplexity only because both are "not the default path"; the two

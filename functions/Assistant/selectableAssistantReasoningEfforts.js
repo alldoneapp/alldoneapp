@@ -21,8 +21,10 @@ const VALID_ASSISTANT_REASONING_EFFORTS = SELECTABLE_ASSISTANT_REASONING_EFFORTS
 
 const isValidAssistantReasoningEffort = value => VALID_ASSISTANT_REASONING_EFFORTS.includes(value)
 
-// Keep the saved product key stable: existing Sol 6.0 selections now run on 6.1.
-const isSolModel = model => !model || ['MODEL_GPT6_SOL', 'MODEL_GPT5_6_SOL', 'gpt-6-sol', 'gpt-6.1-sol'].includes(model)
+// Keep the saved product key stable: existing Sol 6.0 and 6.1 selections now run on 6.2, which
+// also rejects reasoning effort `none` (developers.openai.com/api/docs/models/gpt-6.2-sol).
+const isSolModel = model =>
+    !model || ['MODEL_GPT6_SOL', 'MODEL_GPT5_6_SOL', 'gpt-6-sol', 'gpt-6.1-sol', 'gpt-6.2-sol'].includes(model)
 
 const normalizeAssistantReasoningEffort = (value, model) =>
     value === 'none' && isSolModel(model) && model !== undefined

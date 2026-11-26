@@ -1,17 +1,21 @@
 const SELECTABLE_ASSISTANT_MODELS = [
     {
         model: 'MODEL_GPT6_SOL',
-        labelKey: 'GPT 6.1 Sol',
+        labelKey: 'GPT 6.2 Sol',
         name: 'Sol',
         descriptionKey: 'Most capable',
         tokensPerGold: 200,
     },
     {
         model: 'MODEL_GPT5_6_TERRA',
-        labelKey: 'GPT 5_6 Terra',
+        // The key predates GPT-6.1 Terra and stays as it is: it is persisted on assistants, chats,
+        // Gmail and calendar configs, and `getModel` decides which release it runs on (AT-3163).
+        labelKey: 'GPT 6.1 Terra',
         name: 'Terra',
         descriptionKey: 'Balanced cost and capability',
-        tokensPerGold: 200,
+        // GPT-6.1 Terra lists at exactly half of Sol ($1/$5 vs $2/$10 per 1M tokens), so it is
+        // billed at twice Sol's 200 tokens/Gold (product decision, AT-3163).
+        tokensPerGold: 400,
     },
     {
         model: 'MODEL_GPT6_LUNA',
@@ -26,7 +30,7 @@ const SELECTABLE_ASSISTANT_MODELS = [
         // consumer of it (assistant model, heartbeat model, per-task override, Gmail labeling,
         // calendar routing) treats an entry the same way whichever upstream serves it.
         model: 'MODEL_DEEPSEEK_V4_FLASH',
-        labelKey: 'DeepSeek V4 Flash',
+        labelKey: 'DeepSeek V4.1 Flash',
         name: 'DeepSeek Flash',
         descriptionKey: 'Lowest cost, 1M context',
         // Assistant billing deliberately passes through only part of the upstream saving; this is

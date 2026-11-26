@@ -24,7 +24,7 @@ const crypto = require('crypto')
 const { TextDecoder } = require('util')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { resolveEffectiveTokensPerGold, calculateTokenGold, calculateSolUsageGold } = require('./vmTokenPricing')
-const { SOL_MODEL, getSolRequestCost } = require('./solModelPricing')
+const { isSolPricedModel, getSolRequestCost } = require('./solModelPricing')
 const { resolveJobCredentialProvider } = require('./vmModelRouting')
 const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
 const {
@@ -577,7 +577,7 @@ function extractUsageFromJsonPayload(provider, payload) {
         const response = payload.response || payload
         if (response.usage) {
             const normalized = normalizeUsage(response.usage)
-            if (provider === 'openai' && response.model === SOL_MODEL) {
+            if (provider === 'openai' && isSolPricedModel(response.model)) {
                 const cost = getSolRequestCost(response.usage, response.service_tier || 'default')
                 return {
                     ...normalized,
@@ -707,7 +707,7 @@ async function chargeProxyTokenGold({
         const solCostUsd = (Number(pendingData.proxyTokenUsage?.solCostUsd) || 0) + (Number(usage.solCostUsd) || 0)
         const solPricedTokens =
             (Number(pendingData.proxyTokenUsage?.solPricedTokens) || 0) + (Number(usage.solPricedTokens) || 0)
-        const usesSolCosts = pendingData.agentModel === SOL_MODEL && solPricedTokens > 0
+        const usesSolCosts = isSolPricedModel(pendingData.agentModel) && solPricedTokens > 0
         const tokenGoldTotal = usesSolCosts
             ? calculateSolUsageGold(
                   solCostUsd,

@@ -1,4 +1,5 @@
 const { filterToProjectMembers } = require('../shared/projectMemberRecipients')
+const { replaceSupersededCodexModel } = require('./codexModelReplacements')
 const admin = require('firebase-admin')
 const crypto = require('crypto')
 const fs = require('fs')
@@ -41,7 +42,7 @@ const {
     OPENROUTER_LABEL,
 } = require('./vmModelRouting')
 const { resolveEffectiveTokensPerGold, calculateTokenGold, calculateSolUsageGold } = require('./vmTokenPricing')
-const { SOL_MODEL } = require('./solModelPricing')
+const { isSolPricedModel } = require('./solModelPricing')
 const {
     MAX_VM_RUNTIME_MS,
     VM_JOB_FINALIZATION_HEADROOM_MS,
@@ -1881,7 +1882,7 @@ function appendCodexActivity(evt, state) {
 function resolveAgentRunDetails(vmJob) {
     const agent = (vmJob && vmJob.agent) || DEFAULT_AGENT
     const savedModel = (vmJob && vmJob.agentModel) || (agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL)
-    const model = agent === 'codex' && savedModel === 'gpt-6-sol' ? DEFAULT_CODEX_MODEL : savedModel
+    const model = agent === 'codex' ? replaceSupersededCodexModel(savedModel) : savedModel
     const savedEffort =
         (vmJob && vmJob.agentReasoningEffort) ||
         (agent === 'codex' ? DEFAULT_CODEX_REASONING_EFFORT : DEFAULT_CLAUDE_EFFORT_LEVEL)
@@ -2751,7 +2752,7 @@ function calculateCompletionGoldCharges({
     const tokensPerGold = resolveEffectiveTokensPerGold({ tokensPerGold: persistedTokensPerGold, agentModel })
     const tokenGoldTotal = subscriptionUsed
         ? 0
-        : agentModel === SOL_MODEL && proxyTokenUsage.solPricedTokens > 0
+        : isSolPricedModel(agentModel) && proxyTokenUsage.solPricedTokens > 0
           ? calculateSolUsageGold(
                 proxyTokenUsage.solCostUsd,
                 tokensPerGold,

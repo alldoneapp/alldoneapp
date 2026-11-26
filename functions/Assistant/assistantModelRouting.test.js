@@ -14,16 +14,18 @@ const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
 
 describe('assistantModelRouting', () => {
     test('pins DeepSeek Flash to the dated OpenRouter release rather than a floating alias', () => {
-        // The floating `~deepseek/deepseek-v4-flash-latest` alias would swap the model under live
+        // The floating `~deepseek/deepseek-flash-latest` alias would swap the model under live
         // assistants and labeling configs with no review. A dated id makes that an explicit change.
-        expect(OPENROUTER_ASSISTANT_MODEL_IDS[MODEL_DEEPSEEK_V4_FLASH]).toBe('deepseek/deepseek-v4-flash-0731')
-        expect(getOpenRouterAssistantModelId(MODEL_DEEPSEEK_V4_FLASH)).toBe('deepseek/deepseek-v4-flash-0731')
+        // AT-3163: V4.1 Flash's October 17, 2026 snapshot replaced the retired V4 Flash 0731.
+        expect(OPENROUTER_ASSISTANT_MODEL_IDS[MODEL_DEEPSEEK_V4_FLASH]).toBe('deepseek/deepseek-v4.1-flash-1017')
+        expect(getOpenRouterAssistantModelId(MODEL_DEEPSEEK_V4_FLASH)).toBe('deepseek/deepseek-v4.1-flash-1017')
+        expect(OPENROUTER_ASSISTANT_MODEL_IDS[MODEL_DEEPSEEK_V4_FLASH]).not.toMatch(/^~|latest/)
     })
 
     test('routes the DeepSeek key to OpenRouter with a ready-to-send model id', () => {
         expect(resolveAssistantModelProvider(MODEL_DEEPSEEK_V4_FLASH)).toEqual({
             provider: PROVIDER_OPENROUTER,
-            model: 'deepseek/deepseek-v4-flash-0731',
+            model: 'deepseek/deepseek-v4.1-flash-1017',
             modelKey: MODEL_DEEPSEEK_V4_FLASH,
         })
         expect(isOpenRouterAssistantModel(MODEL_DEEPSEEK_V4_FLASH)).toBe(true)
@@ -73,10 +75,10 @@ describe('assistantModelRouting', () => {
         })
     })
 
-    test('reports DeepSeek Flash as unable to read images', () => {
-        // The pinned release advertises `input_modalities: ['text']`. Answering `true` here would
-        // send an image_url part and fail the whole request; the transport strips it instead.
-        expect(assistantModelSupportsImageInput(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
+    test('reports DeepSeek V4.1 Flash as able to read images', () => {
+        // The pinned V4.1 Flash 1017 release advertises `input_modalities: ['text', 'image']` on
+        // OpenRouter (checked 2026-11-26), so images are sent rather than replaced by a note.
+        expect(assistantModelSupportsImageInput(MODEL_DEEPSEEK_V4_FLASH)).toBe(true)
     })
 
     test('treats an unlisted OpenRouter model as text-only and OpenAI models as multimodal', () => {

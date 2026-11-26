@@ -74,7 +74,7 @@ jest.mock('./vmJob', () => ({
         return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
     },
     DEFAULT_CLAUDE_MODEL: 'opus',
-    DEFAULT_CODEX_MODEL: 'gpt-6.1-sol',
+    DEFAULT_CODEX_MODEL: 'gpt-6.2-sol',
     DEFAULT_CLAUDE_EFFORT_LEVEL: 'high',
     DEFAULT_CODEX_REASONING_EFFORT: 'medium',
 }))
@@ -328,7 +328,7 @@ describe('VM runner prompt', () => {
     test('resolveAgentRunDetails falls back to per-agent defaults when the job omits them', () => {
         expect(__private__.resolveAgentRunDetails({ agent: 'claude' })).toEqual({ model: 'opus', effort: 'high' })
         expect(__private__.resolveAgentRunDetails({ agent: 'codex' })).toEqual({
-            model: 'gpt-6.1-sol',
+            model: 'gpt-6.2-sol',
             effort: 'medium',
         })
     })
@@ -1742,30 +1742,38 @@ describe('VM settlement includes proxy premium tokens (security audit 2026-11)',
 })
 
 describe('VM runner runtime Gold monitor', () => {
-    test('resumed legacy Sol jobs execute on 6.1 with high reasoning', () => {
+    test.each([
+        ['gpt-6-sol', 'gpt-6.2-sol'],
+        ['gpt-6.1-sol', 'gpt-6.2-sol'],
+        ['gpt-5.6-terra', 'gpt-6.1-terra'],
+    ])('resumed legacy %s jobs execute on %s with high reasoning', (saved, current) => {
         expect(
             __private__.resolveAgentRunDetails({
                 agent: 'codex',
-                agentModel: 'gpt-6-sol',
+                agentModel: saved,
                 agentReasoningEffort: 'none',
             })
-        ).toEqual({ model: 'gpt-6.1-sol', effort: 'high' })
+        ).toEqual({ model: current, effort: 'high' })
     })
-    test('settlement uses cumulative Sol request costs and subtracts proxy charges exactly once', () => {
-        const { calculateSolUsageGold } = require('./vmTokenPricing')
-        const expected = calculateSolUsageGold(0.153, 240)
-        const charges = __private__.calculateCompletionGoldCharges({
-            runtimeMs: 1000,
-            agentModel: 'gpt-6.1-sol',
-            tokensPerGold: 240,
-            usage: { totalTokens: 1000 },
-            proxyTokenUsage: { totalTokens: 110000, solPricedTokens: 110000, solCostUsd: 0.153 },
-            proxyTokenGoldCharged: expected - 2,
-        })
-        expect(charges.totalTokens).toBe(110000)
-        expect(charges.tokenGoldTotal).toBe(expected)
-        expect(charges.tokenGold).toBe(2)
-    })
+    // 6.1 jobs started before the 6.2 rollout keep per-request pricing (AT-3163).
+    test.each(['gpt-6.2-sol', 'gpt-6.1-sol'])(
+        'settlement uses cumulative Sol request costs and subtracts proxy charges exactly once (%s)',
+        agentModel => {
+            const { calculateSolUsageGold } = require('./vmTokenPricing')
+            const expected = calculateSolUsageGold(0.153, 240)
+            const charges = __private__.calculateCompletionGoldCharges({
+                runtimeMs: 1000,
+                agentModel,
+                tokensPerGold: 240,
+                usage: { totalTokens: 1000 },
+                proxyTokenUsage: { totalTokens: 110000, solPricedTokens: 110000, solCostUsd: 0.153 },
+                proxyTokenGoldCharged: expected - 2,
+            })
+            expect(charges.totalTokens).toBe(110000)
+            expect(charges.tokenGoldTotal).toBe(expected)
+            expect(charges.tokenGold).toBe(2)
+        }
+    )
     const pendingWebhook = {
         correlationId: 'correlation-1',
         userId: 'user-1',

@@ -731,7 +731,7 @@ assistant's model applies. Only Templates still follows the width: Anna below a 
 Anna composer container.
 
 **"Use assistant model" names the model on a second line, resolved like the server.** The picker's
-first entry shows the assistant's own model (the menu label, "GPT 6.1 Sol") under its label, through
+first entry shows the assistant's own model (the menu label, "GPT 6.2 Sol") under its label, through
 `OptionItem`'s `subtitleKey` (a translation key, like `text`), where the model entries show their Gold
 rate. The SAME line appears in the comment popup, the Anna composer and the assistant line, because all
 three open this one picker and hand it the assistant's `model` (never the chat's pin). The name comes

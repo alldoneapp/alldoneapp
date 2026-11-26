@@ -1,8 +1,15 @@
-// Official Standard USD/1M prices, verified 2026-09-30:
+// Official Standard USD/1M prices, verified 2026-09-30 for gpt-6.1-sol and again on 2026-11-26
+// for gpt-6.2-sol, which lists the same input, cached input, cache write, output and >272K
+// long-context rates (AT-3163):
+// https://developers.openai.com/api/docs/models/gpt-6.2-sol
 // https://developers.openai.com/api/docs/models/gpt-6.1-sol
 // https://developers.openai.com/api/docs/pricing
 // Cache reads/writes are subsets of input_tokens, not additional tokens.
-const SOL_MODEL = 'gpt-6.1-sol'
+const SOL_MODEL = 'gpt-6.2-sol'
+// Every Sol release these prices are verified for. A VM job started on 6.1 Sol before the 6.2
+// rollout keeps its per-request pricing when it resumes or finishes after the deploy.
+const SOL_PRICED_MODELS = Object.freeze(['gpt-6.1-sol', SOL_MODEL])
+const isSolPricedModel = model => SOL_PRICED_MODELS.includes(model)
 const SOL_LONG_CONTEXT_THRESHOLD = 272000
 const SOL_STANDARD_PRICES = Object.freeze({ input: 2, cachedInput: 0.1, cacheWrite: 2.5, output: 10 })
 const SOL_LONG_CONTEXT_PRICES = Object.freeze({ input: 4, cachedInput: 0.2, cacheWrite: 5, output: 15 })
@@ -48,6 +55,8 @@ function getSolRequestCost(usage = {}, serviceTier = 'default') {
 
 module.exports = {
     SOL_MODEL,
+    SOL_PRICED_MODELS,
+    isSolPricedModel,
     SOL_LONG_CONTEXT_THRESHOLD,
     SOL_STANDARD_PRICES,
     SOL_LONG_CONTEXT_PRICES,

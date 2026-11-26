@@ -128,26 +128,32 @@ const OBSERVED_TOKEN_MIX = Object.freeze({
 })
 
 /**
- * Official OpenAI Standard short-context list prices in USD per 1M tokens
- * (developers.openai.com/api/docs/pricing, retrieved 2026-09-30). The older Sol price remains the
- * billing anchor so releasing a cheaper model does not reprice other providers or existing jobs.
+ * Official OpenAI Standard short-context list prices in USD per 1M tokens for the current release
+ * of each family (developers.openai.com/api/docs/models/<id>, retrieved 2026-11-26: gpt-6.2-astra,
+ * gpt-6.2-sol, gpt-6.1-terra, gpt-6-luna). The older Sol price remains the billing anchor so
+ * releasing a cheaper model does not reprice other providers or existing jobs.
  */
 const CODEX_REFERENCE_PRICES = Object.freeze({
-    astra: Object.freeze({ input: 10, cachedInput: 1, output: 50 }),
+    astra: Object.freeze({ input: 8, cachedInput: 0.4, output: 40 }),
     sol: SOL_STANDARD_PRICES,
-    terra: Object.freeze({ input: 2, cachedInput: 0.2, output: 12 }),
+    terra: Object.freeze({ input: 1, cachedInput: 0.05, output: 5 }),
     luna: Object.freeze({ input: 0.1, cachedInput: 0.01, output: 0.5 }),
 })
 
+// Superseded releases keep their own price: a job started on one is still billed for it.
 const CODEX_LEGACY_REFERENCE_PRICES = Object.freeze({
+    'gpt-6-astra': Object.freeze({ input: 10, cachedInput: 1, output: 50 }),
     'gpt-6-sol': Object.freeze({ input: 2, cachedInput: 0.2, cacheWrite: 2.5, output: 10 }),
     'gpt-5.6-sol': Object.freeze({ input: 4, cachedInput: 0.4, output: 20 }),
+    'gpt-5.6-terra': Object.freeze({ input: 2, cachedInput: 0.2, output: 12 }),
     'gpt-5.6-luna': Object.freeze({ input: 0.2, cachedInput: 0.02, output: 1.2 }),
 })
 const CODEX_CURRENT_MODEL_REFERENCE_PRICES = Object.freeze({
-    'gpt-6-astra': CODEX_REFERENCE_PRICES.astra,
+    'gpt-6.2-astra': CODEX_REFERENCE_PRICES.astra,
+    'gpt-6.2-sol': CODEX_REFERENCE_PRICES.sol,
+    // Same list price as 6.2 Sol (verified 2026-11-26), so it shares the entry.
     'gpt-6.1-sol': CODEX_REFERENCE_PRICES.sol,
-    'gpt-5.6-terra': CODEX_REFERENCE_PRICES.terra,
+    'gpt-6.1-terra': CODEX_REFERENCE_PRICES.terra,
     'gpt-6-luna': CODEX_REFERENCE_PRICES.luna,
 })
 
@@ -222,6 +228,10 @@ const CLAUDE_MODEL_REFERENCE_PRICES = Object.freeze({
  */
 const OPENROUTER_REFERENCE_PRICES = Object.freeze({
     'deepseek/deepseek-v4-pro': Object.freeze({ input: 0.435, cachedInput: 0.003625, output: 0.87 }),
+    // V4.1 Flash (retrieved 2026-11-26). The dated 1017 snapshot lists DeepSeek's own peak-hour price
+    // as its headline; cheaper hosts exist, so this fallback errs on the expensive side.
+    'deepseek/deepseek-v4.1-flash-1017': Object.freeze({ input: 0.3, cachedInput: 0.006, output: 1.2 }),
+    'deepseek/deepseek-v4.1-flash': Object.freeze({ input: 0.14, cachedInput: 0.0042, output: 0.42 }),
     'deepseek/deepseek-v4-flash-0731': Object.freeze({ input: 0.08, cachedInput: 0.016, output: 0.18 }),
     'deepseek/deepseek-v4-flash': Object.freeze({ input: 0.14, cachedInput: 0.028, output: 0.28 }),
     'deepseek/deepseek-v3.2': Object.freeze({ input: 0.269, cachedInput: 0.1345, output: 0.4 }),

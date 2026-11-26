@@ -32,7 +32,7 @@ const ASSISTANT_PROFILE_INSTRUCTIONS_MAX_CHARS = 2000
 const ASSISTANT_PROFILE_SUMMARY_MAX_CHARS = 300
 
 const DEFAULT_ASSISTANT_PROFILE_MODEL = 'MODEL_DEEPSEEK_V4_FLASH'
-// One run a night with at most ~14,000 tokens of input is about 8 Gold at DeepSeek V4 Flash's 2,000
+// One run a night with at most ~14,000 tokens of input is about 8 Gold at DeepSeek V4.1 Flash's 2,000
 // tokens per Gold, so 300 covers a month of busy days with room for a few "update now" presses.
 const DEFAULT_ASSISTANT_PROFILE_MONTHLY_GOLD_CAP = 300
 const MIN_ASSISTANT_PROFILE_MONTHLY_GOLD_CAP = 30

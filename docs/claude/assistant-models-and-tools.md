@@ -18,6 +18,19 @@ upstream id. Adding a model means setting `tokensPerGold` in the shared entry, t
 `getTokensPerGold` is billed nothing at all** — it returns `undefined` and
 `calculateGoldCostFromTokens` turns that into `0`, silently.
 
+**The menu as of AT-3163 (2026-11-26)**, keys unchanged so every saved choice follows the new release
+without a migration: `MODEL_GPT6_SOL` → `gpt-6.2-sol` ("GPT 6.2 Sol", 200 tokens/Gold),
+`MODEL_GPT5_6_TERRA` → `gpt-6.1-terra` ("GPT 6.1 Terra", **400**: half of Sol's list price),
+`MODEL_GPT6_LUNA` → `gpt-6-luna` (still OpenAI's newest Luna, 1000) and `MODEL_DEEPSEEK_V4_FLASH` →
+`deepseek/deepseek-v4.1-flash-1017` ("DeepSeek V4.1 Flash", 2000, now image-capable). A key name is
+not a version: `MODEL_GPT5_6_TERRA` runs 6.1 Terra and `MODEL_DEEPSEEK_V4_FLASH` runs V4.1. To bump a
+tier, change its upstream id in `getModel`, both classifier mappers, `growthCostModel.js` and
+`performanceConfig.js` (or the OpenRouter table), the label key in the menu, `ModelWrapper.js`,
+`assistantUpdates.js`, `UpdateFromTemplate.js`, `workspaceChangeFeeds.js` and the three translation
+files. Keep the old translation keys: Updates entries store the label text they were written with.
+`selectableAssistantModels.test.js` pins the whole menu. Sources, prices and the VM side are in
+`docs/assistant-models-2026-11-upgrade.md`.
+
 **Code that only needs a model client, the environment, a model id or a Gold rate imports
 `functions/Assistant/assistantModelRuntime.js`, never `assistantHelper.js` (2026-11-18).** That
 module holds the model keys, `getCachedEnvFunctions`, `getOpenAIClient`, `normalizeModelKey`,
@@ -46,9 +59,9 @@ docs, Gmail configs and calendar configs — so the key stays opaque and the ups
 table (`assistantModelRouting.js`). That is what lets the pinned DeepSeek release be bumped on one
 line without a data migration.
 
-**DeepSeek V4 Flash via OpenRouter (AT-2238)** is the first non-OpenAI, non-Perplexity assistant
-model, pinned to `deepseek/deepseek-v4-flash-0731` rather than the floating
-`~deepseek/deepseek-v4-flash-latest` alias, which would swap the model under live assistants and
+**DeepSeek Flash via OpenRouter (AT-2238)** is the first non-OpenAI, non-Perplexity assistant
+model, pinned to a dated release (`deepseek/deepseek-v4-flash-0731` until AT-3163, now
+`deepseek/deepseek-v4.1-flash-1017`) rather than the floating `~deepseek/deepseek-flash-latest` alias, which would swap the model under live assistants and
 labeling configs with no review. The load-bearing constraint is the **wire protocol**: chat and
 heartbeats run on OpenAI's **Responses** API (`openai.responses.create`), and OpenRouter serves only
 the OpenAI-_compatible_ **Chat Completions** surface — the same split `vmJobRunner` already handles
@@ -58,9 +71,10 @@ for Codex with `wire_api = "chat"`. So OpenRouter chat takes a second transport,
 and progress status are untouched. Three consequences worth knowing: hosted **tool-search is
 Responses-only**, so OpenRouter runs always send full function schemas (Flash's 1M window absorbs
 it); `prompt_cache_key` / `prompt_cache_options` / `prompt_cache_breakpoint` are **OpenAI
-extensions** and are omitted rather than sent hopefully; and Flash is **text-only**
-(`input_modalities: ['text']`), so image parts are replaced with a readable placeholder instead of
-failing the whole request. Modality is answered per model by
+extensions** and are omitted rather than sent hopefully; and V4 Flash 0731 was **text-only**
+(`input_modalities: ['text']`), so image parts were replaced with a readable placeholder instead of
+failing the whole request. V4.1 Flash 1017 reports `['text', 'image']`, so its images are sent; the
+placeholder path remains for any text-only OpenRouter model. Modality is answered per model by
 `assistantModelSupportsImageInput` in `assistantModelRouting.js` — it sits next to the pinned
 upstream id because it is a fact about that release, and an unlisted OpenRouter model is assumed
 text-only (a stripped image degrades to a note the model can explain; an image sent to a text-only
@@ -111,9 +125,10 @@ call into an ambiguity error, and an explicit `expectedFileName` outranks it. Ba
 the conversation either way — `buildConversationSafeToolResult` redacts it. Labeling was the cheap half — the Gmail and calendar classifiers already
 call `chat.completions.create`, so only the client swaps (`classifierModelClient.js`). Both
 classifiers resolve their **two passes independently**, because a DeepSeek first pass with the
-default OpenAI auditor is the normal configuration. Chat Gold rate is **2000 tokens/Gold** (Sol 100,
-Terra 200, Luna 500) — a deliberate fraction of the ~80x upstream cost advantage, matching how
-Luna's 25x is priced at 5x. Requires `OPENROUTER_API_KEY`, which **had never been whitelisted in
+default OpenAI auditor is the normal configuration. Chat Gold rate is **2000 tokens/Gold** (at AT-2238:
+Sol 100, Terra 200, Luna 500; now Sol 200, Terra 400, Luna 1000) — a deliberate fraction of the
+upstream cost advantage, matching how Luna's 20x is priced at 5x. V4.1 Flash kept 2000 by product
+decision (AT-3163) although its headline price is higher than 0731's; see the upgrade note. Requires `OPENROUTER_API_KEY`, which **had never been whitelisted in
 `envFunctionsHelper.js`** — that file builds explicit key objects rather than spreading the env
 blob, so the key was `undefined` at runtime even when present in `GOOGLE_FUNCTIONS_ENV_DEV/_PROD`;
 adding a secret to the blob is not enough, it must be listed there too.

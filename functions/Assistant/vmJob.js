@@ -3,6 +3,7 @@ const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJobConfig')
 const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
+const { replaceSupersededCodexModel } = require('./codexModelReplacements')
 const {
     VALID_VM_AGENTS: VALID_AGENTS,
     SYSTEM_DEFAULT_VM_AGENT: DEFAULT_AGENT,
@@ -84,7 +85,7 @@ const VALID_VM_EXECUTION_MODES = [DEFAULT_VM_EXECUTION_MODE, 'plan_first', 'inte
 
 // Coding agents the assistant can choose to run in the VM (E2B prebuilt templates).
 const DEFAULT_CLAUDE_MODEL = 'opus'
-const DEFAULT_CODEX_MODEL = 'gpt-6.1-sol'
+const DEFAULT_CODEX_MODEL = 'gpt-6.2-sol'
 const DEFAULT_CLAUDE_EFFORT_LEVEL = 'high'
 const DEFAULT_CODEX_REASONING_EFFORT = 'medium'
 const VALID_CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh']
@@ -246,7 +247,7 @@ function normalizeAgentModel(agent, agentModel) {
     }
     if (agent === 'codex') {
         return isCodexModelId(trimmed)
-            ? { value: trimmed === 'gpt-6-sol' ? DEFAULT_CODEX_MODEL : trimmed }
+            ? { value: replaceSupersededCodexModel(trimmed) }
             : { error: 'agentModel must be an OpenAI model id when agent="codex".' }
     }
     return { value: fallback }

@@ -106,7 +106,7 @@ describe('describeAssistantChanges', () => {
             ],
             ['FEED_ASSISTANT_PICTURE_CHANGED', ''],
             ['FEED_ASSISTANT_INSTRUCTIONS_CHANGED', 'changed assistant instructions • From Old to New'],
-            ['FEED_ASSISTANT_MODEL_CHANGED', 'changed assistant model • From GPT 6.1 Sol to GPT 6 Luna'],
+            ['FEED_ASSISTANT_MODEL_CHANGED', 'changed assistant model • From GPT 6.2 Sol to GPT 6 Luna'],
             ['FEED_ASSISTANT_TEMPERATURE_CHANGED', 'changed assistant temperature • From 0.7 to 1'],
             ['FEED_ASSISTANT_VOICE_CHANGED', 'changed assistant voice • From marin to cedar'],
             [

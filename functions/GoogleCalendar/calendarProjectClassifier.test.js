@@ -293,7 +293,7 @@ describe('calendarProjectClassifier', () => {
         })
 
         expect(create).toHaveBeenCalledTimes(2)
-        expect(create.mock.calls[1][0].model).toBe('gpt-5.6-terra')
+        expect(create.mock.calls[1][0].model).toBe('gpt-6.1-terra')
         expect(create.mock.calls[1][0].messages[3].content).toContain('previous JSON had zero confidence')
         expect(create.mock.calls[1][0].prompt_cache_key).toBe('calendar-route-cache-key')
         expect(create.mock.calls[1][0].prompt_cache_options).toEqual({ mode: 'explicit', ttl: '30m' })
@@ -310,7 +310,7 @@ describe('calendarProjectClassifier', () => {
                 usage: expect.objectContaining({
                     retriedAfterInconsistentResult: false,
                     retriedAfterZeroConfidence: true,
-                    auditModel: 'gpt-5.6-terra',
+                    auditModel: 'gpt-6.1-terra',
                 }),
             })
         )
@@ -375,7 +375,7 @@ describe('calendarProjectClassifier', () => {
                 reasoning: 'JTL Software - Project Juno still seems relevant.',
                 usage: expect.objectContaining({
                     retriedAfterInconsistentResult: true,
-                    auditModel: 'gpt-5.6-terra',
+                    auditModel: 'gpt-6.1-terra',
                 }),
             })
         )

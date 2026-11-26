@@ -20,10 +20,13 @@ const {
     formatTokenDiscountNote,
 } = require('./vmTokenPricing')
 
-const SOL = 'gpt-6.1-sol'
+const SOL = 'gpt-6.2-sol'
+const SOL_6_1 = 'gpt-6.1-sol'
 const LEGACY_SOL = 'gpt-5.6-sol'
-const ASTRA = 'gpt-6-astra'
-const TERRA = 'gpt-5.6-terra'
+const ASTRA = 'gpt-6.2-astra'
+const LEGACY_ASTRA = 'gpt-6-astra'
+const TERRA = 'gpt-6.1-terra'
+const LEGACY_TERRA = 'gpt-5.6-terra'
 const LUNA = 'gpt-6-luna'
 const LEGACY_LUNA = 'gpt-5.6-luna'
 const DEEPSEEK_PRO = 'openrouter:deepseek/deepseek-v4-pro'
@@ -85,14 +88,29 @@ describe('Sol is the baseline the whole table hangs off', () => {
 
 describe('OpenAI model rates track the current upstream price table', () => {
     test('Astra is dearer than Sol while Terra and Luna remain cheaper', () => {
-        expect(resolveSolRelativeGoldFactor(ASTRA)).toBeCloseTo(40 / 240)
-        expect(resolveSolRelativeGoldFactor(TERRA)).toBeCloseTo(190 / 240)
+        expect(resolveSolRelativeGoldFactor(ASTRA)).toBeCloseTo(60 / 240)
+        expect(resolveSolRelativeGoldFactor(TERRA)).toBeCloseTo(480 / 240)
         expect(resolveSolRelativeGoldFactor(LUNA)).toBeCloseTo(4000 / 240)
-        expect(resolveTokensPerGold(ASTRA)).toBe(40)
-        expect(resolveTokensPerGold(TERRA)).toBe(190)
+        expect(resolveTokensPerGold(ASTRA)).toBe(60)
+        expect(resolveTokensPerGold(TERRA)).toBe(480)
         expect(resolveTokensPerGold(LUNA)).toBe(4000)
         expect(resolveTokensPerGold(LEGACY_LUNA)).toBe(1900)
         expect(resolveUpstreamPrice(ASTRA)).toEqual(CODEX_REFERENCE_PRICES.astra)
+    })
+
+    // AT-3163: OpenAI list prices on 2026-11-26 (developers.openai.com/api/docs/models/<id>).
+    test('the current releases carry their verified list prices', () => {
+        expect(resolveUpstreamPrice(ASTRA)).toEqual({ input: 8, cachedInput: 0.4, output: 40 })
+        expect(resolveUpstreamPrice(SOL)).toMatchObject({ input: 2, cachedInput: 0.1, output: 10 })
+        expect(resolveUpstreamPrice(TERRA)).toEqual({ input: 1, cachedInput: 0.05, output: 5 })
+        expect(resolveUpstreamPrice(LUNA)).toEqual({ input: 0.1, cachedInput: 0.01, output: 0.5 })
+    })
+
+    test('a superseded release keeps its own price, so a job started on it is billed for it', () => {
+        expect(resolveTokensPerGold(SOL_6_1)).toBe(resolveTokensPerGold(SOL))
+        expect(resolveTokensPerGold(LEGACY_ASTRA)).toBe(40)
+        expect(resolveTokensPerGold(LEGACY_TERRA)).toBe(190)
+        expect(resolveUpstreamPrice(LEGACY_TERRA)).toEqual({ input: 2, cachedInput: 0.2, output: 12 })
     })
 
     test.each([
@@ -104,7 +122,7 @@ describe('OpenAI model rates track the current upstream price table', () => {
         const luna = calculateTokenGoldForModel(tokens, LUNA)
 
         expect(luna).toBeGreaterThan(0)
-        expect(sol / terra).toBeCloseTo(190 / 240, 2)
+        expect(sol / terra).toBeCloseTo(480 / 240, 2)
         expect(sol / luna).toBeCloseTo(4000 / 240, 2)
     })
 
@@ -392,7 +410,8 @@ describe('the rate is disclosed to the user', () => {
         expect(formatTokenDiscountNote('sonnet')).toContain('1.2x the Sol rate')
         expect(formatTokenDiscountNote('fable')).toContain('4.5x the Sol rate')
         expect(formatTokenDiscountNote(LUNA)).toContain('1/16.7')
-        expect(formatTokenDiscountNote(TERRA)).toContain('1.3x the Sol rate')
+        expect(formatTokenDiscountNote(TERRA)).toContain('1/2 of the Sol rate')
+        expect(formatTokenDiscountNote(LEGACY_TERRA)).toContain('1.3x the Sol rate')
         expect(formatTokenDiscountNote(DEEPSEEK_PRO)).toContain('1/5.8')
         expect(formatTokenDiscountNote(DEEPSEEK_R1)).toContain('1.7x the Sol rate')
     })

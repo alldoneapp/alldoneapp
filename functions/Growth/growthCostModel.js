@@ -42,10 +42,10 @@ const {
 // The in-app assistant's product keys and the upstream model each one runs on
 // (assistantHelper.getModel / assistantModelRouting.js).
 const ASSISTANT_MODEL_UPSTREAM = Object.freeze({
-    MODEL_GPT6_SOL: 'gpt-6.1-sol',
-    MODEL_GPT5_6_TERRA: 'gpt-5.6-terra',
+    MODEL_GPT6_SOL: 'gpt-6.2-sol',
+    MODEL_GPT5_6_TERRA: 'gpt-6.1-terra',
     MODEL_GPT6_LUNA: 'gpt-6-luna',
-    MODEL_DEEPSEEK_V4_FLASH: 'openrouter:deepseek/deepseek-v4-flash-0731',
+    MODEL_DEEPSEEK_V4_FLASH: 'openrouter:deepseek/deepseek-v4.1-flash-1017',
 })
 
 const VM_INFRA_USD_PER_GOLD = (E2B_SANDBOX_USD_PER_MINUTE + VM_RUNNER_USD_PER_MINUTE) / VM_GOLD_PER_MINUTE

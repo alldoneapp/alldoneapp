@@ -35,7 +35,7 @@ describe('getAssistantDefaultModelOption', () => {
     ])('names the server fallback (Sol) for %s', (_label, stored) => {
         expect(ASSISTANT_FALLBACK_MODEL).toBe('MODEL_GPT6_SOL')
         expect(getAssistantDefaultModelOption(stored)).toEqual(
-            expect.objectContaining({ model: 'MODEL_GPT6_SOL', labelKey: 'GPT 6.1 Sol' })
+            expect.objectContaining({ model: 'MODEL_GPT6_SOL', labelKey: 'GPT 6.2 Sol' })
         )
     })
 

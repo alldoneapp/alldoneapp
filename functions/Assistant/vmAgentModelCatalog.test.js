@@ -47,9 +47,13 @@ const ANTHROPIC_LIST = {
 
 const OPENAI_LIST = {
     data: [
+        // OpenAI keeps superseded releases listed next to their replacements (2026-11-26).
         { id: 'gpt-6-astra' },
+        { id: 'gpt-6.2-astra' },
         { id: 'gpt-6.1-sol' },
+        { id: 'gpt-6.2-sol' },
         { id: 'gpt-5.6-terra' },
+        { id: 'gpt-6.1-terra' },
         { id: 'gpt-6-luna' },
         { id: 'gpt-5.4-mini' },
         { id: 'gpt-5.4-nano' },
@@ -169,9 +173,13 @@ describe('buildFamilies', () => {
             OPENAI_LIST.data.map(m => m.id)
         )
         expect(families.find(f => f.id === 'sol')).toMatchObject({
-            resolvedModel: 'gpt-6.1-sol',
+            resolvedModel: 'gpt-6.2-sol',
             isAlias: false,
         })
+        // Discovery picks the newest release of each family on its own (AT-3163).
+        expect(families.find(f => f.id === 'astra').resolvedModel).toBe('gpt-6.2-astra')
+        expect(families.find(f => f.id === 'terra').resolvedModel).toBe('gpt-6.1-terra')
+        expect(families.find(f => f.id === 'luna').resolvedModel).toBe('gpt-6-luna')
     })
 
     it('picks up a brand-new tier automatically and appends unknown families after known ones', () => {
@@ -343,25 +351,33 @@ describe('fetchProviderModelIds', () => {
 })
 
 describe('getModelCatalog', () => {
-    it('upgrades a current-schema cached Sol 6.0 choice without waiting for discovery', async () => {
-        const now = 1000000
-        stubCatalogDoc({
-            exists: true,
-            data: {
-                families: [{ id: 'sol', label: 'Sol', resolvedModel: 'gpt-6-sol', latestModel: 'gpt-6-sol' }],
-                fetchedAt: now - 1,
-                schemaVersion: CODEX_CATALOG_SCHEMA_VERSION,
-            },
-        })
-        const fetchImpl = jest.fn()
-        const catalog = await getModelCatalog('codex', { now, fetchImpl })
-        expect(catalog.families[0]).toMatchObject({
-            resolvedModel: 'gpt-6.1-sol',
-            latestModel: 'gpt-6.1-sol',
-            tokensPerGold: 240,
-        })
-        expect(fetchImpl).not.toHaveBeenCalled()
-    })
+    it.each([
+        ['Sol 6.0', 'sol', 'gpt-6-sol', 'gpt-6.2-sol', 240],
+        ['Sol 6.1', 'sol', 'gpt-6.1-sol', 'gpt-6.2-sol', 240],
+        ['Terra 5.6', 'terra', 'gpt-5.6-terra', 'gpt-6.1-terra', 480],
+        ['Astra 6.0', 'astra', 'gpt-6-astra', 'gpt-6.2-astra', 60],
+    ])(
+        'upgrades a current-schema cached %s choice without waiting for discovery',
+        async (_label, id, cachedModel, currentModel, tokensPerGold) => {
+            const now = 1000000
+            stubCatalogDoc({
+                exists: true,
+                data: {
+                    families: [{ id, label: id, resolvedModel: cachedModel, latestModel: cachedModel }],
+                    fetchedAt: now - 1,
+                    schemaVersion: CODEX_CATALOG_SCHEMA_VERSION,
+                },
+            })
+            const fetchImpl = jest.fn()
+            const catalog = await getModelCatalog('codex', { now, fetchImpl })
+            expect(catalog.families[0]).toMatchObject({
+                resolvedModel: currentModel,
+                latestModel: currentModel,
+                tokensPerGold,
+            })
+            expect(fetchImpl).not.toHaveBeenCalled()
+        }
+    )
     it('serves a fresh cache without hitting the provider', async () => {
         const now = 1_000_000
         const cached = [{ id: 'opus', label: 'Opus', resolvedModel: 'opus', isAlias: true }]
@@ -455,7 +471,14 @@ describe('getModelCatalog', () => {
         const catalog = await getModelCatalog('codex', { fetchImpl, now })
 
         expect(catalog.source).toBe('stale')
-        expect(catalog.families.map(family => family.tokensPerGold)).toEqual([40, 240, 190, 4000])
+        // Superseded releases in the old cache follow their replacements (AT-3163).
+        expect(catalog.families.map(family => family.resolvedModel)).toEqual([
+            'gpt-6.2-astra',
+            'gpt-6.2-sol',
+            'gpt-6.1-terra',
+            'gpt-6-luna',
+        ])
+        expect(catalog.families.map(family => family.tokensPerGold)).toEqual([60, 240, 480, 4000])
     })
 
     it('uses the complete fallback when live discovery fails behind an obsolete partial Codex cache', async () => {
@@ -513,7 +536,7 @@ describe('resolveFamilyToModel', () => {
         stubCatalogDoc({ exists: false })
         const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(OPENAI_LIST))
 
-        await expect(resolveFamilyToModel('codex', 'terra', { fetchImpl, now: 5 })).resolves.toBe('gpt-5.6-terra')
+        await expect(resolveFamilyToModel('codex', 'terra', { fetchImpl, now: 5 })).resolves.toBe('gpt-6.1-terra')
     })
 
     it('resolves a newly discovered family without adding it to an allowlist', async () => {

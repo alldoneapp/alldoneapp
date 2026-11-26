@@ -89,8 +89,9 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_GPT4O) return 'gpt-4o'
     if (normalizedKey === MODEL_GPT5_1) return 'gpt-5.1'
     if (normalizedKey === MODEL_GPT5_5) return 'gpt-5.5'
-    if (normalizedKey === MODEL_GPT6_SOL) return 'gpt-6.1-sol'
-    if (normalizedKey === MODEL_GPT5_6_TERRA) return 'gpt-5.6-terra'
+    if (normalizedKey === MODEL_GPT6_SOL) return 'gpt-6.2-sol'
+    // The key predates GPT-6.1 Terra; saved Terra choices follow the current release (AT-3163).
+    if (normalizedKey === MODEL_GPT5_6_TERRA) return 'gpt-6.1-terra'
     if (normalizedKey === MODEL_GPT6_LUNA) return 'gpt-6-luna'
     if (normalizedKey === MODEL_GPT5_4_MINI) return 'gpt-5.4-mini'
     if (normalizedKey === MODEL_GPT5_4_NANO) return 'gpt-5.4-nano'
@@ -105,7 +106,7 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_SONAR_DEEP_RESEARCH) return 'sonar-deep-research'
 
     // Default fallback to the explicit GPT-6 Sol tier.
-    return 'gpt-6.1-sol'
+    return 'gpt-6.2-sol'
 }
 
 const getTokensPerGold = modelKey => {
@@ -184,7 +185,7 @@ function logOpenAiCacheUsage({
         cacheKeyFingerprint,
         cacheMode: cacheMode || 'automatic',
         ...cacheUsage,
-        ...(model === 'gpt-6.1-sol'
+        ...(require('./solModelPricing').isSolPricedModel(model)
             ? { pricing: require('./solModelPricing').getSolRequestCost(usage, serviceTier) }
             : {}),
     })

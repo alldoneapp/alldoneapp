@@ -41,7 +41,7 @@
  *    upstream token telemetry at all. We ask for it and log it.
  * 2. **Deferred tool-loading is OpenAI-only.** `buildResponsesTools`' tool-search mode is a
  *    Responses feature, so OpenRouter runs always send the full function schemas. That is a context
- *    cost, not a correctness problem, and DeepSeek V4 Flash's 1M-token window absorbs it comfortably.
+ *    cost, not a correctness problem, and DeepSeek V4.1 Flash's 1M-token window absorbs it comfortably.
  */
 
 const { isTransientModelError } = require('./transientModelErrors')
@@ -100,8 +100,8 @@ const UNSUPPORTED_IMAGE_PLACEHOLDER =
  * The assistant's internal message format is already Chat Completions-native (`{type:'text'}` /
  * `{type:'image_url'}`) — `convertMessagesToResponsesInput` translates *out* of it for the OpenAI
  * Responses path — so no translation is needed here. The one thing that does need handling is
- * modality: DeepSeek V4 Flash reports `input_modalities: ['text']`, and sending it an `image_url`
- * part fails the whole request. Replacing the part keeps a text-only model usable in a thread that
+ * modality: a text-only model (DeepSeek V4 Flash 0731 reported `input_modalities: ['text']`) fails
+ * the whole request when sent an `image_url` part. Replacing the part keeps a text-only model usable in a thread that
  * happens to contain an attachment, which is otherwise a hard failure the user cannot diagnose.
  *
  * An all-text part list is collapsed back to a plain string: some OpenAI-compatible providers accept

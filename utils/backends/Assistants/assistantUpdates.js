@@ -476,8 +476,8 @@ const getModelText = modelKey => {
     if (modelKey === MODEL_GPT4O) return 'GPT 4o'
     if (modelKey === MODEL_GPT5_1) return 'GPT 5_1'
     if (modelKey === MODEL_GPT5_5) return 'GPT 5_5'
-    if (modelKey === MODEL_GPT6_SOL || modelKey === 'MODEL_GPT5_6_SOL') return 'GPT 6.1 Sol'
-    if (modelKey === MODEL_GPT5_6_TERRA) return 'GPT 5_6 Terra'
+    if (modelKey === MODEL_GPT6_SOL || modelKey === 'MODEL_GPT5_6_SOL') return 'GPT 6.2 Sol'
+    if (modelKey === MODEL_GPT5_6_TERRA) return 'GPT 6.1 Terra'
     if (modelKey === MODEL_GPT6_LUNA || modelKey === 'MODEL_GPT5_6_LUNA') return 'GPT 6 Luna'
     if (modelKey === MODEL_GPT5_2) return 'GPT 5_2'
     if (modelKey === MODEL_SONAR) return 'Sonar'
@@ -485,7 +485,7 @@ const getModelText = modelKey => {
     if (modelKey === MODEL_SONAR_REASONING) return 'Sonar Reasoning'
     if (modelKey === MODEL_SONAR_REASONING_PRO) return 'Sonar Reasoning Pro'
     if (modelKey === MODEL_SONAR_DEEP_RESEARCH) return 'Sonar Deep Research'
-    if (modelKey === MODEL_DEEPSEEK_V4_FLASH) return 'DeepSeek V4 Flash'
+    if (modelKey === MODEL_DEEPSEEK_V4_FLASH) return 'DeepSeek V4.1 Flash'
 
     return modelKey || ''
 }

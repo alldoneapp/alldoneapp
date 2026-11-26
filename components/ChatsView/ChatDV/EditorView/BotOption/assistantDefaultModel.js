@@ -13,7 +13,7 @@ export const ASSISTANT_FALLBACK_MODEL = 'MODEL_GPT6_SOL'
  *
  * `assistantModel` is the assistant's stored `model` setting, never a chat's own override. It is
  * resolved the way the server resolves it rather than compared raw: an assistant saved before the
- * GPT-6 menu still stores `MODEL_GPT5_6_SOL` and runs on GPT 6.1 Sol, and one with no model at all
+ * GPT-6 menu still stores `MODEL_GPT5_6_SOL` and runs on GPT 6.2 Sol, and one with no model at all
  * runs on Sol as well. A raw lookup named neither, which is why the picker's "Use assistant model"
  * row and the composer button showed no model for exactly those assistants.
  *
@@ -21,7 +21,7 @@ export const ASSISTANT_FALLBACK_MODEL = 'MODEL_GPT6_SOL'
  * null, so callers show no name rather than a wrong one.
  *
  * Returns `{ model, name, labelKey }`: `name` is the short name ("Sol"), `labelKey` the menu's
- * translation key ("GPT 6.1 Sol"), the same label the picker's own rows show.
+ * translation key ("GPT 6.2 Sol"), the same label the picker's own rows show.
  */
 export function getAssistantDefaultModelOption(assistantModel) {
     const stored = typeof assistantModel === 'string' ? assistantModel.trim() : ''

@@ -25,7 +25,7 @@ import { themed } from '../../../../../Themes/colorMode'
  * model" would be a one-way door.
  *
  * The inherit entry is listed FIRST and names, on a line of its own under it, the model it falls
- * back to (AT-3162), so the choice reads as "follow the assistant: GPT 6.1 Sol" rather than as an
+ * back to (AT-3162), so the choice reads as "follow the assistant: GPT 6.2 Sol" rather than as an
  * abstract reset. The model entries show their Gold rate in the same place.
  */
 export default function ThreadAssistantModelModal({

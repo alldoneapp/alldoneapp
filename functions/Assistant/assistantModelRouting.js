@@ -43,37 +43,43 @@
  * the 13k-line `assistantHelper` (and firebase-admin behind it) into their module graph.
  */
 
-/** Product key for DeepSeek V4 Flash, served through OpenRouter. */
+/**
+ * Product key for the DeepSeek Flash tier, served through OpenRouter. The key still names V4 because
+ * it is persisted; which release it runs on is decided by the table below (AT-3163: V4.1 Flash).
+ */
 const MODEL_DEEPSEEK_V4_FLASH = 'MODEL_DEEPSEEK_V4_FLASH'
 
 /**
  * Product key → OpenRouter model id.
  *
- * `deepseek/deepseek-v4-flash-0731` is the pinned dated release (canonical slug
- * `deepseek/deepseek-v4-flash-20260731`), verified against `GET https://openrouter.ai/api/v1/models`
- * on 2026-08-10: 1M context, `tools` + `structured_outputs` in `supported_parameters`.
+ * `deepseek/deepseek-v4.1-flash-1017` is the pinned dated release (the October 17, 2026 snapshot of
+ * DeepSeek V4.1 Flash), verified against `GET https://openrouter.ai/api/v1/models` and
+ * `/models/deepseek/deepseek-v4.1-flash-1017/endpoints` on 2026-11-26: 1,048,576 context, `tools` +
+ * `structured_outputs` in `supported_parameters`, `input_modalities: ['text', 'image']`. It replaced
+ * `deepseek/deepseek-v4-flash-0731` (AT-3163): DeepSeek's own pricing page lists V4 Flash as retired
+ * and serves the legacy `deepseek-v4-flash` name with V4.1-Flash-1017.
  *
  * Pinned rather than floating on purpose. OpenRouter does publish an auto-following alias
- * (`~deepseek/deepseek-v4-flash-latest`), but it would swap the model under live assistants,
+ * (`~deepseek/deepseek-flash-latest`), but it would swap the model under live assistants,
  * heartbeats and labeling configs with no review of the quality or pricing change — and its `~`
  * prefix is not a legal `vendor/model` id anywhere else in this codebase. A new Flash release is a
  * one-line bump here instead.
  */
 const OPENROUTER_ASSISTANT_MODEL_IDS = Object.freeze({
-    [MODEL_DEEPSEEK_V4_FLASH]: 'deepseek/deepseek-v4-flash-0731',
+    [MODEL_DEEPSEEK_V4_FLASH]: 'deepseek/deepseek-v4.1-flash-1017',
 })
 
 /**
  * Product key → whether the upstream model accepts image input.
  *
  * Modality lives next to the pinned id because it is a fact about that exact upstream release, not
- * about the product name: `deepseek/deepseek-v4-flash-0731` reports `input_modalities: ['text']`,
- * and a future Flash release could report otherwise. An unlisted OpenRouter model is treated as
+ * about the product name: `deepseek/deepseek-v4-flash-0731` reported `input_modalities: ['text']`,
+ * while `deepseek/deepseek-v4.1-flash-1017` reports `['text', 'image']`. An unlisted OpenRouter model is treated as
  * text-only, which is the safe direction — a stripped image degrades to a placeholder the model can
  * explain, while sending an image to a text-only model fails the entire request.
  */
 const OPENROUTER_ASSISTANT_MODEL_IMAGE_SUPPORT = Object.freeze({
-    [MODEL_DEEPSEEK_V4_FLASH]: false,
+    [MODEL_DEEPSEEK_V4_FLASH]: true,
 })
 
 const PROVIDER_OPENAI = 'openai'
@@ -114,7 +120,7 @@ function isPerplexityAssistantModel(modelKey) {
  * is exactly the drift this module exists to stop.
  *
  * An unknown key resolves to OpenAI, which is the pre-AT-2238 behaviour: it then flows into the
- * existing `getModel` fallback (`gpt-6.1-sol`) rather than failing the run.
+ * existing `getModel` fallback (`gpt-6.2-sol`) rather than failing the run.
  */
 /**
  * Whether a model key can be sent image parts.

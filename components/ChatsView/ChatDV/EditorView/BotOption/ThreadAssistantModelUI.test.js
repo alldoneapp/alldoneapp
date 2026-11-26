@@ -171,16 +171,16 @@ describe('the per-thread model UI (AT-2502)', () => {
             // this test stayed green on the string that never reached the screen.
             expect(textsOf(tree)).not.toContain('[missing')
             // AT-3162 follow-up: the model under the label, as the menu names it below.
-            expect(inheritLines(tree)).toEqual(['Use assistant model', 'GPT 6.1 Sol'])
+            expect(inheritLines(tree)).toEqual(['Use assistant model', 'GPT 6.2 Sol'])
         })
 
         // The line names the ASSISTANT's model, resolved like the server: never the chat's pin, and
         // also for an assistant on a replaced key or without a model (the production case).
         it.each([
-            ['a replaced Sol key', 'MODEL_GPT5_6_SOL', 'GPT 6.1 Sol'],
+            ['a replaced Sol key', 'MODEL_GPT5_6_SOL', 'GPT 6.2 Sol'],
             ['a replaced Luna key', 'MODEL_GPT5_6_LUNA', 'GPT 6 Luna'],
-            ['no model at all', undefined, 'GPT 6.1 Sol'],
-            ['a blank model', '  ', 'GPT 6.1 Sol'],
+            ['no model at all', undefined, 'GPT 6.2 Sol'],
+            ['a blank model', '  ', 'GPT 6.2 Sol'],
         ])('names the model the server runs for %s', (_label, assistantModel, expected) => {
             expect(inheritLines(renderPicker({ assistantModel }))).toEqual(['Use assistant model', expected])
         })
@@ -232,10 +232,10 @@ describe('the per-thread model UI (AT-2502)', () => {
             }
 
             it.each([
-                ['MODEL_GPT6_SOL', 'GPT 6.1 Sol'],
-                ['MODEL_GPT5_6_TERRA', 'GPT 5.6 Terra'],
+                ['MODEL_GPT6_SOL', 'GPT 6.2 Sol'],
+                ['MODEL_GPT5_6_TERRA', 'GPT 6.1 Terra'],
                 ['MODEL_GPT6_LUNA', 'GPT 6 Luna'],
-                ['MODEL_DEEPSEEK_V4_FLASH', 'DeepSeek V4 Flash'],
+                ['MODEL_DEEPSEEK_V4_FLASH', 'DeepSeek V4.1 Flash'],
             ])('names %s without a missing-translation placeholder', (assistantModel, expected) => {
                 const tree = renderPicker({ assistantModel })
 
@@ -256,11 +256,11 @@ describe('the per-thread model UI (AT-2502)', () => {
                 try {
                     setLanguage('de')
                     expect(textsOf(renderPicker())).not.toContain('[missing')
-                    expect(inheritLines(renderPicker())).toEqual(['Assistenten-Modell verwenden', 'GPT 6.1 Sol'])
+                    expect(inheritLines(renderPicker())).toEqual(['Assistenten-Modell verwenden', 'GPT 6.2 Sol'])
 
                     setLanguage('es')
                     expect(textsOf(renderPicker())).not.toContain('[missing')
-                    expect(inheritLines(renderPicker())).toEqual(['Usar el modelo del asistente', 'GPT 6.1 Sol'])
+                    expect(inheritLines(renderPicker())).toEqual(['Usar el modelo del asistente', 'GPT 6.2 Sol'])
                 } finally {
                     setLanguage('en')
                 }

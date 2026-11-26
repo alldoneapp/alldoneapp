@@ -369,7 +369,7 @@ export default function DefaultVmAgentSection() {
                                     {!!formatTokensPerGold(family.tokensPerGold) && (
                                         <Text style={localStyles.goldRate}>
                                             {translate(
-                                                family.resolvedModel === 'gpt-6.1-sol'
+                                                family.resolvedModel === 'gpt-6.2-sol'
                                                     ? '1 Gold ≈ %{tokens} tokens'
                                                     : '1 Gold = %{tokens} tokens',
                                                 {

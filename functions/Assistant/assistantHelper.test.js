@@ -1004,7 +1004,7 @@ describe('Responses API compatibility helpers', () => {
         expect(firstChunk.value).toEqual({ content: 'Hello', additional_kwargs: {} })
         expect(mockResponsesCreate).toHaveBeenCalledWith(
             expect.objectContaining({
-                model: 'gpt-6.1-sol',
+                model: 'gpt-6.2-sol',
                 input: [{ role: 'user', content: 'Hello' }],
                 stream: true,
                 store: false,
@@ -1417,7 +1417,7 @@ describe('Responses API compatibility helpers', () => {
         expect(mockResponsesInputTokensCount).toHaveBeenCalledTimes(1)
         const [countRequest, countOptions] = mockResponsesInputTokensCount.mock.calls[0]
         const generationRequest = mockResponsesCreate.mock.calls[0][0]
-        expect(countRequest.model).toBe('gpt-6.1-sol')
+        expect(countRequest.model).toBe('gpt-6.2-sol')
         expect(countRequest.input).toEqual(generationRequest.input)
         expect(countRequest.tools).toEqual(generationRequest.tools)
         expect(countRequest.tools).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'get_tasks' })]))
@@ -2654,7 +2654,8 @@ describe('assistant attachment handoff helpers', () => {
         expect(calculateGoldCostFromTokens(1200, 'MODEL_GPT5_4_NANO')).toBe(1)
         expect(calculateGoldCostFromTokens(2400, 'MODEL_GPT5_4_NANO')).toBe(2)
         expect(calculateGoldCostFromTokens(500, 'MODEL_GPT6_LUNA')).toBe(1)
-        expect(calculateGoldCostFromTokens(200, 'MODEL_GPT5_6_TERRA')).toBe(1)
+        expect(calculateGoldCostFromTokens(400, 'MODEL_GPT5_6_TERRA')).toBe(1)
+        expect(calculateGoldCostFromTokens(4000, 'MODEL_GPT5_6_TERRA')).toBe(10)
     })
 
     test('defaults missing models to GPT-6 Sol and upgrades stored Sol and Luna keys', () => {

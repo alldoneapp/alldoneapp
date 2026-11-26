@@ -43,8 +43,8 @@ const CATALOGS = {
     codex: {
         families: [
             { id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra', isAlias: false, tokensPerGold: 40 },
-            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6.1-sol', isAlias: false, tokensPerGold: 240 },
-            { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false, tokensPerGold: 190 },
+            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6.2-sol', isAlias: false, tokensPerGold: 240 },
+            { id: 'terra', label: 'Terra', resolvedModel: 'gpt-6.1-terra', isAlias: false, tokensPerGold: 480 },
             { id: 'luna', label: 'Luna', resolvedModel: 'gpt-6-luna', isAlias: false, tokensPerGold: 4000 },
         ],
         source: 'live',
@@ -104,7 +104,7 @@ describe('DefaultVmAgentSection model family picker', () => {
         const rendered = JSON.stringify(tree.toJSON())
         expect(rendered).toContain('1 Gold = 40 tokens')
         expect(rendered).toContain('1 Gold ≈ 240 tokens')
-        expect(rendered).toContain('1 Gold = 190 tokens')
+        expect(rendered).toContain('1 Gold = 480 tokens')
         expect(rendered).toContain('1 Gold = 4,000 tokens')
     })
 

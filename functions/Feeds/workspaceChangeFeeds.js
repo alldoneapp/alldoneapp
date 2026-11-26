@@ -54,7 +54,7 @@ function getModelLabel(modelKey) {
         MODEL_GPT5_1: 'GPT 5_1',
         MODEL_GPT5_2: 'GPT 5_2',
         MODEL_GPT5_5: 'GPT 5_5',
-        MODEL_GPT5_6_SOL: 'GPT 6.1 Sol',
+        MODEL_GPT5_6_SOL: 'GPT 6.2 Sol',
         MODEL_GPT5_6_LUNA: 'GPT 6 Luna',
         MODEL_SONAR: 'Sonar',
         MODEL_SONAR_PRO: 'Sonar Pro',

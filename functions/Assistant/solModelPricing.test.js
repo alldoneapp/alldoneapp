@@ -1,6 +1,17 @@
-const { getSolRequestCost, SOL_LONG_CONTEXT_THRESHOLD } = require('./solModelPricing')
+const { getSolRequestCost, SOL_LONG_CONTEXT_THRESHOLD, SOL_MODEL, isSolPricedModel } = require('./solModelPricing')
 
-describe('GPT-6.1 Sol official request pricing', () => {
+describe('Sol release coverage (AT-3163)', () => {
+    test('the current Sol is GPT-6.2 Sol, and 6.1 Sol keeps the same verified request pricing', () => {
+        expect(SOL_MODEL).toBe('gpt-6.2-sol')
+        expect(isSolPricedModel('gpt-6.2-sol')).toBe(true)
+        expect(isSolPricedModel('gpt-6.1-sol')).toBe(true)
+        expect(isSolPricedModel('gpt-6-sol')).toBe(false)
+        expect(isSolPricedModel('gpt-6.1-terra')).toBe(false)
+        expect(isSolPricedModel(undefined)).toBe(false)
+    })
+})
+
+describe('GPT-6.2 / 6.1 Sol official request pricing', () => {
     test('Standard cache reads are $0.10/M, cache writes $2.50/M, and neither is added to input', () => {
         const result = getSolRequestCost({
             input_tokens: 100000,

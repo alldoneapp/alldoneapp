@@ -106,28 +106,41 @@ describe('vmLlmProxy config + routing', () => {
 })
 
 describe('vmLlmProxy token usage parsing', () => {
-    test('captures actual Flex Sol cost from Responses, including cache writes without double-counting input', () => {
+    // 6.2 Sol is the current release; 6.1 responses (jobs started before AT-3163) price the same way.
+    test.each(['gpt-6.2-sol', 'gpt-6.1-sol'])(
+        'captures actual Flex Sol cost from %s Responses, including cache writes without double-counting input',
+        model => {
+            const result = extractUsageFromJsonPayload('openai', {
+                type: 'response.completed',
+                response: {
+                    model,
+                    service_tier: 'flex',
+                    usage: {
+                        input_tokens: 100000,
+                        output_tokens: 10000,
+                        input_tokens_details: { cached_tokens: 80000, cache_write_tokens: 10000 },
+                    },
+                },
+            })
+            expect(result).toEqual({
+                inputTokens: 100000,
+                outputTokens: 10000,
+                cacheTokens: 80000,
+                cacheWriteTokens: 10000,
+                totalTokens: 110000,
+                solPricedTokens: 110000,
+                solCostUsd: 0.0765,
+            })
+        }
+    )
+
+    test('a non-Sol OpenAI response is not priced with Sol request costs', () => {
         const result = extractUsageFromJsonPayload('openai', {
             type: 'response.completed',
-            response: {
-                model: 'gpt-6.1-sol',
-                service_tier: 'flex',
-                usage: {
-                    input_tokens: 100000,
-                    output_tokens: 10000,
-                    input_tokens_details: { cached_tokens: 80000, cache_write_tokens: 10000 },
-                },
-            },
+            response: { model: 'gpt-6.1-terra', usage: { input_tokens: 1000, output_tokens: 100 } },
         })
-        expect(result).toEqual({
-            inputTokens: 100000,
-            outputTokens: 10000,
-            cacheTokens: 80000,
-            cacheWriteTokens: 10000,
-            totalTokens: 110000,
-            solPricedTokens: 110000,
-            solCostUsd: 0.0765,
-        })
+        expect(result.solCostUsd).toBeUndefined()
+        expect(result.totalTokens).toBe(1100)
     })
     test('captures Anthropic streamed message_start plus final output-token delta usage', () => {
         const state = { buffer: '', usage: { inputTokens: 0, outputTokens: 0, cacheTokens: 0, totalTokens: 0 } }

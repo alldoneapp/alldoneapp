@@ -572,7 +572,7 @@ describe('gmailPromptClassifier', () => {
         })
 
         expect(mockCreateCompletion).toHaveBeenCalledTimes(2)
-        expect(mockCreateCompletion.mock.calls[1][0].model).toBe('gpt-5.6-terra')
+        expect(mockCreateCompletion.mock.calls[1][0].model).toBe('gpt-6.1-terra')
         expect(result).toEqual(
             expect.objectContaining({
                 matched: true,
@@ -582,7 +582,7 @@ describe('gmailPromptClassifier', () => {
                     ran: true,
                     corrected: true,
                     trigger: { type: 'zero_confidence' },
-                    auditModel: 'gpt-5.6-terra',
+                    auditModel: 'gpt-6.1-terra',
                     originalLabelKey: null,
                     originalConfidence: 0,
                 }),
