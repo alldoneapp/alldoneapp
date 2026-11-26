@@ -73,6 +73,16 @@ describe('assistant tool options', () => {
         expect(normalizeAllowedTools(['artifacts'])).toEqual(['artifacts'])
     })
 
+    test("offers booking on someone else's booking link as one permission that is on by default (AT-3161)", () => {
+        expect(TOOL_OPTIONS).toEqual(
+            expect.arrayContaining([{ key: 'public_booking', labelKey: 'Book meetings via booking links' }])
+        )
+        // Like create_calendar_event: on for new assistants; the booking itself still needs the user's
+        // confirmed, typed turn (functions/Booking/publicBookingTools.js).
+        expect(DEFAULT_ALLOWED_TOOLS).toContain('public_booking')
+        expect(OPT_IN_ONLY_TOOLS.has('public_booking')).toBe(false)
+    })
+
     test('keeps get_updates stable during normalization', () => {
         expect(normalizeAllowedTools(['get_updates', 'get_note', 'get_updates'])).toEqual(['get_updates', 'get_notes'])
     })

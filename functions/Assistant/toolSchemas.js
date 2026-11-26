@@ -8,6 +8,11 @@ const { BROWSER_TOOL_KEY, BROWSER_TOOL_NAMES } = require('./browser/browserToolC
 const { KNOWLEDGE_BASE_TOOL_SCHEMAS } = require('../KnowledgeBase/knowledgeBaseToolSchemas')
 const { ARTIFACT_TOOL_KEY, ARTIFACT_TOOL_NAMES, ARTIFACT_TOOL_SCHEMAS } = require('../Artifacts/artifactToolSchemas')
 const {
+    PUBLIC_BOOKING_TOOL_KEY,
+    PUBLIC_BOOKING_TOOL_NAMES,
+    PUBLIC_BOOKING_TOOL_SCHEMAS,
+} = require('../Booking/publicBookingToolSchemas')
+const {
     TOOL_FAMILIES: WORKSPACE_TOOL_FAMILIES,
     WORKSPACE_TOOL_ASSISTANT_SCHEMAS,
 } = require('./workspaceToolsForAssistants')
@@ -1806,6 +1811,8 @@ const toolSchemas = {
     // Project artifacts (get_artifacts, read_artifact, create_artifact, update_artifact), behind the
     // single `artifacts` Tools Access key. Executed by Artifacts/artifactAssistant.js.
     ...ARTIFACT_TOOL_SCHEMAS,
+    // Someone else's public booking link (/meet/<slug>), AT-3161: Booking/publicBookingToolSchemas.js.
+    ...PUBLIC_BOOKING_TOOL_SCHEMAS,
     // Shared with MCP: the same schemas and the same handlers (workspaceToolsForAssistants.js).
     ...WORKSPACE_TOOL_ASSISTANT_SCHEMAS,
 
@@ -3117,6 +3124,14 @@ function getToolSchemas(allowedTools) {
     if (effectiveTools.includes(ARTIFACT_TOOL_KEY)) {
         for (const artifactToolName of ARTIFACT_TOOL_NAMES) {
             if (!effectiveTools.includes(artifactToolName)) effectiveTools.push(artifactToolName)
+        }
+    }
+
+    // One Tools Access toggle, three tool names: reading a booking link, finding times and booking
+    // are one capability (an assistant that could book but not search would guess slots).
+    if (effectiveTools.includes(PUBLIC_BOOKING_TOOL_KEY)) {
+        for (const bookingToolName of PUBLIC_BOOKING_TOOL_NAMES) {
+            if (!effectiveTools.includes(bookingToolName)) effectiveTools.push(bookingToolName)
         }
     }
 

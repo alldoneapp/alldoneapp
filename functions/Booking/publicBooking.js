@@ -34,6 +34,10 @@ const BOOKED_VIA = Object.freeze({
     API: 'api',
     MCP: 'mcp',
     BROWSER_AGENT: 'browser_agent',
+    // A signed-in Alldone user's agent through the connected tools (publicBookingTools.js): an MCP
+    // client of /mcpServer (also `window.alldone` in a signed-in tab), or an in-app assistant.
+    ALLDONE_MCP: 'alldone_mcp',
+    ALLDONE_ASSISTANT: 'alldone_assistant',
 })
 const WEB_CLIENT_ID = 'alldone-web'
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{8,200}$/
@@ -254,6 +258,8 @@ const BOOKED_VIA_DESCRIPTIONS = {
     [BOOKED_VIA.API]: 'Booked through the public booking API (possibly by an AI agent).',
     [BOOKED_VIA.MCP]: 'Booked by an AI agent through the public booking MCP endpoint.',
     [BOOKED_VIA.BROWSER_AGENT]: 'Booked by an AI agent on the booking page (window.alldone / WebMCP).',
+    [BOOKED_VIA.ALLDONE_MCP]: "Booked by an AI agent connected to the visitor's Alldone account (Alldone MCP).",
+    [BOOKED_VIA.ALLDONE_ASSISTANT]: "Booked by the visitor's Alldone assistant.",
 }
 
 function describeBookedVia(bookedVia) {

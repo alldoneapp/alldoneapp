@@ -43,7 +43,9 @@ const CONSEQUENTIAL_TOOLS = new Set([
     'create_calendar_event',
     'update_calendar_event',
     // Public booking pages (AT-3161): creates an event in the host's calendar and mails the visitor.
+    // `book_meeting` on the page itself, `book_public_meeting` from the signed-in tool list.
     'book_meeting',
+    'book_public_meeting',
     'delete_calendar_event',
     'browser_click',
     'browser_type',
@@ -60,6 +62,8 @@ const UNTRUSTED_CONTENT_TOOLS = new Set([
     'browser_inspect',
     'browser_screenshot',
     'get_local_recommendations',
+    // Someone else's booking page: the host's display name is text the host wrote.
+    'get_public_booking_page',
 ])
 
 export const getToolAnnotations = name => {

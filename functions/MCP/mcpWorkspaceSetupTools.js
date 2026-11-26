@@ -105,6 +105,7 @@ const ASSISTANT_TOOL_KEYS = [
     'create_calendar_event',
     'update_calendar_event',
     'delete_calendar_event',
+    'public_booking',
     'get_notes',
     'web_search',
     'fetch_url',

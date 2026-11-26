@@ -277,6 +277,8 @@ const { isPptxFile, isXlsxFile } = require('../Utils/officeDocumentText')
 // Project artifacts: one Tools Access key (`artifacts`) for four tools, see ../Artifacts.
 const { ARTIFACT_TOOL_KEY, DELETE_ARTIFACT_TOOL_NAME, isArtifactToolName } = require('../Artifacts/artifactToolSchemas')
 const { getWorkspaceToolKey, isWorkspaceToolForAssistantsName } = require('./workspaceToolsForAssistants')
+// Someone else's public booking link: one Tools Access key (`public_booking`) for three tools (AT-3161).
+const { PUBLIC_BOOKING_TOOL_KEY, isPublicBookingToolName } = require('../Booking/publicBookingToolSchemas')
 const {
     MAX_MCP_TOOLS,
     OPEN_MCP_APP_TOOL_NAME,
@@ -2378,6 +2380,9 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
     }
     if (isArtifactToolName(toolName)) {
         return assistantAllowedTools.includes(ARTIFACT_TOOL_KEY)
+    }
+    if (isPublicBookingToolName(toolName)) {
+        return assistantAllowedTools.includes(PUBLIC_BOOKING_TOOL_KEY)
     }
     if (isWorkspaceToolForAssistantsName(toolName)) {
         return assistantAllowedTools.includes(getWorkspaceToolKey(toolName))
@@ -5897,6 +5902,20 @@ async function executeToolNativelyImpl(
 
     // MCP's workspace tools (projects, contact statuses, assistants, scheduled tasks): the MCP handlers,
     // acting for the requesting user, defaulting to this assistant and its project.
+    // Someone else's public booking link (/meet/<slug>): the page's own operations, for the requesting
+    // user as the visitor. Booking needs a confirmed, user-typed turn (Booking/publicBookingTools.js).
+    if (isPublicBookingToolName(toolName)) {
+        const { executePublicBookingTool } = require('../Booking/publicBookingTools')
+        return executePublicBookingTool({
+            toolName,
+            args: toolArgs,
+            db: admin.firestore(),
+            userId: requestUserId,
+            assistantId,
+            runtime: toolRuntimeContext,
+        })
+    }
+
     if (isWorkspaceToolForAssistantsName(toolName)) {
         const { executeWorkspaceToolForAssistant } = require('./workspaceToolsForAssistants')
         return executeWorkspaceToolForAssistant({ toolName, args: toolArgs, projectId, assistantId, requestUserId })
@@ -14161,6 +14180,12 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When the user asks for free meeting times or availability options, use find_calendar_availability. It is privacy-safe and returns only free options, never event details. If the user does not specify a date range, search the next 7 days during normal working hours. Pass allowSameDayBooking=true only when the current user message explicitly asks for a meeting today or another same-day option; otherwise omit it so the saved setting remains in force. When the user asks about calendar history or specific meetings, use search_calendar_events. For calendar writes, use the appropriate create/update/delete tool and ask the tool for disambiguation rather than assuming the right calendar account. For recurring calendar events, clarify the cadence, end condition, and whether an edit or deletion should affect one occurrence or the whole series before writing; pass scope explicitly. find_calendar_availability already protects the minimum free calendar time the user wants to keep each day, so do not pass minFreeHoursPerDay unless the user explicitly asks for a different limit. If the result reports minFreeHours.applied as false, every day was already at that limit: still offer the options, but say that they cut into the free time the user wanted to protect.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes(PUBLIC_BOOKING_TOOL_KEY)) {
+        messages.push([
+            'system',
+            "When the user gives you someone else's Alldone booking link (/meet/<slug>), book through the tools, never by browsing the page: get_public_booking_page, then find_public_booking_times (it already matches the host's free slots against the user's own connected calendar; visitorCalendar.checked says whether it could), offer the times in the user's timezone, and call book_public_meeting with confirmedByUser: true only after the user confirmed one exact slot. Use the user's known name, email and timezone; ask only for what is missing.",
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_chat_attachment')) {

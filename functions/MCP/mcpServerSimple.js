@@ -122,6 +122,12 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'create_calendar_event',
     'update_calendar_event',
     'delete_calendar_event',
+    // Someone else's public booking link (/meet/<slug>), AT-3161: the page's own operations with the
+    // signed-in user as the visitor, matched against the user's calendar. Without these a connected
+    // agent had no tool for a booking link and fell back to clicking the page with browser tools.
+    'get_public_booking_page',
+    'find_public_booking_times',
+    'book_public_meeting',
 ]
 
 const MCP_DELEGATED_ASSISTANT_TOOL_SET = new Set(MCP_DELEGATED_ASSISTANT_TOOLS)

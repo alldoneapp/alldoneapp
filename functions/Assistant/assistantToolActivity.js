@@ -182,6 +182,10 @@ const TOOL_ACTIVITY_RULES = {
     },
     delete_calendar_event: { plainKey: 'assistant_activity_delete_event' },
     find_calendar_availability: { plainKey: 'assistant_activity_find_availability' },
+    // Someone else's booking link: no subject, a booking URL is never shown.
+    get_public_booking_page: { plainKey: 'assistant_activity_read_booking_page' },
+    find_public_booking_times: { plainKey: 'assistant_activity_find_booking_times' },
+    book_public_meeting: { plainKey: 'assistant_activity_book_meeting' },
 
     // --- Email -----------------------------------------------------------------
     // Deliberately no subject: an email subject line is message content, not an object

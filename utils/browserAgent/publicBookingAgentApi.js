@@ -29,6 +29,11 @@ const encodeSlug = slug => encodeURIComponent(String(slug || '').trim())
 export const getPublicBookingMcpPath = slug => `/api/booking/mcp/${encodeSlug(slug)}`
 export const getPublicBookingDocsPath = slug => `/meet/${encodeSlug(slug)}/llms.txt`
 
+// An agent already connected to Alldone (MCP connector, `window.alldone` in a signed-in tab, an Alldone
+// assistant) books from its own tool list, with the user's details and calendar (AT-3161 follow-up).
+export const CONNECTED_ALLDONE_AGENT_HINT =
+    'Already connected to Alldone as a signed-in user? Then you need no browser: call get_public_booking_page, find_public_booking_times and book_public_meeting from your Alldone tools with bookingUrl set to this page.'
+
 export const buildPublicBookingInstructions = ({ slug, webMcpSupported, toolNames } = {}) =>
     [
         'Alldone booking page API (window.alldone, state: public_booking). No sign-in needed; it can only read free times of this page and book them.',
@@ -42,6 +47,7 @@ export const buildPublicBookingInstructions = ({ slug, webMcpSupported, toolName
             ? 'The same tools are also registered with WebMCP (document.modelContext).'
             : 'WebMCP (document.modelContext) is not available in this browser; use window.alldone.',
         `MCP server for agents outside the browser: ${getPublicBookingMcpPath(slug)} (no authentication).`,
+        CONNECTED_ALLDONE_AGENT_HINT,
         `Docs: ${getPublicBookingDocsPath(slug)}`,
     ]
         .filter(Boolean)

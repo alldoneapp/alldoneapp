@@ -19,6 +19,12 @@ Alldone account. It sees only free slots, never the host's calendar.
   `POST /api/booking/book`
 - In the browser on that page: `window.alldone` (state `public_booking`) and WebMCP offer the same three tools.
 
+Already connected to Alldone (MCP connector below, `window.alldone` in a signed-in tab, or an
+Alldone assistant)? Then no browser and no second server are needed: call `get_public_booking_page`,
+`find_public_booking_times` and `book_public_meeting` with `bookingUrl` set to the booking link. They
+use the signed-in user's name, email and timezone and offer only times that are also free in that
+user's connected calendar.
+
 Book only after the person you act for confirmed the time and gave their name and email. A booking
 is confirmed at once and emails a confirmation. Send a unique `idempotencyKey` and reuse it when
 you retry; `slot_unavailable` means the slot was taken meanwhile, so search again.

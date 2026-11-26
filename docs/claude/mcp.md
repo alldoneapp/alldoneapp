@@ -256,6 +256,48 @@ Pinned by `functions/Booking/*.test.js` (`publicBooking`, `publicBookingMcp`, `p
 `bookingLock`, `bookingRateLimit`, `bookingSettings`), `utils/browserAgent/publicBookingAgentApi.test.js`,
 the agent block of `MeetingBookingPage.test.js` and `BrowserAgentApiBridge.test.js`.
 
+**A connected agent books someone else's link from its own tool list (AT-3161 follow-up, 2026-11-26).**
+The surfaces above all need the agent to find a second, anonymous server or to sit on the page. An
+agent connected to Alldone (ChatGPT/Claude via `/mcpServer`, `window.alldone` in a signed-in tab, an
+in-app assistant) did neither: Karsten's agent got the prompt with `/meet/karsten-wysk`, checked his
+calendar with `find_calendar_availability`, found no booking tool in its list and fell back to the
+`browser_*` tools, whose approval gate stopped it at the "Book with your AI agent" expander. Nothing was
+booked. Now three shared tools sit in `MCP_DELEGATED_ASSISTANT_TOOLS` and, for assistants, behind one
+Tools Access key `public_booking` (default on, like `create_calendar_event`): `get_public_booking_page`,
+`find_public_booking_times`, `book_public_meeting` (`functions/Booking/publicBookingToolSchemas.js`,
+executor `publicBookingTools.js`). They take `bookingUrl`, the link as the user pasted it, or the slug;
+only links of this environment's hosting host are accepted (`foreign_booking_link` otherwise, since a
+slug is looked up in this project's `bookingPages`). They run the three operations of `publicBooking.js`
+and add only the user they act for:
+
+- **Host vs. visitor.** The host's free slots come from `findPublicSlots` (page rules unchanged); by
+  default (`matchMyCalendar`) each is checked against the caller's OWN connected calendars, busy timings
+  only, through `loadCalendarBusyIntervalsForUser` (extracted from `find_calendar_availability`, same
+  Google + Microsoft reads). `visitorCalendar.checked` / `availability: free_for_host_and_user` say when
+  that happened; no calendar, or one that cannot be read completely, returns the host's slots as
+  `host_only` with a reason, never as mutual. The visitor's working hours and minimum free time are not
+  applied (only real conflicts are), `displayStart`/`displayEnd` are in the visitor's zone.
+- **Defaults from the account**: name, email, IANA timezone (`get_public_booking_page` shows them as
+  `you`, plus `ownPage` when the link is the caller's own). An explicit `visitorName`/`visitorEmail` wins.
+- **Booking** needs `confirmedByUser: true`; an assistant additionally needs a turn the user typed
+  (`isHumanTurn`, as for `move_task_workflow_step`), so an email, heartbeat or workflow prompt never
+  books. Reads work in any turn. A missing `idempotencyKey` is derived from user, page, slot and email,
+  so an agent's retry replays the first booking. `bookedVia` is `alldone_mcp` or `alldone_assistant`.
+- **Rate limits** use the account as the "ip" bucket (`alldone-user:<uid>`), since there is no client
+  IP behind `executeToolNatively`; page and recipient buckets are unchanged.
+- **No Updates entry**: the booking changes nothing in the caller's workspace (the event goes into the
+  host's calendar, the record into the host's `users/{host}/bookings`), and the host is told by mail and
+  the "Booked via" row, as for every public booking.
+
+Discovery: the tool descriptions say "instead of opening the booking page in a browser"; the MCP
+`initialize` text is at its 512-character limit and stays unchanged. `/meet/<slug>/llms.txt`, `/llms.txt`,
+the `ai-agent-api` meta tag, the hidden `#root` hint and the page's `alldone.help()` point connected
+agents at the three tools. A client that cached its tool list must reconnect / refresh tools to see
+them. Pinned by `functions/Booking/publicBookingTools.test.js` (the whole flow on the real booking stack
+with only Google Calendar, event creation and mail stubbed), `functions/MCP/mcpPublicBookingTools.test.js`,
+the `public booking link tools` block of `assistantHelper.test.js`, `toolSchemas.test.js`,
+`toolOptions.test.js` and the signed-in block of `browserAgentApi.test.js`.
+
 ## The alldone.team specialists are assistant templates
 
 Connor Consultant (Story Builder), Judy Job and Ricky Returns (Property Screener) are added to a

@@ -479,6 +479,42 @@ async function getGoogleBusyIntervalsForConnectedAccount({ userId, account, time
     return busyIntervals
 }
 
+// Busy timings (start/end only, never titles or attendees) across ALL of a user's connected Google
+// and Microsoft calendars. Server-side input for availability math; never returned to a caller.
+// Shared by find_calendar_availability and the public-booking tools, which match a host's public
+// free slots against the visitor's own calendar (AT-3161).
+async function loadCalendarBusyIntervalsForUser({ userId, timeMin, timeMax, calendarId = 'primary', timeZone }) {
+    const googleAccounts = await getConnectedCalendarAccounts(userId)
+    const googleResults = await settleAll(
+        googleAccounts.map(account =>
+            getGoogleBusyIntervalsForConnectedAccount({ userId, account, timeMin, timeMax, calendarId, timeZone })
+        )
+    )
+    const microsoftResult = await getMicrosoftCalendarBusyIntervalsForAssistantRequest({
+        userId,
+        timeMin,
+        timeMax,
+        timeZone,
+    }).catch(() => ({
+        busyIntervals: [],
+        searchedCalendarCount: 0,
+        failedCalendarCount: 1,
+    }))
+
+    const busyIntervals = [...microsoftResult.busyIntervals]
+    let searchedCalendarCount = microsoftResult.searchedCalendarCount
+    let failedCalendarCount = microsoftResult.failedCalendarCount
+    googleResults.forEach(entry => {
+        if (entry.status === 'fulfilled') {
+            searchedCalendarCount += 1
+            busyIntervals.push(...entry.value)
+        } else {
+            failedCalendarCount += 1
+        }
+    })
+    return { busyIntervals, searchedCalendarCount, failedCalendarCount }
+}
+
 async function findCalendarAvailabilityForAssistantRequest({
     userId,
     timeMin,
@@ -651,42 +687,12 @@ async function findCalendarAvailabilityForAssistantRequest({
     // the requested range below, so the wider fetch cannot invent options outside it.
     const loadWindowStart = moment.min(rangeStart.clone(), rangeStart.clone().tz(resolvedTimeZone).startOf('day'))
     const loadWindowEnd = moment.max(rangeEnd.clone(), rangeEnd.clone().tz(resolvedTimeZone).endOf('day'))
-    const normalizedTimeMin = loadWindowStart.toISOString()
-    const normalizedTimeMax = loadWindowEnd.toISOString()
-    const googleAccounts = await getConnectedCalendarAccounts(userId)
-    const googleResults = await settleAll(
-        googleAccounts.map(account =>
-            getGoogleBusyIntervalsForConnectedAccount({
-                userId,
-                account,
-                timeMin: normalizedTimeMin,
-                timeMax: normalizedTimeMax,
-                calendarId: normalizedCalendarId,
-                timeZone: resolvedTimeZone,
-            })
-        )
-    )
-    const microsoftResult = await getMicrosoftCalendarBusyIntervalsForAssistantRequest({
+    const { busyIntervals, searchedCalendarCount, failedCalendarCount } = await loadCalendarBusyIntervalsForUser({
         userId,
-        timeMin: normalizedTimeMin,
-        timeMax: normalizedTimeMax,
+        timeMin: loadWindowStart.toISOString(),
+        timeMax: loadWindowEnd.toISOString(),
+        calendarId: normalizedCalendarId,
         timeZone: resolvedTimeZone,
-    }).catch(() => ({
-        busyIntervals: [],
-        searchedCalendarCount: 0,
-        failedCalendarCount: 1,
-    }))
-
-    const busyIntervals = [...microsoftResult.busyIntervals]
-    let searchedCalendarCount = microsoftResult.searchedCalendarCount
-    let failedCalendarCount = microsoftResult.failedCalendarCount
-    googleResults.forEach(entry => {
-        if (entry.status === 'fulfilled') {
-            searchedCalendarCount += 1
-            busyIntervals.push(...entry.value)
-        } else {
-            failedCalendarCount += 1
-        }
     })
 
     if (searchedCalendarCount === 0) {
@@ -1482,6 +1488,7 @@ async function deleteCalendarEventForAssistantRequest({ userId, eventId, calenda
 module.exports = {
     searchCalendarEventsForAssistantRequest,
     findCalendarAvailabilityForAssistantRequest,
+    loadCalendarBusyIntervalsForUser,
     createCalendarEventForAssistantRequest,
     updateCalendarEventForAssistantRequest,
     deleteCalendarEventForAssistantRequest,

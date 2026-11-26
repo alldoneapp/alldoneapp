@@ -13436,3 +13436,67 @@ describe('get_notes contract: list previews, complete single reads, explicit pag
         expect(result.note).not.toHaveProperty('content')
     })
 })
+
+// AT-3161 follow-up: someone else's booking link (/meet/<slug>) as assistant tools. The tools
+// themselves have their own suite (Booking/publicBookingTools.test.js); here: gate, routing, prompt.
+const mockExecutePublicBookingTool = jest.fn()
+jest.mock('../Booking/publicBookingTools', () => ({
+    executePublicBookingTool: (...args) => mockExecutePublicBookingTool(...args),
+}))
+
+describe('public booking link tools', () => {
+    const names = ['get_public_booking_page', 'find_public_booking_times', 'book_public_meeting']
+
+    beforeEach(() => mockExecutePublicBookingTool.mockReset())
+
+    test('one Tools Access key (public_booking) allows all three, and nothing else does', async () => {
+        for (const name of names) {
+            expect(await isToolAllowedForExecution(['public_booking'], name)).toBe(true)
+            expect(await isToolAllowedForExecution(['find_calendar_availability', 'browser_automation'], name)).toBe(
+                false
+            )
+        }
+    })
+
+    test('executeToolNatively runs them as the requesting user with the run context (MCP and assistants)', async () => {
+        mockExecutePublicBookingTool.mockResolvedValue({ success: true, options: [] })
+        const runtime = { sourceChannel: 'mcp', mcpClient: 'Claude' }
+        const args = { bookingUrl: 'https://my.alldone.app/meet/karsten-wysk' }
+        const result = await executeToolNatively(
+            'find_public_booking_times',
+            args,
+            'project-1',
+            null,
+            'user-1',
+            {},
+            runtime
+        )
+        expect(result).toEqual({ success: true, options: [] })
+        expect(mockExecutePublicBookingTool).toHaveBeenCalledWith(
+            expect.objectContaining({
+                toolName: 'find_public_booking_times',
+                args,
+                userId: 'user-1',
+                assistantId: null,
+                runtime,
+            })
+        )
+
+        await executeToolNatively('book_public_meeting', args, 'project-1', 'anna', 'user-1', {}, { humanTurn: true })
+        expect(mockExecutePublicBookingTool).toHaveBeenLastCalledWith(
+            expect.objectContaining({ toolName: 'book_public_meeting', userId: 'user-1', assistantId: 'anna' })
+        )
+    })
+
+    test('an assistant with the key is told to book through the tools, not the browser, and only after confirmation', async () => {
+        const messages = []
+        await addBaseInstructions(messages, 'Anna', 'en', 'Be helpful.', ['public_booking'])
+        const hint = messages.map(([, text]) => text).find(text => text.includes('find_public_booking_times'))
+        expect(hint).toContain('never by browsing the page')
+        expect(hint).toContain('confirmedByUser: true only after the user confirmed')
+
+        const without = []
+        await addBaseInstructions(without, 'Anna', 'en', 'Be helpful.', ['get_tasks'])
+        expect(without.some(([, text]) => text.includes('find_public_booking_times'))).toBe(false)
+    })
+})

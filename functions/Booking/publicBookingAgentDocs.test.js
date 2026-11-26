@@ -121,4 +121,15 @@ describe('per-page agent instructions (AT-3161)', () => {
         )
         expect(text.match(/^## Rules$/gm)).toHaveLength(1)
     })
+
+    test('tells an agent already connected to Alldone to use its own booking tools, not the browser', () => {
+        const text = buildAgentInstructionsText(page)
+        expect(text).toContain('## Already connected to Alldone? Use your own tools')
+        expect(text).toContain('do not open this page in a browser')
+        expect(text).toContain('`find_public_booking_times`')
+        expect(text).toContain('`book_public_meeting` with `bookingUrl: "https://my.alldone.app/meet/karsten-wysk"`')
+        expect(text).toContain('`confirmedByUser: true`')
+        // The anonymous options stay as they were.
+        expect(text).toContain('## Option A: MCP (remote server, no authentication)')
+    })
 })

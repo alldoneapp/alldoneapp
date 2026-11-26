@@ -89,6 +89,9 @@ const MCP_TOOL_KEYS = [
     'create_calendar_event',
     'update_calendar_event',
     'delete_calendar_event',
+    'get_public_booking_page',
+    'find_public_booking_times',
+    'book_public_meeting',
     'create_project',
     'add_contact_statuses',
     'create_assistant',
@@ -103,7 +106,8 @@ const MCP_TOOL_KEYS = [
 // (`assistant_tasks`). The wiki tools have no Tools Access entry at all (an assistant gets them with
 // the wiki), and neither do the remaining workspace setup tools (create_project, add_contact_statuses,
 // create_assistant, update_assistant), which only MCP clients get so far
-// (functions/MCP/mcpWorkspaceSetupTools.js).
+// (functions/MCP/mcpWorkspaceSetupTools.js). The three booking-link tools are one Tools Access key
+// for assistants (`public_booking`) and one switch each here.
 const MCP_TOOL_LABELS = {
     move_task_workflow_step: 'Move task through workflow',
     browser_navigate: 'Open a web page',
@@ -134,6 +138,9 @@ const MCP_TOOL_LABELS = {
     add_knowledge_document: 'Add a document to the wiki',
     remove_knowledge_document: 'Remove a document from the wiki',
     load_skill: 'Load an assistant skill',
+    get_public_booking_page: 'Read a booking link',
+    find_public_booking_times: 'Find times on a booking link',
+    book_public_meeting: 'Book a meeting on a booking link',
 }
 
 // What a user can paste into a browser agent that runs JavaScript but has no WebMCP support.

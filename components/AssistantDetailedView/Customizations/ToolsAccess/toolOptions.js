@@ -46,6 +46,9 @@ export const TOOL_OPTIONS = [
     { key: 'create_calendar_event', labelKey: 'Create Calendar event' },
     { key: 'update_calendar_event', labelKey: 'Update Calendar event' },
     { key: 'delete_calendar_event', labelKey: 'Delete Calendar event' },
+    // One key for get_public_booking_page / find_public_booking_times / book_public_meeting: someone
+    // else's Alldone booking link (/meet/<slug>), booked for the user (functions/Booking/publicBookingTools.js).
+    { key: 'public_booking', labelKey: 'Book meetings via booking links' },
     { key: 'get_notes', labelKey: 'Get notes' },
     { key: 'web_search', labelKey: 'Search the internet' },
     { key: 'fetch_url', labelKey: 'Read a web page' },

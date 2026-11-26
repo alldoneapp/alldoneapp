@@ -164,6 +164,9 @@ describe('tool annotations', () => {
         ['delete_calendar_event', false, true],
         ['undo_knowledge_correction', false, true],
         ['browser_click', false, true],
+        ['get_public_booking_page', true, false],
+        ['find_public_booking_times', true, false],
+        ['book_public_meeting', false, true],
     ])('%s: readOnly=%s consequential=%s', (name, readOnly, consequential) => {
         expect(getToolAnnotations(name)).toMatchObject({ readOnlyHint: readOnly, consequentialHint: consequential })
     })
@@ -545,5 +548,69 @@ describe('WebMCP origin trial token', () => {
         const metas = document.head.querySelectorAll('meta[http-equiv="origin-trial"]')
         expect(metas).toHaveLength(1)
         expect(metas[0].getAttribute('content')).toBe('TOKEN')
+    })
+})
+
+// AT-3161 follow-up: a booking link booked by an agent that runs JavaScript in a SIGNED-IN tab. It
+// needs no browser clicks: the booking tools come from the user's own tool list on /mcpServer, with
+// the same ID token and bridge header as every other tool, never from the public page.
+describe('booking-link tools through window.alldone in a signed-in tab', () => {
+    afterEach(() => {
+        delete window.alldone
+    })
+
+    test('lists and calls the booking tools on /mcpServer as the signed-in user', async () => {
+        const bookingTools = [
+            { name: 'get_public_booking_page', description: 'Read', inputSchema: { type: 'object' } },
+            { name: 'find_public_booking_times', description: 'Find', inputSchema: { type: 'object' } },
+            { name: 'book_public_meeting', description: 'Book', inputSchema: { type: 'object' } },
+        ]
+        const fetchImpl = buildFetch(body => {
+            if (body.method === 'tools/list')
+                return jsonResponse({
+                    jsonrpc: '2.0',
+                    id: body.id,
+                    result: { tools: [...SERVER_TOOLS, ...bookingTools] },
+                })
+            return jsonResponse({
+                jsonrpc: '2.0',
+                id: body.id,
+                result: toolText({ success: true, tool: body.params.name, args: body.params.arguments }),
+            })
+        })
+        const client = createMcpSessionClient({
+            endpoint: 'https://my.alldone.app/mcpServer',
+            getIdToken: async () => 'id-token-1',
+            fetchImpl,
+        })
+        const uninstall = installWindowApi(window, client)
+
+        const listed = await window.alldone.listTools()
+        expect(listed.map(tool => tool.name)).toEqual(expect.arrayContaining(bookingTools.map(tool => tool.name)))
+        expect(listed.find(tool => tool.name === 'book_public_meeting').annotations).toMatchObject({
+            readOnlyHint: false,
+            consequentialHint: true,
+        })
+
+        const args = {
+            bookingUrl: 'https://my.alldone.app/meet/karsten-wysk',
+            start: 'a',
+            end: 'b',
+            confirmedByUser: true,
+        }
+        await expect(window.alldone.tools.book_public_meeting(args)).resolves.toEqual({
+            success: true,
+            tool: 'book_public_meeting',
+            args,
+        })
+        const [url, init] = fetchImpl.mock.calls[fetchImpl.mock.calls.length - 1]
+        expect(url).toBe('https://my.alldone.app/mcpServer')
+        expect(init.headers.Authorization).toBe('Bearer id-token-1')
+        expect(init.headers[BROWSER_AGENT_CLIENT_HEADER]).toBe(BROWSER_AGENT_CLIENT_NAME)
+        expect(JSON.parse(init.body)).toMatchObject({
+            method: 'tools/call',
+            params: { name: 'book_public_meeting', arguments: args },
+        })
+        uninstall()
     })
 })

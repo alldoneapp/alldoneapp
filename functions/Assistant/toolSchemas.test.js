@@ -779,6 +779,19 @@ describe('Contact research tool schemas (profile enrichment)', () => {
     })
 })
 
+describe('Booking-link assistant tool schemas (AT-3161)', () => {
+    test('one Tools Access key offers all three booking-link tools', () => {
+        expect(getToolSchemas(['public_booking']).map(schema => schema.function.name)).toEqual([
+            'get_public_booking_page',
+            'find_public_booking_times',
+            'book_public_meeting',
+        ])
+        expect(getToolSchemas(['find_calendar_availability']).map(schema => schema.function.name)).toEqual([
+            'find_calendar_availability',
+        ])
+    })
+})
+
 describe('Artifact assistant tool schemas', () => {
     test('one Tools Access key offers all four artifact tools', () => {
         expect(getToolSchemas(['artifacts']).map(schema => schema.function.name)).toEqual([
