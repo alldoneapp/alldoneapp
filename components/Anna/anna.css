@@ -2865,6 +2865,14 @@
     align-items: center;
     flex: none;
 }
+/* AT-3162: the model button right of Templates. It is the one control on this side allowed to
+   shrink: its model name ellipsizes before the row could push the send button out. */
+.anna-composer-model {
+    display: flex;
+    align-items: center;
+    flex: 0 1 auto;
+    min-width: 0;
+}
 /* AT-3055: the composer has no project chip any more (it sat on the field's top edge since AT-3032);
    the assistant picker at the top of the sidebar is the only switch. No slot, no reserved room. */
 .anna-project-chip {
@@ -3003,6 +3011,15 @@
     .anna-composer-tools,
     .anna-composer-actions {
         gap: 4px;
+    }
+}
+/* AT-3162: with the model button the left side holds three controls; on the narrowest phones
+   (below a 320px screen) they close up further so nothing overlaps the call and send buttons. */
+@container anna-composer (max-width: 290px) {
+    .anna-composer-toolbar,
+    .anna-composer-tools,
+    .anna-composer-actions {
+        gap: 2px;
     }
 }
 /* MCP Apps views (e.g. Judy) opened from the chat: one fills the pane, the others stay mounted. */

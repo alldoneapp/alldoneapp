@@ -26,6 +26,8 @@ import { TASK_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
 import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
 import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
+import ComposerModelButton from '../../../ChatsView/ChatDV/EditorView/BotOption/ComposerModelButton'
+import { normalizeThreadAssistantModelSelection } from '../../../../functions/Assistant/threadAssistantModel'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 import { RAGE_LAUNCH_ANCHOR_ID } from '../../../RageMode/rageLaunchAnchor'
 import RageModeButton from '../../../RageMode/RageModeButton'
@@ -52,6 +54,12 @@ import { themed } from '../../../../Themes/colorMode'
 // `quill.appManagedFileUpload` — so without this list a drop is inserted by Quill's own uploader
 // as an unserializable base64 embed that vanishes on submit (AT-2441), and a paste does the same.
 const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageFormat', 'videoFormat']
+
+// AT-3162: with the model button the toolbar's left side holds +, Templates and the model. Below
+// these toolbar widths the model shows only its icon (always on phones), and below the second one
+// Templates does too, so the call and send buttons are never overlapped (as in the Anna composer).
+export const ASSISTANT_LINE_MODEL_COMPACT_WIDTH = 420
+export const ASSISTANT_LINE_TEMPLATES_COMPACT_WIDTH = 320
 
 /**
  * The assistant line: a compact header (avatar, the assistant's name — which is also the switcher
@@ -95,6 +103,16 @@ export default function AssistantOptions({
     // AT-3025: where the blue mic goes while the field is empty, and whether it is there now.
     const [sendDictationSlot, setSendDictationSlot] = useState(null)
     const [micInSendSlot, setMicInSendSlot] = useState(false)
+    // AT-3162: the model picked for the chat the next message starts (null: the assistant's own).
+    // Every send starts a new chat, so the choice belongs to that one chat only: it is pinned on it
+    // (createBotQuickTopic) and the button returns to the assistant's model once it is sent.
+    const [nextChatModel, setNextChatModel] = useState(null)
+    // 0 until measured: an unmeasured toolbar keeps the full labels (and the tests' renderer).
+    const [toolbarWidth, setToolbarWidth] = useState(0)
+    const handleToolbarLayout = useCallback(event => {
+        const width = event?.nativeEvent?.layout?.width || 0
+        if (width > 0) setToolbarWidth(width)
+    }, [])
     const isSendingRef = useRef(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
@@ -115,9 +133,11 @@ export default function AssistantOptions({
     // Puts a submission back the way it was. Only reached when the send failed: the rich editor is
     // uncontrolled, so `setMessage` alone would leave Quill empty while `canSend` claimed there was
     // something to send.
-    const restoreComposer = useCallback(text => {
+    const restoreComposer = useCallback((text, model = null) => {
         setMessage(text)
         inputRef.current?.clearAndSetContent(text)
+        // A send that never created its chat gives the model choice back with the text.
+        if (model) setNextChatModel(model)
     }, [])
 
     // `explicitText` is the push-to-talk path (AT-2405): a dictation that submits itself hands over
@@ -152,7 +172,9 @@ export default function AssistantOptions({
             // topic, exactly as two sends always did.
             isSendingRef.current = true
             let pendingSendId = null
+            const modelForChat = nextChatModel
             try {
+                setNextChatModel(null)
                 inputRef.current?.blur()
                 Keyboard.dismiss()
                 setMessage('')
@@ -195,13 +217,15 @@ export default function AssistantOptions({
                     // is cancelled, or completes without posting, the line and any open thread
                     // must stop claiming the assistant is still working.
                     onAssistantRunSettled: () => endAssistantLineSend(pendingSendId),
+                    // Only when one was picked: a send on the assistant's model is unchanged.
+                    ...(modelForChat ? { assistantModelOverride: modelForChat } : {}),
                 })
 
                 if (!topicData) {
                     // `createBotQuickTopic` returns undefined only when it could not resolve a
                     // project to write into — nothing was sent, so give the text back.
                     failAssistantLineSend(pendingSendId)
-                    restoreComposer(trimmedMessage)
+                    restoreComposer(trimmedMessage, modelForChat)
                     return
                 }
 
@@ -216,10 +240,10 @@ export default function AssistantOptions({
             } catch (error) {
                 console.error('❌ [AssistantOptions] Error sending assistant quick message:', error)
                 failAssistantLineSend(pendingSendId)
-                restoreComposer(trimmedMessage)
+                restoreComposer(trimmedMessage, modelForChat)
             }
         },
-        [assistant, conversationProjectId, message, gold, restoreComposer]
+        [assistant, conversationProjectId, message, gold, restoreComposer, nextChatModel]
     )
 
     // A composer holding an attachment is allowed to grow past the text cap so the image it is
@@ -407,13 +431,30 @@ export default function AssistantOptions({
                         onDictationSubmit={text => text && handleSendMessage(text)}
                     />
                 </View>
-                <View testID="assistant-composer-toolbar" style={localStyles.toolbar}>
-                    <View style={localStyles.toolbarSide}>
+                <View testID="assistant-composer-toolbar" style={localStyles.toolbar} onLayout={handleToolbarLayout}>
+                    <View style={[localStyles.toolbarSide, localStyles.toolbarSideLeft]}>
                         <View ref={setAttachmentSlot} style={localStyles.controlSlot} />
                         <AssistantTaskSearchButtonWrapper
                             preferredAssistantId={assistant.uid}
                             preferredProjectId={conversationProjectId}
+                            compact={toolbarWidth > 0 && toolbarWidth < ASSISTANT_LINE_TEMPLATES_COMPACT_WIDTH}
                         />
+                        {/* AT-3162: right of Templates, the model for the chat this message starts. */}
+                        {!isAnonymous && (
+                            <ComposerModelButton
+                                selectedModel={nextChatModel}
+                                assistantModel={assistant.model}
+                                onSelectModel={selection =>
+                                    setNextChatModel(normalizeThreadAssistantModelSelection(selection))
+                                }
+                                compact={
+                                    isMobile || (toolbarWidth > 0 && toolbarWidth < ASSISTANT_LINE_MODEL_COMPACT_WIDTH)
+                                }
+                                title={'Model for the next chat'}
+                                description={'Used for the chat your next message starts'}
+                                testID="assistant-line-model-button"
+                            />
+                        )}
                     </View>
                     <AppPopover
                         content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}
@@ -546,6 +587,8 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        // AT-3162: the shrinking model name never runs into the call and send buttons.
+        gap: 8,
         height: ASSISTANT_TOOLBAR_CONTROL_SIZE,
         marginTop: ASSISTANT_COMPOSER_TOOLBAR_GAP,
     },
@@ -553,6 +596,11 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
+    },
+    // AT-3162: the left side gives way first on a narrow line; the model name ellipsizes.
+    toolbarSideLeft: {
+        flexShrink: 1,
+        minWidth: 0,
     },
     controlSlot: {
         flexDirection: 'row',

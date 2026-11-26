@@ -6,7 +6,10 @@ import React from 'react'
 import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
-import AssistantOptions from './AssistantOptions'
+import AssistantOptions, {
+    ASSISTANT_LINE_MODEL_COMPACT_WIDTH,
+    ASSISTANT_LINE_TEMPLATES_COMPACT_WIDTH,
+} from './AssistantOptions'
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import openAssistantEditor from '../openAssistantEditor'
 import {
@@ -86,6 +89,8 @@ jest.mock('./helper', () => ({
 }))
 
 jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => 'AssistantTaskSearchButtonWrapper')
+// AT-3162: the model button's own behaviour (picker, popover) is ComposerModelButton.test.js.
+jest.mock('../../../ChatsView/ChatDV/EditorView/BotOption/ComposerModelButton', () => 'ComposerModelButton')
 // The switcher reaches the popover/modal stack; its own behaviour is AssistantSwitchControl.test.js.
 jest.mock('../AssistantSwitchControl', () => 'AssistantSwitchControl')
 jest.mock('../../../RageMode/RageModeButton', () => 'RageModeButton')
@@ -368,6 +373,141 @@ describe('AssistantOptions layout', () => {
                 onAssistantRunSettled: expect.any(Function),
             }
         )
+    })
+})
+
+describe('AssistantOptions model selection (AT-3162)', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockState.smallScreenNavigation = false
+    })
+
+    const modelButtonOf = tree => tree.root.findByType('ComposerModelButton')
+
+    const send = async (tree, text) => {
+        await act(async () => {
+            tree.root.findByType(TextInput).props.onChangeText(text)
+        })
+        const sendButton = tree.root
+            .findAllByType(TouchableOpacity)
+            .find(node => node.props.accessibilityLabel === 'Send')
+        await act(async () => {
+            await sendButton.props.onPress()
+        })
+    }
+
+    it('sits directly right of Templates, on the left of the toolbar', async () => {
+        const tree = await renderOptions()
+
+        const toolbar = tree.root.findByProps({ testID: 'assistant-composer-toolbar' })
+        const leftSide = toolbar.findAll(node => node.type === 'AssistantTaskSearchButtonWrapper')[0].parent
+        const order = leftSide.children.map(child => (typeof child.type === 'string' ? child.type : 'slot'))
+        expect(order.indexOf('ComposerModelButton')).toBe(order.indexOf('AssistantTaskSearchButtonWrapper') + 1)
+        expect(
+            tree.root
+                .findByProps({ testID: 'assistant-message-controls' })
+                .findAll(node => node.type === 'ComposerModelButton')
+        ).toHaveLength(0)
+    })
+
+    it('starts on the assistant model and says the choice is for the next chat', async () => {
+        const tree = await renderOptions()
+
+        const button = modelButtonOf(tree)
+        expect(button.props.selectedModel).toBeNull()
+        expect(button.props.title).toBe('Model for the next chat')
+        expect(button.props.description).toBe('Used for the chat your next message starts')
+        expect(button.props.compact).toBe(false)
+    })
+
+    // Measured in Chromium against the real markup: below these widths the labels would push the
+    // model button into the call and send buttons.
+    it('drops the model name, then the Templates label, as the toolbar narrows', async () => {
+        const tree = await renderOptions()
+        const toolbar = tree.root.findByProps({ testID: 'assistant-composer-toolbar' })
+        const templates = () => tree.root.findByType('AssistantTaskSearchButtonWrapper').props.compact
+        const layout = width =>
+            act(() => {
+                toolbar.props.onLayout({ nativeEvent: { layout: { width } } })
+            })
+
+        // Unmeasured: both keep their labels.
+        expect([modelButtonOf(tree).props.compact, templates()]).toEqual([false, false])
+        layout(ASSISTANT_LINE_MODEL_COMPACT_WIDTH)
+        expect([modelButtonOf(tree).props.compact, templates()]).toEqual([false, false])
+        layout(ASSISTANT_LINE_MODEL_COMPACT_WIDTH - 1)
+        expect([modelButtonOf(tree).props.compact, templates()]).toEqual([true, false])
+        layout(ASSISTANT_LINE_TEMPLATES_COMPACT_WIDTH - 1)
+        expect([modelButtonOf(tree).props.compact, templates()]).toEqual([true, true])
+        // A hidden line measures 0: keep the last real layout.
+        layout(0)
+        expect([modelButtonOf(tree).props.compact, templates()]).toEqual([true, true])
+    })
+
+    it('shows only the icon on phones', async () => {
+        mockState.smallScreenNavigation = true
+        const tree = await renderOptions()
+
+        expect(modelButtonOf(tree).props.compact).toBe(true)
+    })
+
+    // Default behaviour must not change: no picked model, no override option at all.
+    it('sends without a model when none was picked', async () => {
+        createBotQuickTopic.mockResolvedValue({ projectId: 'selected-project', chatId: 'chat-1' })
+        const tree = await renderOptions()
+
+        await send(tree, 'Plain message')
+
+        expect(createBotQuickTopic.mock.calls[0][2]).not.toHaveProperty('assistantModelOverride')
+    })
+
+    it('starts the chat on the picked model, then returns to the assistant model', async () => {
+        createBotQuickTopic.mockResolvedValue({ projectId: 'selected-project', chatId: 'chat-1' })
+        const tree = await renderOptions()
+
+        await act(async () => modelButtonOf(tree).props.onSelectModel('MODEL_DEEPSEEK_V4_FLASH'))
+        expect(modelButtonOf(tree).props.selectedModel).toBe('MODEL_DEEPSEEK_V4_FLASH')
+
+        await send(tree, 'Use the cheap model')
+
+        expect(createBotQuickTopic).toHaveBeenCalledWith(
+            { uid: 'assistant-1', displayName: 'Assistant' },
+            'Use the cheap model',
+            expect.objectContaining({
+                projectId: 'selected-project',
+                assistantModelOverride: 'MODEL_DEEPSEEK_V4_FLASH',
+            })
+        )
+        // "Only the current chat": the next message starts its own chat on the assistant's model.
+        expect(modelButtonOf(tree).props.selectedModel).toBeNull()
+
+        await send(tree, 'Second message')
+        expect(createBotQuickTopic.mock.calls[1][2]).not.toHaveProperty('assistantModelOverride')
+    })
+
+    it('treats the "Use assistant model" entry as no choice', async () => {
+        createBotQuickTopic.mockResolvedValue({ projectId: 'selected-project', chatId: 'chat-1' })
+        const tree = await renderOptions()
+
+        await act(async () => modelButtonOf(tree).props.onSelectModel('MODEL_DEEPSEEK_V4_FLASH'))
+        await act(async () => modelButtonOf(tree).props.onSelectModel('INHERIT_ASSISTANT_MODEL'))
+        expect(modelButtonOf(tree).props.selectedModel).toBeNull()
+
+        await send(tree, 'Back to default')
+        expect(createBotQuickTopic.mock.calls[0][2]).not.toHaveProperty('assistantModelOverride')
+    })
+
+    it('gives the model choice back with the text when the chat could not be created', async () => {
+        createBotQuickTopic.mockRejectedValue(new Error('network'))
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+        const tree = await renderOptions()
+
+        await act(async () => modelButtonOf(tree).props.onSelectModel('MODEL_DEEPSEEK_V4_FLASH'))
+        await send(tree, 'Will fail')
+
+        expect(mockInputClearAndSetContent).toHaveBeenCalledWith('Will fail')
+        expect(modelButtonOf(tree).props.selectedModel).toBe('MODEL_DEEPSEEK_V4_FLASH')
+        errorSpy.mockRestore()
     })
 })
 

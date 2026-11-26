@@ -2275,6 +2275,8 @@
     "Select model": "Select model",
     "Model for this thread": "Model for this thread",
     "This model is used only in this thread": "This model is used only in this thread",
+    "Model for the next chat": "Model for the next chat",
+    "Used for the chat your next message starts": "Used for the chat your next message starts",
     "Only for this thread": "Only for this thread",
     "Assistant default": "Assistant default",
     "Very low": "Very low",
