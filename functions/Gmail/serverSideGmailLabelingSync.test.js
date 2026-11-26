@@ -102,6 +102,10 @@ jest.mock('../Email/emailThreadContinuation', () => ({
     continueEmailThread: jest.fn(async () => null),
     appendOriginEmailToTask: jest.fn(async () => ({ commentId: 'email_origin', existing: false })),
 }))
+// AT-3165: Gmail star of a created email task (own suite: gmailTaskStar.test.js).
+jest.mock('./gmailTaskStar', () => ({
+    starEmailOfCreatedTask: jest.fn(async () => ({ state: 'starred' })),
+}))
 jest.mock('../Email/emailThreadTopicStore', () => ({
     resolveEmailThreadTopicForMessage: jest.fn(async () => null),
     appendSentMessageToThreadTopic: jest.fn(async () => ({ written: 1, commentId: 'sent-comment' })),
@@ -2137,6 +2141,54 @@ describe('email conversations get their own topic', () => {
             expect.objectContaining({ taskId: 't1', projectId: 'project-a', outgoing: false })
         )
         console.warn.mockRestore()
+    })
+
+    test('AT-3165: a task created from the email stars exactly that message on its connection', async () => {
+        const { starEmailOfCreatedTask } = require('./gmailTaskStar')
+        assistantHelper.collectAssistantTextWithToolCalls.mockResolvedValue({
+            assistantResponse: 'Created',
+            createdTaskResults: [{ taskId: 't1', projectId: 'project-a', task: { name: 'Send contract' } }],
+            createdChatCommentResults: [],
+        })
+        const action = await run({ followUpType: 'actionable' })
+        expect(action.status).toBe('completed')
+        expect(starEmailOfCreatedTask).toHaveBeenCalledTimes(1)
+        expect(starEmailOfCreatedTask).toHaveBeenCalledWith({
+            userId: 'u',
+            connectionKey: 'conn',
+            gmailEmail: 'me@example.com',
+            messageId: 'm2',
+            threadId: 'thread',
+            projectId: 'project-a',
+            taskId: 't1',
+            provider: 'google',
+        })
+        expect(action.emailStarResults).toEqual([{ taskId: 't1', projectId: 'project-a', state: 'starred' }])
+    })
+
+    test('AT-3165: a continued (existing) task is not starred again', async () => {
+        const { starEmailOfCreatedTask } = require('./gmailTaskStar')
+        assistantHelper.collectAssistantTextWithToolCalls.mockResolvedValue({
+            assistantResponse: 'Continued',
+            createdTaskResults: [{ taskId: 't1', projectId: 'project-a', existing: true }],
+            createdChatCommentResults: [],
+        })
+        const action = await run({ followUpType: 'actionable' })
+        expect(starEmailOfCreatedTask).not.toHaveBeenCalled()
+        expect(action.emailStarResults).toEqual([])
+    })
+
+    test('AT-3165: a failed star never fails the run', async () => {
+        const { starEmailOfCreatedTask } = require('./gmailTaskStar')
+        starEmailOfCreatedTask.mockResolvedValueOnce({ state: 'error', error: 'Insufficient Permission' })
+        assistantHelper.collectAssistantTextWithToolCalls.mockResolvedValue({
+            assistantResponse: 'Created',
+            createdTaskResults: [{ taskId: 't1', projectId: 'project-a', task: { name: 'Send contract' } }],
+            createdChatCommentResults: [],
+        })
+        const action = await run({ followUpType: 'actionable' })
+        expect(action.status).toBe('completed')
+        expect(action.emailStarResults).toEqual([{ taskId: 't1', projectId: 'project-a', state: 'error' }])
     })
 
     describe('mail the owner sent', () => {

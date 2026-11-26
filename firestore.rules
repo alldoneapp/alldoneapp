@@ -127,7 +127,10 @@ service cloud.firestore {
     function isServerOwnedUserCollection(collectionName) {
       // dailyPlans (AT-3142): written by applyDailyPlanSecondGen only; the nightly auto-postpone
       // reads its Someday holds, so the owner may read but not forge it.
-      return collectionName in ['goldTransactions', 'goldRewardClaims', 'goldChangeClaims', 'dailyPlans'];
+      // gmailTaskStars (AT-3165): which Gmail star Alldone set for which email task; the task
+      // triggers remove/restore stars only from these server-written entries.
+      return collectionName in ['goldTransactions', 'goldRewardClaims', 'goldChangeClaims', 'dailyPlans',
+        'gmailTaskStars'];
     }
 
     function ownerUpdatePreservesProjectMembership() {

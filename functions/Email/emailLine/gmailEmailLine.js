@@ -1099,6 +1099,7 @@ function getMessageStates(userId, projectId, messageIds) {
 
 module.exports = {
     getGmailClient,
+    withGmailClient,
     getGmailLabelSummary,
     listMessagesForLabel,
     archiveMessages,

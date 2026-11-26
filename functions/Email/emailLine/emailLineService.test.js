@@ -164,6 +164,13 @@ jest.mock('../../Gmail/assistantGmailDrafts', () => ({
     createGmailReplyDraftForAssistantRequest: jest.fn(),
 }))
 
+// AT-3165: the Gmail star is a separate module with its own suite (gmailTaskStar.test.js); here only
+// WHEN createTask asks for it is pinned. No real mailbox is touched.
+jest.mock('../../Gmail/gmailTaskStar', () => ({
+    starEmailOfCreatedTask: jest.fn(),
+    resumePendingTaskEmailStar: jest.fn(),
+}))
+
 const gmailEmailLine = require('./gmailEmailLine')
 const microsoftEmailLine = require('./microsoftEmailLine')
 const { composeReply } = require('./replyComposer')
@@ -826,6 +833,141 @@ describe('emailLineService', () => {
                 expect.objectContaining({ projectId: 'home' }),
                 expect.anything()
             )
+        })
+    })
+
+    describe('createTask stars the email of the task it created (AT-3165)', () => {
+        const { starEmailOfCreatedTask, resumePendingTaskEmailStar } = require('../../Gmail/gmailTaskStar')
+
+        beforeEach(() => {
+            gmailEmailLine.getMessageContext.mockResolvedValue({ subject: 'Invoice', body: 'x', threadId: 'th1' })
+            summarizeEmailAsTaskName.mockResolvedValue({ name: 'Pay invoice', totalTokens: 10 })
+            deductGold.mockResolvedValue({ success: true })
+            mockCreateAndPersistTask.mockResolvedValue({ success: true, taskId: 't-new' })
+            starEmailOfCreatedTask.mockResolvedValue({ state: 'starred' })
+            resumePendingTaskEmailStar.mockResolvedValue({ state: 'skipped' })
+        })
+
+        test('stars exactly the linked message on the connection the request came through', async () => {
+            const result = await performEmailLineAction('u', 'email_google_test', {
+                action: 'createTask',
+                messageIds: ['m1'],
+                userData: googleConnectionUserData,
+            })
+
+            expect(starEmailOfCreatedTask).toHaveBeenCalledTimes(1)
+            expect(starEmailOfCreatedTask).toHaveBeenCalledWith({
+                userId: 'u',
+                connectionKey: 'email_google_test',
+                gmailEmail: 'me@gmail.com',
+                messageId: 'm1',
+                threadId: 'th1',
+                projectId: 'p1',
+                taskId: 't-new',
+                provider: 'google',
+            })
+            expect(result).toMatchObject({ taskId: 't-new', projectId: 'p1', starState: 'starred' })
+        })
+
+        test('a failed star does not fail the created task', async () => {
+            starEmailOfCreatedTask.mockResolvedValue({ state: 'error', error: 'Insufficient Permission' })
+            const result = await performEmailLineAction('u', 'email_google_test', {
+                action: 'createTask',
+                messageIds: ['m1'],
+                userData: googleConnectionUserData,
+            })
+            expect(result).toMatchObject({ taskId: 't-new', starState: 'error' })
+            expect(refundGold).not.toHaveBeenCalled()
+        })
+
+        test('a repeated click returns the existing task, creates nothing and only finishes a pending star', async () => {
+            mockTaskDocs.set('items/p1/tasks', [
+                {
+                    id: 'task-live',
+                    data: {
+                        isPublicFor: [0],
+                        name: 'Pay invoice',
+                        gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' },
+                    },
+                },
+            ])
+
+            const first = await performEmailLineAction('u', 'p1', {
+                action: 'createTask',
+                messageIds: ['m1'],
+                userData: googleUserData,
+            })
+            const second = await performEmailLineAction('u', 'p1', {
+                action: 'createTask',
+                messageIds: ['m1'],
+                userData: googleUserData,
+            })
+
+            expect(first).toMatchObject({ taskId: 'task-live', existing: true, goldCost: 0 })
+            expect(second).toMatchObject({ taskId: 'task-live', existing: true, goldCost: 0 })
+            expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+            expect(deductGold).not.toHaveBeenCalled()
+            expect(starEmailOfCreatedTask).not.toHaveBeenCalled()
+            expect(resumePendingTaskEmailStar).toHaveBeenCalledWith({ userId: 'u', taskId: 'task-live' })
+        })
+
+        test('a concurrent request that lost the creation race reuses the task and stars nothing', async () => {
+            mockCreateAndPersistTask.mockResolvedValue({ success: true, taskId: 't-other', existing: true })
+            require('../emailThreadContinuation')
+                .continueEmailThread.mockResolvedValueOnce(null)
+                .mockResolvedValueOnce({ taskId: 't-other', projectId: 'p1', existing: true })
+
+            const result = await performEmailLineAction('u', 'email_google_test', {
+                action: 'createTask',
+                messageIds: ['m1'],
+                userData: googleConnectionUserData,
+            })
+
+            expect(result).toMatchObject({ taskId: 't-other', existing: true })
+            expect(refundGold).toHaveBeenCalled()
+            expect(starEmailOfCreatedTask).not.toHaveBeenCalled()
+        })
+
+        test('an email that continues an existing thread task is not starred again', async () => {
+            require('../emailThreadContinuation').continueEmailThread.mockResolvedValueOnce({
+                taskId: 'thread-task',
+                projectId: 'p1',
+                continued: true,
+            })
+            await performEmailLineAction('u', 'email_google_test', {
+                action: 'createTask',
+                messageIds: ['m1'],
+                userData: googleConnectionUserData,
+            })
+            expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+            expect(starEmailOfCreatedTask).not.toHaveBeenCalled()
+        })
+
+        test('Outlook tasks are never starred', async () => {
+            microsoftEmailLine.getMessageContext.mockResolvedValue({
+                subject: 'Hi',
+                body: 'x',
+                webUrl: 'https://outlook',
+            })
+            await performEmailLineAction('u', 'p1', {
+                action: 'createTask',
+                messageIds: ['m1'],
+                userData: microsoftUserData,
+            })
+            expect(mockCreateAndPersistTask).toHaveBeenCalled()
+            expect(starEmailOfCreatedTask).not.toHaveBeenCalled()
+        })
+
+        test('archiving stays its own action and never stars or unstars', async () => {
+            gmailEmailLine.archiveMessages.mockResolvedValue({ processed: 1 })
+            await performEmailLineAction('u', 'p1', {
+                action: 'archive',
+                messageIds: ['m1'],
+                userData: googleUserData,
+            })
+            expect(gmailEmailLine.archiveMessages).toHaveBeenCalledWith('u', 'p1', ['m1'])
+            expect(starEmailOfCreatedTask).not.toHaveBeenCalled()
+            expect(resumePendingTaskEmailStar).not.toHaveBeenCalled()
         })
     })
 

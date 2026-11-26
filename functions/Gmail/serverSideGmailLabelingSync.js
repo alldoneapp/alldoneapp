@@ -1461,6 +1461,38 @@ async function addOriginEmailToCreatedGmailTasks({
     return results
 }
 
+// AT-3165: the email a task was just created from is starred in Gmail until the task is Done.
+// Only for tasks this run created (not continued or collected ones), on exactly this message and
+// mailbox. Best effort: starEmailOfCreatedTask never throws, so a Gmail error never fails the run.
+async function starEmailForCreatedGmailTasks({
+    userId,
+    createdTaskResults = [],
+    normalizedMessage = {},
+    gmailEmail = '',
+    connectionKey = '',
+}) {
+    const createdTasks = (Array.isArray(createdTaskResults) ? createdTaskResults : []).filter(
+        result => result?.projectId && result?.taskId && !result.existing
+    )
+    if (createdTasks.length === 0 || !normalizedMessage?.messageId || !connectionKey) return []
+    const { starEmailOfCreatedTask } = require('./gmailTaskStar')
+    const results = []
+    for (const createdTask of createdTasks) {
+        const result = await starEmailOfCreatedTask({
+            userId,
+            connectionKey,
+            gmailEmail,
+            messageId: normalizedMessage.messageId,
+            threadId: normalizedMessage.threadId || '',
+            projectId: createdTask.projectId,
+            taskId: createdTask.taskId,
+            provider: 'google',
+        })
+        results.push({ taskId: createdTask.taskId, projectId: createdTask.projectId, state: result?.state || null })
+    }
+    return results
+}
+
 async function resolvePostLabelThreadTopic({
     userId,
     userData,
@@ -1940,6 +1972,13 @@ async function executePostLabelPrompt({
             assistantId,
             assistant,
         })
+        const emailStarResults = await starEmailForCreatedGmailTasks({
+            userId,
+            createdTaskResults: result?.createdTaskResults || [],
+            normalizedMessage,
+            gmailEmail,
+            connectionKey: connectionId || connectionProjectId,
+        })
         const taskLinkResult = await linkCreatedTaskInThreadTopic({
             threadTopic: routedThreadTopic,
             createdTaskResults: result?.createdTaskResults || [],
@@ -1988,6 +2027,7 @@ async function executePostLabelPrompt({
                 : [],
             routingCommentResults,
             originEmailCommentResults,
+            emailStarResults,
             ...(threadTopicSummary
                 ? { threadTopic: { ...threadTopicSummary, ...(taskLinkResult ? { taskLinked: true } : {}) } }
                 : {}),

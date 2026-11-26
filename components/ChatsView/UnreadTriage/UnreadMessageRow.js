@@ -14,6 +14,7 @@ import { onOpenChat } from '../Utils/ChatHelper'
 import { getGmailTaskWebUrl } from '../../../utils/Gmail/gmailTaskUtils'
 import { useUnreadEmailArchiveContext } from '../unreadEmailArchiveContext'
 import { runWithLastUnreadRedirect } from '../lastUnreadRedirect'
+import EmailTaskAction from '../../TaskListView/EmailLine/EmailTaskAction'
 import {
     UNREAD_TAG_ADS,
     UNREAD_TAG_LABEL_KEYS,
@@ -48,6 +49,11 @@ const openInNewTab = url => require('../../TaskListView/EmailLine/emailLineHelpe
 const markCommentRead = ref =>
     require('../../../utils/backends/Chats/markChatCommentsAsRead').markChatCommentsAsRead([ref])
 
+// Same as the email's button in its thread: a task for the email means it is handled, so its Alldone
+// chat notification goes (every comment of that email); Gmail's read state stays as it is.
+const markLinkedEmailRead = linkedEmail =>
+    require('../../../utils/backends/Chats/markChatCommentsAsRead').markAlldoneChatsReadForLinkedEmails([linkedEmail])
+
 // Sits under the avatar, so it has to stay short: the time today, the day and month this year,
 // and a two-digit year before that - in the user's own date order (DD.MM or MM.DD).
 export const formatRowTime = time => {
@@ -61,8 +67,14 @@ export const formatRowTime = time => {
 }
 
 /**
- * One unread message in the unread list: who sent it, its tag, a preview of the message and three
- * actions - archive (emails only), mark as read, open. Pressing the row opens it too.
+ * One unread message in the unread list: who sent it, its tag, a preview of the message and its
+ * actions - archive and "Create email task" (emails only), mark as read, open. Pressing the row
+ * opens it too.
+ *
+ * "Create email task" (AT-3165) is the email line's create flow (`EmailTaskAction`, action
+ * `createTask`) for exactly this row's message: the server returns the existing task for an email
+ * that already has one, and concurrent presses share one request, so it never makes a duplicate.
+ * The new task stars the email in Gmail until it is Done (functions/Gmail/gmailTaskStar.js).
  *
  * Archive goes through the chat list's shared archive (the same call and optimistic state as the
  * preview buttons), so it takes the mail out of the inbox and clears the comment's unread state in
@@ -83,6 +95,7 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
         ? row.senderName || translate('Email')
         : withMcpActorLabel(creatorData?.displayName, message) || row.senderName
     const canArchive = isEmail && accessGranted && !!linkedEmail && !!archive
+    const canCreateTask = isEmail && accessGranted && !!linkedEmail?.connectionProjectId && !!linkedEmail?.messageId
     const archiving = canArchive && archive.isArchivingEmail(linkedEmail.key)
     const archiveFailed = canArchive && archive.isFailedEmail(linkedEmail.key)
     // Email rows of a "Daily emails" topic need no context line: every row there is an email. A
@@ -112,6 +125,12 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
         if (!canArchive || archiving) return
         return archive.archiveLinkedEmails([linkedEmail])
     }
+
+    // Once the task exists the row is handled; the last unread message opens the tasks (AT-3104).
+    const onEmailTaskCreated = () =>
+        runWithLastUnreadRedirect([projectId], () => markLinkedEmailRead(linkedEmail)).catch(error => {
+            console.error('[unread list] Could not mark the email as read after creating its task', error)
+        })
 
     return (
         <TouchableOpacity
@@ -194,6 +213,22 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
                         busy={archiving}
                     />
                 )}
+                {canCreateTask && (
+                    <View
+                        style={localStyles.action}
+                        onClick={stopRowPress}
+                        testID={`unread-row-create-task-${message.id}`}
+                    >
+                        <EmailTaskAction
+                            compact
+                            connectionId={linkedEmail.connectionProjectId}
+                            messageIds={[linkedEmail.messageId]}
+                            initialTask={message.gmailData?.taskCreated}
+                            createLabelKey="Create email task"
+                            onTaskCreated={onEmailTaskCreated}
+                        />
+                    </View>
+                )}
                 <RowAction
                     icon={markReadFailed ? 'x' : 'double-check'}
                     label={translate(markReadFailed ? 'Could not mark as read. Try again' : 'mark as read')}
@@ -205,6 +240,9 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
         </TouchableOpacity>
     )
 }
+
+// The row itself opens the message; a press on an action must not do that as well.
+const stopRowPress = event => event?.stopPropagation?.()
 
 function RowAction({ icon, label, onPress, error, busy }) {
     return (

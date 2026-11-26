@@ -4,14 +4,32 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-nat
 import global, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import { translate } from '../../../i18n/TranslationService'
-import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
-import URLTrigger from '../../../URLSystem/URLTrigger'
-import NavigationService from '../../../utils/NavigationService'
-import { getDvMainTabLink } from '../../../utils/LinkingHelper'
+
+// Lazy, like the URL system below: the backend module pulls in the redux store and the Firebase client.
+const performEmailLineAction = (...args) =>
+    require('../../../utils/backends/EmailLine/emailLineBackend').performEmailLineAction(...args)
 
 function normalizeTask(task) {
     if (!task?.taskId || !task?.projectId) return null
     return task
+}
+
+// Several buttons can stand for the same email at once (the unread row and the email in its thread,
+// AT-3165). Concurrent presses for the same message share one request; the server also returns the
+// existing task for an email that already has one, so a later press never creates a second task.
+const createTaskRequestsInFlight = new Map()
+
+export function requestEmailTaskCreation(connectionId, payload) {
+    const key = `${connectionId}:${[...payload.messageIds].sort().join('|')}`
+    const existingRequest = createTaskRequestsInFlight.get(key)
+    if (existingRequest) return existingRequest
+    const request = performEmailLineAction(connectionId, payload)
+    createTaskRequestsInFlight.set(key, request)
+    const clear = () => {
+        if (createTaskRequestsInFlight.get(key) === request) createTaskRequestsInFlight.delete(key)
+    }
+    request.then(clear, clear)
+    return request
 }
 
 export default function EmailTaskAction({
@@ -27,6 +45,8 @@ export default function EmailTaskAction({
     textColor = colors.Text03,
     onTaskCreated,
     style,
+    // The idle label, e.g. 'Create email task' for the unread row (AT-3165).
+    createLabelKey = 'Create task',
 }) {
     const normalizedMessageIds = [...new Set((Array.isArray(messageIds) ? messageIds : [messageIds]).filter(Boolean))]
     const messageIdsKey = normalizedMessageIds.join('|')
@@ -77,7 +97,7 @@ export default function EmailTaskAction({
         creationInFlightRef.current = true
         setTaskState('creating')
         try {
-            const result = await performEmailLineAction(connectionId, {
+            const result = await requestEmailTaskCreation(connectionId, {
                 action: 'createTask',
                 messageIds: normalizedMessageIds,
                 labelId,
@@ -104,12 +124,17 @@ export default function EmailTaskAction({
 
     const openCreatedTask = () => {
         if (!createdTask) return
+        // Lazy: the URL system pulls in the router, the store and the Firebase client. The button is
+        // rendered in chat-list rows (AT-3165), whose tests should not need any of that.
+        const URLTrigger = require('../../../URLSystem/URLTrigger').default
+        const NavigationService = require('../../../utils/NavigationService').default
+        const { getDvMainTabLink } = require('../../../utils/LinkingHelper')
         URLTrigger.processUrl(NavigationService, getDvMainTabLink(createdTask.projectId, createdTask.taskId, 'tasks'))
     }
 
     const done = taskState === 'done'
     const loading = taskState === 'creating'
-    const labelKey = done ? 'Task created' : 'Create task'
+    const labelKey = done ? 'Task created' : createLabelKey
     const accessibilityLabel = translate(labelKey)
 
     return (

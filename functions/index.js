@@ -5174,6 +5174,24 @@ async function syncVmSessionTaskDoneIfChanged(event) {
     }
 }
 
+// AT-3165: an email task's Gmail star goes when the task reaches Done (`inDone`, not a workflow step)
+// and comes back when it is reopened. Acts only on the star the server recorded in the mailbox
+// owner's registry (Gmail/gmailTaskStar.js), never on the task's member-writable gmailData alone.
+// Cheap for every other update: returns before any read unless `inDone` flipped on an email task.
+async function syncGmailTaskStarIfDoneChanged(event) {
+    const before = event.data.before.data() || {}
+    const after = event.data.after.data() || {}
+    if ((before.inDone === true) === (after.inDone === true)) return
+    if (!before.gmailData && !after.gmailData) return
+    const { syncTaskEmailStarOnTaskUpdate } = require('./Gmail/gmailTaskStar')
+    await syncTaskEmailStarOnTaskUpdate({
+        projectId: event.params.projectId,
+        taskId: event.params.taskId,
+        before,
+        after,
+    })
+}
+
 exports.onUpdateTaskSecondGen = onDocumentUpdated(
     {
         document: 'items/{projectId}/tasks/{taskId}',
@@ -5191,6 +5209,7 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
             captureCalendarGoalRoutingFeedbackIfChanged(event),
             awardTaskProgressGoldIfChanged(event),
             syncVmSessionTaskDoneIfChanged(event),
+            syncGmailTaskStarIfDoneChanged(event),
             reconcileFeedPrivacy(event, 'tasks'),
             invalidateKnowledgeSourcesOnUpdate(event, 'tasks'),
         ])
@@ -5278,7 +5297,14 @@ exports.onDeleteTaskSecondGen = onDocumentDeleted(
         const { onDeleteTask } = require('./Tasks/onDeleteTaskFunctions')
         const { projectId, taskId } = event.params
         const task = { ...event.data.data(), id: taskId }
-        await Promise.all([onDeleteTask(projectId, task), invalidateKnowledgeSourcesOnDelete(event, 'tasks')])
+        await Promise.all([
+            onDeleteTask(projectId, task),
+            invalidateKnowledgeSourcesOnDelete(event, 'tasks'),
+            // AT-3165: a deleted email task takes its Gmail star with it (a project move keeps it).
+            task.gmailData
+                ? require('./Gmail/gmailTaskStar').syncTaskEmailStarOnTaskDelete({ projectId, taskId, task })
+                : null,
+        ])
     }
 )
 

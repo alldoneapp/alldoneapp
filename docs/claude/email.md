@@ -558,6 +558,54 @@ with Karsten:
 
 Pinned by `DueDateModal/emailPostponeArchive.test.js` and `DueDateModal/DueDateModalEmailArchive.test.js`.
 
+## An open email task stars its Gmail message; "Create email task" in Chats > Unread (AT-3165, 2026-11-26)
+
+Two parts, decided with Karsten:
+
+- **Star while open.** When the server creates an email task, it stars exactly the message the task
+  was created from, in the mailbox it came from (`functions/Gmail/gmailTaskStar.js`). That covers the
+  email line's `createTask` (`createTaskFromEmail`; every "Create task" button, the new unread row
+  action included) and the labeling run's `create_task` (`starEmailForCreatedGmailTasks` in
+  `executePostLabelPrompt`). A continued, reused or collected task (`existing`) is not starred again.
+  Tasks created before AT-3165 are not starred afterwards, and Outlook is untouched.
+- **Done removes it, a workflow step does not.** `onUpdateTaskSecondGen` →
+  `syncGmailTaskStarIfDoneChanged` acts only when `inDone` flips. Reopening (by hand, or by a new
+  email in the thread) stars the message again. Deleting the task removes the star too, except for
+  the delete that ends a project move: the move keeps the task id, so `onDeleteTaskSecondGen`
+  first looks for the id in the mailbox owner's projects.
+- **A star the user set before the task existed is theirs.** It is recorded as `preexisting` and
+  never removed (Karsten's choice over the literal "remove on Done"). Two open tasks of one email
+  share one star: it goes when the last of them is done.
+- **Gmail call**: `messages.modify` on that one message, `STARRED` only. INBOX and UNREAD stay, so
+  the archive on completion (`emailTaskCompletion.js`) and on postponing (AT-3164) are unchanged and
+  independent of the star.
+- **Why a registry**: `gmailData` is member-writable and not bound in firestore.rules, so the
+  triggers never act on it alone. The server writes `users/{owner}/gmailTaskStars/{taskId}` when it
+  stars (`connectionKey`, `messageId`, `projectId`, `wasStarredBefore`, `state`: `pending` |
+  `starred` | `preexisting` | `removed` | `deleted` | `missing`). The collection is server-owned in
+  the rules. The task's `gmailData.accountUserId` only says which tree to read; the message and
+  connection come from the entry. A task copy with the same id in another project counts only after
+  the original is gone and the project lists the owner.
+- **Errors and retries**: the entry is written `pending` (with `wasStarredBefore`) **before** the
+  star call, and each Gmail call is retried once on 429/5xx. A failed star never fails the task.
+  Asking for a task for the same email again returns the existing task (no second task, no Gold) and
+  finishes a `pending` star (`resumePendingTaskEmailStar`). A failed unstar on Done is logged; the
+  entry stays `starred` and the next Done tries again. There is no background retry.
+
+**Unread row action.** Each email row in Chats > Unread has "Create email task" ("E-Mail-Task
+anlegen") between Archive and Mark as read. It is the compact `EmailTaskAction` for exactly the
+row's `linkedEmail` (connection + message id), so it uses the same `createTask` path and its server-side
+dedupe. Concurrent presses for one email, in the row and in the thread, share one request
+(`requestEmailTaskCreation`). After the task is created, the email's Alldone notification is cleared
+(`markAlldoneChatsReadForLinkedEmails`, like the thread's button; Gmail read state unchanged) inside
+`runWithLastUnreadRedirect`, so the row leaves the list. A row whose comment carries
+`gmailData.taskCreated` shows "Task created" and opens the task. `EmailTaskAction` now requires the
+email line backend and the URL system lazily, so a row test does not need the store or Firebase.
+
+Pinned by `functions/Gmail/gmailTaskStar.test.js`, the AT-3165 blocks of `emailLineService.test.js`,
+`serverSideGmailLabelingSync.test.js` and `UnreadMessageRow.test.js`, and the registry case in the
+rules emulator suite.
+
 ## The email a task was created from opens the task's chat (AT-3022)
 
 `continueEmailThread` only writes the **later** mail of a thread into its task's chat, and skips the

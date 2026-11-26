@@ -859,6 +859,14 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         auditById,
     })
     if (existingTask) {
+        // A repeated or concurrent click returns the task that exists. If its Gmail star failed
+        // when it was created, finish that star now (AT-3165); never a second task.
+        if (connection.provider !== 'microsoft' && existingTask.taskId) {
+            await require('../../Gmail/gmailTaskStar').resumePendingTaskEmailStar({
+                userId,
+                taskId: existingTask.taskId,
+            })
+        }
         return {
             ...existingTask,
             existing: true,
@@ -1068,6 +1076,23 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         console.warn('[emailLine] createTask origin email comment failed:', error?.message || error)
     }
 
+    // The email that now has an open task is starred in Gmail until the task is Done (AT-3165).
+    // Best-effort and never throws: a failed star is finished on the next request for this email.
+    let starState = null
+    if (connection.provider !== 'microsoft') {
+        const starResult = await require('../../Gmail/gmailTaskStar').starEmailOfCreatedTask({
+            userId,
+            connectionKey: projectId,
+            gmailEmail: connection.emailAddress || '',
+            messageId: selectedMessageId,
+            threadId: context.threadId || audit?.gmailThreadId || '',
+            projectId: targetProjectId,
+            taskId,
+            provider: connection.provider,
+        })
+        starState = starResult?.state || null
+    }
+
     // Remember on the audit record that this email already has a task, so the modal
     // shows the created state (with a link) instead of the + button on reopen.
     try {
@@ -1083,6 +1108,7 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         projectId: targetProjectId,
         taskName,
         goldCost,
+        ...(starState ? { starState } : {}),
     }
 }
 

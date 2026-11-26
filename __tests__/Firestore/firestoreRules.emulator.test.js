@@ -798,6 +798,22 @@ describe('gold, premium and the Stripe link are server-owned', () => {
             updateDoc(doc(memberDb, `users/${MEMBER_ID}/dailyPlans/2026-11-23`), { somedayHoldTaskKeys: ['p:t'] })
         )
     })
+
+    it('keeps the Gmail task star registry (AT-3165) owner-readable and server-written', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), `users/${MEMBER_ID}/gmailTaskStars/task-1`), {
+                projectId: 'p',
+                messageId: 'm1',
+                state: 'starred',
+            })
+        })
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertSucceeds(getDoc(doc(memberDb, `users/${MEMBER_ID}/gmailTaskStars/task-1`)))
+        await assertFails(
+            setDoc(doc(memberDb, `users/${MEMBER_ID}/gmailTaskStars/forged`), { projectId: 'p', messageId: 'm2' })
+        )
+        await assertFails(updateDoc(doc(memberDb, `users/${MEMBER_ID}/gmailTaskStars/task-1`), { messageId: 'm2' }))
+    })
 })
 
 describe('goal lock keys are written by the server (AT-2978)', () => {
