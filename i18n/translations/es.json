@@ -2835,6 +2835,8 @@
     "Create task": "Crear tarea",
     "Task created": "Tarea creada",
     "Create email task": "Crear tarea del correo",
+    "Task couldn't be created": "No se pudo crear la tarea",
+    "Task couldn't be created. Try again": "No se pudo crear la tarea. Inténtalo de nuevo",
     "Integrations": "Integraciones",
     "Email accounts": "Cuentas de correo",
     "Calendar accounts": "Cuentas de calendario",

@@ -13,6 +13,7 @@ import { getLinkedEmailFromMessage } from '../ChatDV/linkedEmailActions'
 import { useRegisterUnreadLinkedEmails } from '../unreadEmailArchiveContext'
 import { useUnreadTriage } from './UnreadTriageContext'
 import UnreadMessageRow from './UnreadMessageRow'
+import { usePendingUnreadEmailTaskKeys } from './unreadEmailTaskCreation'
 import {
     UNREAD_SORT_NEWEST,
     UNREAD_TAG_ALL,
@@ -105,7 +106,17 @@ export default function UnreadMessagesList({ project, chats, onFilteredEmptyChan
         })
     }, [])
 
-    const rows = useMemo(() => buildUnreadRows(project.id, chats, messagesByChat), [project.id, chats, messagesByChat])
+    // An email whose task is being created has left the list on the press (AT-3187): its rows are
+    // out of the counts, the filters and the archive registry as if it were read, until the server
+    // answers. A failure brings them back (unreadEmailTaskCreation).
+    const pendingTaskEmailKeys = usePendingUnreadEmailTaskKeys()
+    const rows = useMemo(
+        () =>
+            buildUnreadRows(project.id, chats, messagesByChat).filter(
+                row => !row.linkedEmail?.key || !pendingTaskEmailKeys.has(row.linkedEmail.key)
+            ),
+        [project.id, chats, messagesByChat, pendingTaskEmailKeys]
+    )
     const counts = useMemo(() => countRowsByTag(rows), [rows])
     const visibleRows = useMemo(() => sortRows(filterRowsByTag(rows, tagFilter), sortMode), [rows, tagFilter, sortMode])
 

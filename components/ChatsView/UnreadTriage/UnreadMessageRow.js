@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import moment from 'moment'
 
 import styles, { colors } from '../../styles/global'
@@ -15,6 +15,12 @@ import { getGmailTaskWebUrl } from '../../../utils/Gmail/gmailTaskUtils'
 import { useUnreadEmailArchiveContext } from '../unreadEmailArchiveContext'
 import { runWithLastUnreadRedirect } from '../lastUnreadRedirect'
 import EmailTaskAction from '../../TaskListView/EmailLine/EmailTaskAction'
+import {
+    EMAIL_TASK_FAILED,
+    EMAIL_TASK_PENDING,
+    createUnreadEmailTask,
+    useUnreadEmailTaskEntry,
+} from './unreadEmailTaskCreation'
 import {
     UNREAD_TAG_ADS,
     UNREAD_TAG_LABEL_KEYS,
@@ -49,11 +55,6 @@ const openInNewTab = url => require('../../TaskListView/EmailLine/emailLineHelpe
 const markCommentRead = ref =>
     require('../../../utils/backends/Chats/markChatCommentsAsRead').markChatCommentsAsRead([ref])
 
-// Same as the email's button in its thread: a task for the email means it is handled, so its Alldone
-// chat notification goes (every comment of that email); Gmail's read state stays as it is.
-const markLinkedEmailRead = linkedEmail =>
-    require('../../../utils/backends/Chats/markChatCommentsAsRead').markAlldoneChatsReadForLinkedEmails([linkedEmail])
-
 // Sits under the avatar, so it has to stay short: the time today, the day and month this year,
 // and a two-digit year before that - in the user's own date order (DD.MM or MM.DD).
 export const formatRowTime = time => {
@@ -71,10 +72,13 @@ export const formatRowTime = time => {
  * actions - archive and "Create email task" (emails only), mark as read, open. Pressing the row
  * opens it too.
  *
- * "Create email task" (AT-3165) is the email line's create flow (`EmailTaskAction`, action
- * `createTask`) for exactly this row's message: the server returns the existing task for an email
- * that already has one, and concurrent presses share one request, so it never makes a duplicate.
- * The new task stars the email in Gmail until it is Done (functions/Gmail/gmailTaskStar.js).
+ * "Create email task" (AT-3165) is the email line's create flow (action `createTask`) for exactly
+ * this row's message: the server returns the existing task for an email that already has one, and
+ * concurrent presses share one request, so it never makes a duplicate. The new task stars the email
+ * in Gmail until it is Done (functions/Gmail/gmailTaskStar.js). Since AT-3187 the row leaves the
+ * list on the press and the task is created in the background; a failure brings the row back with a
+ * "try again" line (unreadEmailTaskCreation). An email that already has a task shows it instead
+ * (`EmailTaskAction`, which opens it).
  *
  * Archive goes through the chat list's shared archive (the same call and optimistic state as the
  * preview buttons), so it takes the mail out of the inbox and clears the comment's unread state in
@@ -98,6 +102,11 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
     const canCreateTask = isEmail && accessGranted && !!linkedEmail?.connectionProjectId && !!linkedEmail?.messageId
     const archiving = canArchive && archive.isArchivingEmail(linkedEmail.key)
     const archiveFailed = canArchive && archive.isFailedEmail(linkedEmail.key)
+    const emailTask = useUnreadEmailTaskEntry(canCreateTask ? linkedEmail.key : null)
+    const storedTask = message.gmailData?.taskCreated
+    const existingTask = storedTask?.taskId && storedTask?.projectId ? storedTask : emailTask?.task
+    const creatingTask = emailTask?.status === EMAIL_TASK_PENDING
+    const createTaskFailed = !existingTask && emailTask?.status === EMAIL_TASK_FAILED
     // Email rows of a "Daily emails" topic need no context line: every row there is an email. A
     // task comment or a conversation topic says where it was written.
     const showChatTitle = !!chat?.title && !(isEmail && /^daily emails/i.test(chat.title))
@@ -126,11 +135,11 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
         return archive.archiveLinkedEmails([linkedEmail])
     }
 
-    // Once the task exists the row is handled; the last unread message opens the tasks (AT-3104).
-    const onEmailTaskCreated = () =>
-        runWithLastUnreadRedirect([projectId], () => markLinkedEmailRead(linkedEmail)).catch(error => {
-            console.error('[unread list] Could not mark the email as read after creating its task', error)
-        })
+    // The row leaves the list now; the task is created in the background (AT-3187).
+    const createEmailTask = () => {
+        if (!canCreateTask || creatingTask) return
+        return createUnreadEmailTask(projectId, linkedEmail)
+    }
 
     return (
         <TouchableOpacity
@@ -198,6 +207,22 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
                 >
                     {shortenUnreadSummary(row.summary, getUnreadSummaryLimit(mobile))}
                 </SocialText>
+                {createTaskFailed && (
+                    <TouchableOpacity
+                        style={localStyles.failureHint}
+                        onPress={event => {
+                            stopRowPress(event)
+                            createEmailTask()
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={translate("Task couldn't be created. Try again")}
+                        testID={`unread-row-create-task-failed-${message.id}`}
+                    >
+                        <Text style={localStyles.failureHintText}>
+                            {translate("Task couldn't be created. Try again")}
+                        </Text>
+                    </TouchableOpacity>
+                )}
             </View>
 
             <View
@@ -219,14 +244,34 @@ export default function UnreadMessageRow({ projectId, row, accessGranted, mobile
                         onClick={stopRowPress}
                         testID={`unread-row-create-task-${message.id}`}
                     >
-                        <EmailTaskAction
-                            compact
-                            connectionId={linkedEmail.connectionProjectId}
-                            messageIds={[linkedEmail.messageId]}
-                            initialTask={message.gmailData?.taskCreated}
-                            createLabelKey="Create email task"
-                            onTaskCreated={onEmailTaskCreated}
-                        />
+                        {existingTask ? (
+                            <EmailTaskAction
+                                compact
+                                connectionId={linkedEmail.connectionProjectId}
+                                messageIds={[linkedEmail.messageId]}
+                                initialTask={existingTask}
+                            />
+                        ) : (
+                            <TouchableOpacity
+                                style={localStyles.action}
+                                onPress={createEmailTask}
+                                disabled={creatingTask}
+                                accessibilityRole="button"
+                                accessibilityLabel={translate(
+                                    createTaskFailed ? "Task couldn't be created" : 'Create email task'
+                                )}
+                            >
+                                {creatingTask ? (
+                                    <ActivityIndicator size="small" color={colors.Text03} />
+                                ) : (
+                                    <Icon
+                                        name="plus-square"
+                                        size={16}
+                                        color={createTaskFailed ? colors.UtilityRed200 : colors.Text03}
+                                    />
+                                )}
+                            </TouchableOpacity>
+                        )}
                     </View>
                 )}
                 <RowAction
@@ -355,6 +400,15 @@ const localStyles = StyleSheet.create({
     summaryText: {
         ...styles.body2,
         color: colors.Text02,
+    },
+    failureHint: {
+        alignSelf: 'flex-start',
+        marginTop: 4,
+    },
+    failureHintText: {
+        ...styles.caption2,
+        color: colors.UtilityRed200,
+        textDecorationLine: 'underline',
     },
     // Top-aligned with the sender line: a long message makes the row tall, and centred icons would
     // drift to the middle of it, a different place in every row.

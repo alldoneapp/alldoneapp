@@ -272,7 +272,11 @@ describe('"Create email task" on an email row (AT-3165)', () => {
     const UnreadEmailArchiveContext = require('../unreadEmailArchiveContext').default
     const { TouchableOpacity } = require('react-native')
     const { performEmailLineAction } = require('../../../utils/backends/EmailLine/emailLineBackend')
-    const { markAlldoneChatsReadForLinkedEmails } = require('../../../utils/backends/Chats/markChatCommentsAsRead')
+    const {
+        clearChatCommentsForLinkedEmails,
+        markAlldoneChatsReadForLinkedEmails,
+    } = require('../../../utils/backends/Chats/markChatCommentsAsRead')
+    const { resetUnreadEmailTaskCreation } = require('./unreadEmailTaskCreation')
 
     const linkedEmail = {
         key: 'email_google_me:gm-1',
@@ -315,6 +319,8 @@ describe('"Create email task" on an email row (AT-3165)', () => {
     beforeEach(() => {
         performEmailLineAction.mockReset()
         markAlldoneChatsReadForLinkedEmails.mockClear()
+        clearChatCommentsForLinkedEmails.mockClear()
+        act(() => resetUnreadEmailTaskCreation())
         archive.archiveLinkedEmails.mockClear()
     })
 
@@ -335,7 +341,7 @@ describe('"Create email task" on an email row (AT-3165)', () => {
         expect(findByLabel(renderRow(buildEmailRow(), { accessGranted: false }), 'Create email task')).toEqual([])
     })
 
-    it('creates the task through the email line flow for exactly this message, then marks the row read', async () => {
+    it('creates the task through the email line flow for exactly this message, clearing the row first', async () => {
         performEmailLineAction.mockResolvedValue({ taskId: 't-new', projectId: 'project-1', taskName: 'Send contract' })
         const tree = renderRow(buildEmailRow())
 
@@ -350,6 +356,12 @@ describe('"Create email task" on an email row (AT-3165)', () => {
             labelId: null,
             labelName: null,
         })
+        // AT-3187: the unread state goes on the press, before the server answers ...
+        expect(clearChatCommentsForLinkedEmails).toHaveBeenCalledWith([linkedEmail])
+        expect(clearChatCommentsForLinkedEmails.mock.invocationCallOrder[0]).toBeLessThan(
+            performEmailLineAction.mock.invocationCallOrder[0]
+        )
+        // ... and once more after it, for a comment of the email that came in meanwhile.
         expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledWith([linkedEmail])
         expect(findByLabel(tree, 'Task created')).toHaveLength(1)
         // Creating a task is not archiving: the mail stays where it is in Gmail.
@@ -370,15 +382,19 @@ describe('"Create email task" on an email row (AT-3165)', () => {
             button.props.onPress()
             button.props.onPress()
         })
+        // The button of a row still on screen (one rendered on its own) is busy until the answer.
+        expect(findByLabel(tree, 'Create email task')[0].props.disabled).toBe(true)
         await act(async () => {
+            findByLabel(tree, 'Create email task')[0].props.onPress()
             resolveCreate({ taskId: 't-new', projectId: 'project-1' })
         })
 
         expect(performEmailLineAction).toHaveBeenCalledTimes(1)
+        expect(clearChatCommentsForLinkedEmails).toHaveBeenCalledTimes(1)
         expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledTimes(1)
     })
 
-    it('the row and the thread button for the same email share one request when pressed together', async () => {
+    it('two rows of the same email share one request when pressed together', async () => {
         let resolveCreate
         performEmailLineAction.mockReturnValue(
             new Promise(resolve => {
@@ -399,6 +415,32 @@ describe('"Create email task" on an email row (AT-3165)', () => {
         expect(performEmailLineAction).toHaveBeenCalledTimes(1)
         expect(findByLabel(first, 'Task created')).toHaveLength(1)
         expect(findByLabel(second, 'Task created')).toHaveLength(1)
+    })
+
+    it("the row and the email's button in its thread share one request when pressed together", async () => {
+        const EmailTaskAction = require('../../TaskListView/EmailLine/EmailTaskAction').default
+        let resolveCreate
+        performEmailLineAction.mockReturnValue(
+            new Promise(resolve => {
+                resolveCreate = resolve
+            })
+        )
+        const row = renderRow(buildEmailRow())
+        let thread
+        act(() => {
+            thread = renderer.create(<EmailTaskAction connectionId="email_google_me" messageIds={['gm-1']} />)
+        })
+
+        act(() => {
+            findByLabel(row, 'Create email task')[0].props.onPress()
+            findByLabel(thread, 'Create task')[0].props.onPress()
+        })
+        await act(async () => {
+            resolveCreate({ taskId: 't-new', projectId: 'project-1' })
+        })
+
+        expect(performEmailLineAction).toHaveBeenCalledTimes(1)
+        expect(findByLabel(thread, 'Task created')).toHaveLength(1)
     })
 
     it('an email that already has a task shows it and does not ask again', () => {
@@ -431,20 +473,32 @@ describe('"Create email task" on an email row (AT-3165)', () => {
         expect(performEmailLineAction).toHaveBeenCalledTimes(1)
     })
 
-    it('a failed request keeps the row unread and can be tried again', async () => {
+    it('a failed request restores the unread state, says so in the row, and can be tried again there', async () => {
+        const restoreUnreadState = jest.fn(async () => {})
+        clearChatCommentsForLinkedEmails.mockResolvedValueOnce(restoreUnreadState)
         performEmailLineAction.mockRejectedValueOnce(new Error('unavailable'))
         const tree = renderRow(buildEmailRow())
         await act(async () => {
             findByLabel(tree, 'Create email task')[0].props.onPress()
         })
+        expect(restoreUnreadState).toHaveBeenCalledTimes(1)
         expect(markAlldoneChatsReadForLinkedEmails).not.toHaveBeenCalled()
+        // The red action and the "try again" line under the message.
+        expect(findByLabel(tree, "Task couldn't be created")).toHaveLength(1)
+        const hint = findByLabel(tree, "Task couldn't be created. Try again")
+        expect(hint).toHaveLength(1)
 
         performEmailLineAction.mockResolvedValueOnce({ taskId: 't-new', projectId: 'project-1' })
+        const event = { stopPropagation: jest.fn() }
         await act(async () => {
-            findByLabel(tree, 'Create email task')[0].props.onPress()
+            hint[0].props.onPress(event)
         })
+        // The retry does not also open the email.
+        expect(event.stopPropagation).toHaveBeenCalled()
         expect(performEmailLineAction).toHaveBeenCalledTimes(2)
         expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledTimes(1)
+        expect(findByLabel(tree, "Task couldn't be created. Try again")).toHaveLength(0)
+        expect(findByLabel(tree, 'Task created')).toHaveLength(1)
     })
 
     it('a press on the action does not also open the email', () => {

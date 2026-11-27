@@ -2863,6 +2863,8 @@
     "Create task": "Create task",
     "Task created": "Task created",
     "Create email task": "Create email task",
+    "Task couldn't be created": "Task couldn't be created",
+    "Task couldn't be created. Try again": "Task couldn't be created. Try again",
     "Integrations": "Integrations",
     "Email accounts": "Email accounts",
     "Calendar accounts": "Calendar accounts",

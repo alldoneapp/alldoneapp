@@ -593,18 +593,39 @@ Two parts, decided with Karsten:
   entry stays `starred` and the next Done tries again. There is no background retry.
 
 **Unread row action.** Each email row in Chats > Unread has "Create email task" ("E-Mail-Task
-anlegen") between Archive and Mark as read. It is the compact `EmailTaskAction` for exactly the
-row's `linkedEmail` (connection + message id), so it uses the same `createTask` path and its server-side
-dedupe. Concurrent presses for one email, in the row and in the thread, share one request
-(`requestEmailTaskCreation`). After the task is created, the email's Alldone notification is cleared
-(`markAlldoneChatsReadForLinkedEmails`, like the thread's button; Gmail read state unchanged) inside
-`runWithLastUnreadRedirect`, so the row leaves the list. A row whose comment carries
-`gmailData.taskCreated` shows "Task created" and opens the task. `EmailTaskAction` now requires the
-email line backend and the URL system lazily, so a row test does not need the store or Firebase.
+anlegen") between Archive and Mark as read. It creates the task for exactly the row's `linkedEmail`
+(connection + message id) through the same `createTask` path and its server-side dedupe. Concurrent
+presses for one email, in the row and in the thread, share one request (`requestEmailTaskCreation`).
+A row whose comment carries `gmailData.taskCreated` shows "Task created" and opens the task
+(`EmailTaskAction`). `EmailTaskAction` requires the email line backend and the URL system lazily, so a
+row test does not need the store or Firebase.
+
+**The row leaves on the press (AT-3187, 2026-11-27).** Karsten: "the message should disappear at
+once and the task be created in the background in the cloud". Since then the press does not wait
+for the 4-8s the server takes (`UnreadTriage/unreadEmailTaskCreation.js`):
+
+- The email is marked `pending` in a module-level store, and `UnreadMessagesList` drops every row of
+  a pending email in the same render (out of the chip counts, the "Mark as read" refs and the archive
+  registry too).
+- In the same press the email's unread state is cleared the way Archive does it (AT-2424,
+  `clearChatCommentsForLinkedEmails`), so the red and grey counters and the last-unread redirect
+  (AT-3104/3108) react at once. Decided: the redirect to the tasks happens at once, as for Archive.
+- On success the comments are marked read once more (`markAlldoneChatsReadForLinkedEmails`, catches a
+  comment that came in meanwhile). On failure the undo restores the unread state _while the row is
+  still hidden_, then the email becomes `failed`: the row comes back once, with a red action and a
+  red "Task couldn't be created. Try again" line under the message that retries. Decided: the hint
+  sits in the row, no alert. Only when the press already opened the tasks (`leftChats()`) does an
+  alert say it, as the archive buttons do.
+- The state lives at module level, not in the row or a provider: the row unmounts on the press and
+  the redirect can unmount the whole Chats view before the failure arrives. A press for a pending
+  email returns the running promise, so a double click sends one request.
+- Known gap, shared with Archive: if the tag auto-advance (AT-3120) left the tag meanwhile, the
+  restored row is under its old tag.
 
 Pinned by `functions/Gmail/gmailTaskStar.test.js`, the AT-3165 blocks of `emailLineService.test.js`,
-`serverSideGmailLabelingSync.test.js` and `UnreadMessageRow.test.js`, and the registry case in the
-rules emulator suite.
+`serverSideGmailLabelingSync.test.js` and `UnreadMessageRow.test.js`,
+`UnreadTriage/unreadEmailTaskCreation.test.js` (slow success, failure + retry, double press), and the
+registry case in the rules emulator suite.
 
 ### A star set in Gmail creates the email task (AT-3165 follow-up, 2026-11-26)
 

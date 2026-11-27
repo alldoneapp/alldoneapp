@@ -2414,6 +2414,8 @@
     "Create task": "Aufgabe erstellen",
     "Task created": "Aufgabe erstellt",
     "Create email task": "E-Mail-Task anlegen",
+    "Task couldn't be created": "Aufgabe nicht erstellt",
+    "Task couldn't be created. Try again": "Aufgabe konnte nicht erstellt werden. Erneut versuchen",
     "Integrations": "Integrationen",
     "Email accounts": "E-Mail-Konten",
     "Calendar accounts": "Kalender-Konten",
