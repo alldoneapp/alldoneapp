@@ -153,7 +153,7 @@ export function DailyPlanDialog({ meetingView, onClose, onApplied, applyPlan = a
         if (applying || !summary) return
         setApplying(true)
         setError('')
-        applyPlan(buildApplyTasks(summary, postponeView))
+        applyPlan(buildApplyTasks(summary, postponeView), { budgetMinutes: summary.budgetMinutes })
             .then(result => {
                 onApplied?.(result, { plannedCount: summary.selectedCount, plannedMinutes: summary.selectedMinutes })
                 onClose()

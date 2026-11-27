@@ -42,6 +42,20 @@ const MAX_PLAN_TASKS = MAX_OPERATIONS_PER_ACTION
 const PLAN_PRIORITIES = new Set(['must_do', 'should_do', 'could_do'])
 const DECISIONS = new Set(['plan', 'postpone', 'keep'])
 const MAX_ESTIMATE_MINUTES = 24 * 60
+// Anna's proposal per row (utils/dailyPlan/dailyPlanModel.js `proposePlan`). Descriptive only: it is
+// stored with the plan for the daily inbox dataset and never decides what is written.
+const PROPOSAL_TIERS = new Set(['must', 'should', 'could', 'later'])
+const PROPOSAL_RULES = new Set([
+    'yourMust',
+    'focus',
+    'yourPriority',
+    'milestoneAtRisk',
+    'goal',
+    'ranked',
+    'noRoom',
+    'doLater',
+    'you',
+])
 
 class DailyPlanError extends Error {
     constructor(code, message) {
@@ -94,16 +108,27 @@ function normalizeDailyPlanRequest(data) {
             confirmSomeday: decision === 'postpone' && item.confirmSomeday === true,
             estimateMinutes:
                 Number.isFinite(estimate) && estimate >= 0 ? Math.min(Math.round(estimate), MAX_ESTIMATE_MINUTES) : 0,
+            proposedTier: PROPOSAL_TIERS.has(item.proposedTier) ? item.proposedTier : null,
+            proposedRule: PROPOSAL_RULES.has(item.proposedRule) ? item.proposedRule : null,
         }
     })
 
+    const budget = Number(data.budgetMinutes)
     return {
         requestId: data.requestId.trim(),
         timezoneOffset: data.timezoneOffset,
         localDateKey: data.localDateKey,
         tasks,
+        budgetMinutes:
+            Number.isFinite(budget) && budget >= 0 ? Math.min(Math.round(budget), MAX_ESTIMATE_MINUTES) : null,
     }
 }
+
+/** What Anna proposed for each row next to what the user sent, for the daily inbox dataset. */
+const buildProposalRecord = tasks =>
+    tasks
+        .filter(task => task.proposedTier)
+        .map(task => ({ key: task.key, tier: task.proposedTier, rule: task.proposedRule, decision: task.decision }))
 
 const getRecurrenceType = task =>
     task?.recurrence && typeof task.recurrence === 'object' ? task.recurrence.type : task?.recurrence
@@ -216,7 +241,7 @@ function resolveTaskChange({ request, task, actorUserId, endOfToday, timezoneOff
 
 async function executeApplyDailyPlan({ actorUserId, data, db = admin.firestore(), now = Date.now() }) {
     if (!actorUserId) throw new DailyPlanError('permission-denied', 'Authentication required')
-    const { requestId, timezoneOffset, localDateKey, tasks } = normalizeDailyPlanRequest(data)
+    const { requestId, timezoneOffset, localDateKey, tasks, budgetMinutes } = normalizeDailyPlanRequest(data)
 
     const localNow = moment(now).utcOffset(timezoneOffset)
     // A review left open over midnight must not plan "today" with yesterday's decisions.
@@ -392,6 +417,8 @@ async function executeApplyDailyPlan({ actorUserId, data, db = admin.firestore()
             postponedTaskKeys,
             keptTaskKeys,
             somedayHoldTaskKeys,
+            budgetMinutes,
+            proposal: buildProposalRecord(tasks),
         })
 
         return {

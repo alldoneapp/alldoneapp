@@ -5212,6 +5212,7 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
             syncGmailTaskStarIfDoneChanged(event),
             reconcileFeedPrivacy(event, 'tasks'),
             invalidateKnowledgeSourcesOnUpdate(event, 'tasks'),
+            require('./Tasks/inboxDayDataset').recordInboxPostponesIfChanged(event),
         ])
     }
 )

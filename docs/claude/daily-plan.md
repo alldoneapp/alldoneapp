@@ -144,3 +144,48 @@ user that night). A new applied plan replaces the holds; Undo does not clear the
 - "n left" counts planned tasks still open and due today; a planned task postponed by hand later
   counts as no longer left.
 - Firestore rules change is live only after `deploy:firestore:rules:production`.
+
+## Daily inbox dataset (`inboxDays`, AT-3167)
+
+Goal: learn how the owner cleans up 100+ due tasks every morning (most of them postponed by
+swiping left) so it can be automated. Before this nothing stored the Today list at the start of a
+day, and project-line, goal and "Plan my day" postpones wrote no history (their undo records expire
+after 7 days). Everything lives in `functions/Tasks/inboxDayDataset.js` (`inboxDayDataset.test.js`);
+it only records, never changes a task.
+
+- **`users/{uid}/inboxDays/{YYYY-MM-DD}`** — written by the hourly `autoPostponeOverdueTasksSecondGen`
+  run, right after `processUserAutoPostpone`, for every active user (auto-postpone on or off), once
+  per local day (the record itself is the marker). `tasks` is the Today list the user wakes up to:
+  the same queries as the nightly auto-postpone (`collectEligibleTasksForProject` with
+  `thresholdDays: 0`: open, top level, visible, due today or earlier, observed tasks by the observer's
+  date). Each entry: key, name (≤ 200 chars), due date, overdue days, created, timesPostponed,
+  priority, estimate, goal, recurrence, focus, subtask count, origin (`calendar` / `email` / `other`
+  creator / `self`), creatorId, `waitingForOther`. Capped at 500 (`truncated`).
+- **`…/events/{eventId}`** — one per move off Today, from any path, written by
+  `onUpdateTaskSecondGen` (`recordInboxPostponesIfChanged`): the primary due date (for
+  `currentReviewerId`, else `userId`) or an observer's date moved later, from today-or-earlier to a
+  later day in that user's time zone. Carries from/to, `toSomeday`, `editorId`, `editionDate` (bulk
+  paths stamp one action's tasks with the same value) and the task's features from _before_ the move.
+  Only a due date moved later costs anything (one `users/{uid}` read for the time zone); assistants
+  and workstreams have no user doc and are skipped. Done tasks and subtasks never count.
+- **Closing a day** — the next day's run adds `outcome` to every listed task: `done` (with
+  `completedAt`), `postponed` (a move was recorded that day), `left` (still due, or later-dated with
+  no move that day: `movedAfterDay`, i.e. the nightly auto-postpone moved it after the day ended),
+  `gone` (deleted, became a subtask, no longer on this user's Today). `addedTasks` are the tasks that
+  came onto Today after the snapshot and were postponed or left open; added tasks that were also
+  finished the same day are not captured. Events before the snapshot (the nightly auto-postpone) are
+  counted in `postponeEventsBeforeSnapshot` and never treated as decisions about the day
+  (`snapshotAt` is the moment the list was read, after that run's auto-postpone writes, not the
+  run's start time).
+- **Anna's proposal** — "Plan my day" sends `proposedTier` / `proposedRule` per row (the proposal as
+  it stood at Apply, `summarizePlan` rows) and `budgetMinutes`; the server keeps only known values
+  and stores `proposal: [{ key, tier, rule, decision }]` and `budgetMinutes` in the
+  `dailyPlans/{date}` record. Descriptive only: it never decides what Apply writes. Keys are
+  `${projectId}:${taskId}` in both collections, so a day's plan joins its inbox day.
+- Both collections are server-owned and owner-readable (`isServerOwnedUserCollection`), pinned in the
+  rules emulator suite. Live only after `deploy:firestore:rules:production`; until then the owner
+  could also write them (nothing reads them for authority).
+- Known gaps: a move made while the trigger fails is lost (no retry); history before 2026-11-26 is
+  only in the per-task feed archive (`oldFeeds/{projectId}/{DDMMYYYY}/…`, server-only, never
+  trimmed), which has every swipe and auto-postpone but no project-line, goal or plan postpone.
+  There is no read tool yet: the data is read with the Admin SDK or as the owner in the app.

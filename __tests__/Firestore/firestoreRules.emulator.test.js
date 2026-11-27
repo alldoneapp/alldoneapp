@@ -831,6 +831,21 @@ describe('gold, premium and the Stripe link are server-owned', () => {
             setDoc(doc(memberDb, `users/${MEMBER_ID}/gmailStarImports/event_key_m1_5`), { state: 'created' })
         )
     })
+
+    it('keeps the daily inbox dataset (inboxDays and its events) owner-readable and server-written', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), `users/${MEMBER_ID}/inboxDays/2026-11-26`), { tasks: [] })
+            await setDoc(doc(context.firestore(), `users/${MEMBER_ID}/inboxDays/2026-11-26/events/e1`), { at: 1 })
+        })
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertSucceeds(getDoc(doc(memberDb, `users/${MEMBER_ID}/inboxDays/2026-11-26`)))
+        await assertSucceeds(getDoc(doc(memberDb, `users/${MEMBER_ID}/inboxDays/2026-11-26/events/e1`)))
+        await assertFails(setDoc(doc(memberDb, `users/${MEMBER_ID}/inboxDays/2026-11-27`), { tasks: [] }))
+        await assertFails(updateDoc(doc(memberDb, `users/${MEMBER_ID}/inboxDays/2026-11-26`), { tasks: [] }))
+        await assertFails(setDoc(doc(memberDb, `users/${MEMBER_ID}/inboxDays/2026-11-26/events/e2`), { at: 2 }))
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        await assertFails(getDoc(doc(outsiderDb, `users/${MEMBER_ID}/inboxDays/2026-11-26`)))
+    })
 })
 
 describe('goal lock keys are written by the server (AT-2978)', () => {

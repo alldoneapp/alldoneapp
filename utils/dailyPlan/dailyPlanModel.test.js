@@ -446,10 +446,13 @@ describe('postpone confirmation', () => {
         const ticks = toggleTicks({}, someday.projects[1].rows, true)
         const tasks = buildApplyTasks(summary, buildPostponeView(summary, projectIds, ticks))
         const byKey = Object.fromEntries(tasks.map(item => [`${item.projectId}:${item.taskId}`, item]))
+        // Anna had no room for t0; the user made it a Must. Both go to the server for the dataset.
         expect(byKey['product:t0']).toEqual({
             projectId: 'product',
             taskId: 't0',
             isObservedTask: false,
+            proposedTier: TIER_LATER,
+            proposedRule: RULE_NO_ROOM,
             decision: 'plan',
             priority: 'must_do',
             estimateMinutes: 30,

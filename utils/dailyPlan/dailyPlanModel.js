@@ -481,6 +481,7 @@ export const summarizePlan = ({ candidates, proposal, tierOverrides = {}, estima
             candidate,
             tier,
             proposedTier: proposed.tier,
+            proposedRule: proposed.rule,
             rule: override && override !== proposed.tier ? RULE_YOU : proposed.rule,
             detail: override && override !== proposed.tier ? null : proposed.detail || null,
             estimate: getEstimate(candidate, estimateOverrides),
@@ -684,6 +685,10 @@ export const buildApplyTasks = (summary, postponeView) => {
             projectId: row.candidate.projectId,
             taskId: row.candidate.taskId,
             isObservedTask: row.candidate.isObservedTask,
+            // Anna's proposal for the row, stored with the plan next to the user's decision so the
+            // daily inbox dataset can learn from the corrections (functions/Tasks/inboxDayDataset.js).
+            proposedTier: row.proposedTier,
+            proposedRule: row.proposedRule,
         }
         if (row.selected) {
             return { ...base, decision: 'plan', priority: TIER_PRIORITY[row.tier], estimateMinutes: row.estimate }

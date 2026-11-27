@@ -387,9 +387,14 @@ describe('DailyPlanDialog — postpone confirmation and apply', () => {
             projectId: 'home',
             taskId: 'goal',
             isObservedTask: false,
+            proposedTier: 'later',
+            proposedRule: 'doLater',
             decision: 'postpone',
             confirmSomeday: false,
         })
+        // Anna's proposal for the user's own change stays what she proposed.
+        expect(byKey['client:c2']).toMatchObject({ proposedTier: 'should' })
+        expect(applyPlan.mock.calls[0][1]).toEqual({ budgetMinutes: 360 })
         expect(byKey['product:meeting']).toBeUndefined()
         expect(onApplied).toHaveBeenCalledWith(
             { actionId: 'a1', skipped: [] },

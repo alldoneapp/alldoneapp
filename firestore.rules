@@ -131,8 +131,10 @@ service cloud.firestore {
       // triggers remove/restore stars only from these server-written entries.
       // gmailStarImports (AT-3165): the star import's history cursor, lease and per-event claims; a
       // forged cursor could replay old stars into tasks.
+      // inboxDays (daily inbox dataset, functions/Tasks/inboxDayDataset.js): the Today snapshot, its
+      // outcomes and the postpone events below it are recorded by the server; owner-readable.
       return collectionName in ['goldTransactions', 'goldRewardClaims', 'goldChangeClaims', 'dailyPlans',
-        'gmailTaskStars', 'gmailStarImports'];
+        'gmailTaskStars', 'gmailStarImports', 'inboxDays'];
     }
 
     function ownerUpdatePreservesProjectMembership() {

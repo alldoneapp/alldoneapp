@@ -563,6 +563,8 @@ async function checkAndAutoPostponeTasks(now = Date.now()) {
     let processedUsers = 0
     let skippedUsers = 0
     let postponedTasks = 0
+    let inboxDaysRecorded = 0
+    const { recordInboxDay } = require('./inboxDayDataset')
 
     for (const [userId, userData] of activeUsersMap.entries()) {
         try {
@@ -580,6 +582,10 @@ async function checkAndAutoPostponeTasks(now = Date.now()) {
                 error: error.message,
             })
         }
+        // Daily inbox dataset: once per local day, after the nightly auto-postpone so the snapshot is
+        // the list the user wakes up to. Runs whether or not auto-postpone is on; never throws.
+        const inboxDay = await recordInboxDay({ db: admin.firestore(), userId, userData, now })
+        if (inboxDay.recorded) inboxDaysRecorded++
     }
 
     console.log('[autoPostponeTasksCloud] Completed run', {
@@ -587,6 +593,7 @@ async function checkAndAutoPostponeTasks(now = Date.now()) {
         processedUsers,
         skippedUsers,
         postponedTasks,
+        inboxDaysRecorded,
     })
 
     return {
@@ -609,6 +616,8 @@ module.exports = {
     getOverdueDays,
     shouldProcessUserToday,
     getUserWorkstreamIds,
+    getEligibleActiveProjectsForUser,
+    collectEligibleTasksForProject,
     shouldAutoPostponeTask,
     mergeTaskCandidate,
     getDateToMoveTaskInAutoPostpone,

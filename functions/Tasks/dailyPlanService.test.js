@@ -162,6 +162,28 @@ describe('normalizeDailyPlanRequest', () => {
         ).tasks
         expect(item).toMatchObject({ estimateMinutes: 1440, confirmSomeday: false })
     })
+
+    it('keeps Anna’s proposal and the budget only when they are known values', () => {
+        const base = { projectId: 'p1', taskId: 't1', decision: 'keep', isObservedTask: false }
+        const normalized = normalizeDailyPlanRequest(
+            request(
+                [
+                    { ...base, proposedTier: 'should', proposedRule: 'ranked' },
+                    { ...base, taskId: 't2', proposedTier: 'urgent', proposedRule: '<script>' },
+                    { ...base, taskId: 't3' },
+                ],
+                { budgetMinutes: 99999 }
+            )
+        )
+        expect(normalized.tasks.map(({ proposedTier, proposedRule }) => ({ proposedTier, proposedRule }))).toEqual([
+            { proposedTier: 'should', proposedRule: 'ranked' },
+            { proposedTier: null, proposedRule: null },
+            { proposedTier: null, proposedRule: null },
+        ])
+        expect(normalized.budgetMinutes).toBe(1440)
+        expect(normalizeDailyPlanRequest(request([base])).budgetMinutes).toBeNull()
+        expect(normalizeDailyPlanRequest(request([base], { budgetMinutes: -5 })).budgetMinutes).toBeNull()
+    })
 })
 
 describe('executeApplyDailyPlan', () => {
@@ -178,26 +200,40 @@ describe('executeApplyDailyPlan', () => {
         })
         const result = await apply(
             fixture,
-            request([
-                {
-                    projectId: 'p1',
-                    taskId: 'plan',
-                    decision: 'plan',
-                    priority: 'should_do',
-                    isObservedTask: false,
-                    estimateMinutes: 30,
-                },
-                {
-                    projectId: 'p1',
-                    taskId: 'same',
-                    decision: 'plan',
-                    priority: 'must_do',
-                    isObservedTask: false,
-                    estimateMinutes: 60,
-                },
-                { projectId: 'p1', taskId: 'move', decision: 'postpone', isObservedTask: false },
-                { projectId: 'p2', taskId: 'keep', decision: 'keep', isObservedTask: false },
-            ])
+            request(
+                [
+                    {
+                        projectId: 'p1',
+                        taskId: 'plan',
+                        decision: 'plan',
+                        priority: 'should_do',
+                        isObservedTask: false,
+                        estimateMinutes: 30,
+                        proposedTier: 'later',
+                        proposedRule: 'noRoom',
+                    },
+                    {
+                        projectId: 'p1',
+                        taskId: 'same',
+                        decision: 'plan',
+                        priority: 'must_do',
+                        isObservedTask: false,
+                        estimateMinutes: 60,
+                        proposedTier: 'must',
+                        proposedRule: 'yourMust',
+                    },
+                    {
+                        projectId: 'p1',
+                        taskId: 'move',
+                        decision: 'postpone',
+                        isObservedTask: false,
+                        proposedTier: 'later',
+                        proposedRule: 'noRoom',
+                    },
+                    { projectId: 'p2', taskId: 'keep', decision: 'keep', isObservedTask: false },
+                ],
+                { budgetMinutes: 360 }
+            )
         )
 
         expect(result).toMatchObject({
@@ -241,6 +277,13 @@ describe('executeApplyDailyPlan', () => {
             somedayHoldTaskKeys: [],
         })
         expect(plan.planned.map(item => item.key)).toEqual(['p1:plan', 'p1:same'])
+        // Anna's proposal next to the user's decision (daily inbox dataset); rows without one are left out.
+        expect(plan.budgetMinutes).toBe(360)
+        expect(plan.proposal).toEqual([
+            { key: 'p1:plan', tier: 'later', rule: 'noRoom', decision: 'plan' },
+            { key: 'p1:same', tier: 'must', rule: 'yourMust', decision: 'plan' },
+            { key: 'p1:move', tier: 'later', rule: 'noRoom', decision: 'postpone' },
+        ])
     })
 
     it('never sends a task to Someday without explicit confirmation, and records the hold', async () => {

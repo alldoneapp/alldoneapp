@@ -17,7 +17,7 @@ export const getLocalPlanDateKey = (nowMs = Date.now()) => moment(nowMs).format(
  * press makes the write idempotent if the call is retried. Online-only: the callable funnel throws
  * `code: 'offline'` immediately when there is no connection.
  */
-export const applyDailyPlan = (tasks, { requestId = v4(), nowMs = Date.now() } = {}) =>
+export const applyDailyPlan = (tasks, { requestId = v4(), nowMs = Date.now(), budgetMinutes = null } = {}) =>
     runHttpsCallableFunction(
         'applyDailyPlanSecondGen',
         {
@@ -25,6 +25,7 @@ export const applyDailyPlan = (tasks, { requestId = v4(), nowMs = Date.now() } =
             timezoneOffset: moment(nowMs).utcOffset(),
             localDateKey: getLocalPlanDateKey(nowMs),
             tasks,
+            budgetMinutes,
         },
         { timeout: 120000 }
     )
